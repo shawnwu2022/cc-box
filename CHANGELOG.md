@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-04-27
+
+### Added
+
+- Global settings overlay accessible from any view (welcome, projects, terminal)
+- Settings button in ProjectSelectView header (next to "Projects" title)
+- Use app icon in About section instead of placeholder text
+
+### Changed
+
+- `Ctrl+,` shortcut now opens settings from any view
+- Menu bar Settings/Shortcuts works in all views (not just terminal)
+- Settings panel now displayed as global overlay instead of inline in terminal view
+
 ## [0.2.0] - 2025-04-27
 
 ### Added
