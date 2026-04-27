@@ -19,7 +19,7 @@ jobs:
             target: 'x86_64-apple-darwin'
             name: 'macos-x64'
             patterns: |
-              src-tauri/target/release/bundle/dmg/*.dmg
+              src-tauri/target/**/bundle/dmg/*.dmg
               src-tauri/target/**/*.app.tar.gz
           - platform: 'ubuntu-22.04'
             target: ''
