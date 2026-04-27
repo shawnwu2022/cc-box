@@ -15,12 +15,21 @@ jobs:
           - platform: 'macos-latest'
             target: 'x86_64-apple-darwin'
             name: 'macos-x64'
+            patterns: |
+              src-tauri/target/*/release/bundle/**/*.dmg
+              src-tauri/target/*/release/bundle/**/*.app.tar.gz
           - platform: 'ubuntu-22.04'
             target: ''
             name: 'linux'
+            patterns: |
+              src-tauri/target/*/release/bundle/**/*.deb
+              src-tauri/target/*/release/bundle/**/*.AppImage
           - platform: 'windows-latest'
             target: ''
             name: 'windows'
+            patterns: |
+              src-tauri/target/*/release/bundle/**/*.exe
+              src-tauri/target/*/release/bundle/**/*.msi
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -74,14 +83,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cc-box-${{ matrix.name }}
-          path: |
-            src-tauri/target/*/release/bundle/**/*.exe
-            src-tauri/target/*/release/bundle/**/*.msi
-            src-tauri/target/*/release/bundle/**/*.dmg
-            src-tauri/target/*/release/bundle/**/*.app.tar.gz
-            src-tauri/target/*/release/bundle/**/*.deb
-            src-tauri/target/*/release/bundle/**/*.AppImage
-          if-no-files-found: warn
+          path: ${{ matrix.patterns }}
+          if-no-files-found: error
 
   release:
     needs: build
