@@ -1,7 +1,29 @@
 {
   "name": "cc-box",
   "version": "0.2.0",
-  "description": "Claude Code Desktop GUI (Tauri)",
+  "description": "Claude Code Desktop GUI (Tauri) - Multi-terminal manager for Claude Code power users",
+  "license": "MIT",
+  "author": {
+    "name": "orczh",
+    "email": "orczh_hj@163.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/orczh-hj/cc-box.git"
+  },
+  "bugs": {
+    "url": "https://github.com/orczh-hj/cc-box/issues"
+  },
+  "homepage": "https://github.com/orczh-hj/cc-box#readme",
+  "keywords": [
+    "claude-code",
+    "claude",
+    "tauri",
+    "terminal",
+    "gui",
+    "multi-session",
+    "developer-tools"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vite build",

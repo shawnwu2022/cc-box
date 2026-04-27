@@ -18,6 +18,10 @@
 
 ---
 
+English | [简体中文](README_CN.md)
+
+---
+
 ## Why CC-Box?
 
 Claude Code's CLI is great for single-session work. But if you're juggling **multiple projects**, **running several agents in parallel**, or want to **see token usage and costs at a glance** — the terminal alone falls short.
@@ -160,6 +164,16 @@ The app runs the CLI binary directly — it doesn't depend on any internal API. 
 ## Tech Stack
 
 Tauri 2 (Rust) + Vue 3 + TypeScript + xterm.js + portable-pty
+
+---
+
+## Code Signing Policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org)
+
+- **Committers and reviewers**: [Contributors](https://github.com/orczh-hj/cc-box/graphs/contributors)
+- **Approvers**: [Owner](https://github.com/orczh-hj)
+- **Privacy policy**: This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
 
 ---
 

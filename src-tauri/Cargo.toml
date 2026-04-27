@@ -1,8 +1,10 @@
 [package]
 name = "cc-box"
 version = "0.2.0"
-description = "Claude Code Desktop GUI (Tauri)"
-authors = ["orczh"]
+description = "Claude Code Desktop GUI (Tauri) - Multi-terminal manager for Claude Code power users"
+authors = ["orczh <orczh_hj@163.com>"]
+license = "MIT"
+repository = "https://github.com/orczh-hj/cc-box"
 edition = "2021"
 
 [build-dependencies]
