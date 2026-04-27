@@ -111,11 +111,11 @@ jobs:
           draft: true
           generate_release_notes: true
           files: |
-            artifacts/cc-box-windows/**/bundle/**/*.exe
-            artifacts/cc-box-windows/**/bundle/**/*.msi
-            artifacts/cc-box-macos-x64/**/bundle/**/*.dmg
+            artifacts/cc-box-windows/**/*.exe
+            artifacts/cc-box-windows/**/*.msi
+            artifacts/cc-box-macos-x64/**/*.dmg
             artifacts/cc-box-macos-x64/**/*.app.tar.gz
-            artifacts/cc-box-linux/**/bundle/**/*.deb
-            artifacts/cc-box-linux/**/bundle/**/*.AppImage
+            artifacts/cc-box-linux/**/*.deb
+            artifacts/cc-box-linux/**/*.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
