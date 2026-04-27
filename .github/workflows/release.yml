@@ -70,10 +70,6 @@ jobs:
           fi
         shell: bash
 
-      - name: Strip binary (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: strip target/release/bundle/deb/*/usr/bin/*
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
