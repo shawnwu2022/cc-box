@@ -1248,7 +1248,7 @@ pub fn get_all_skills(project_path: &str) -> Result<Vec<SkillInfo>> {
 }
 
 /// 获取所有 MCP Servers（包括 plugin 和配置的）
-pub fn get_all_mcp_servers(project_path: &str) -> Result<Vec<McpServerInfo>> {
+pub fn get_all_mcp_servers(_project_path: &str) -> Result<Vec<McpServerInfo>> {
     let mut servers = Vec::new();
 
     // 1. 从 ~/.claude.json 读取 MCP 配置（包括 headers）

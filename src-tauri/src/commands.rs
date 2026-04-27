@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::AppHandle;
 
 use crate::pty::get_pty_manager;
 use crate::store::{AppConfig, Project, SessionInfo, SessionDetails, ProjectConfig, AgentInfo, McpServerInfo, PluginInfo, SkillInfo};
@@ -190,25 +190,33 @@ pub struct SelectedDirectory {
 /// 在文件管理器中打开
 #[tauri::command]
 pub async fn open_in_file_manager(path: String) -> Result<(), String> {
-    // 使用系统命令打开文件管理器
-    if cfg!(target_os = "windows") {
-        let mut cmd = std::process::Command::new("explorer");
-        cmd.arg(&path);
+    #[cfg(target_os = "windows")]
+    {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-        cmd.spawn().map_err(|e| e.to_string())?;
-    } else if cfg!(target_os = "macos") {
+        std::process::Command::new("explorer")
+            .arg(&path)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
         std::process::Command::new("open")
             .arg(&path)
             .spawn()
             .map_err(|e| e.to_string())?;
-    } else {
+    }
+
+    #[cfg(target_os = "linux")]
+    {
         std::process::Command::new("xdg-open")
             .arg(&path)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
+
     Ok(())
 }
 
