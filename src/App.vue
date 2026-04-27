@@ -1,4 +1,7 @@
 <template>
+  <!-- 全局设置浮层 -->
+  <SettingsOverlay />
+
   <Transition name="fade" mode="out-in">
     <WelcomeView
       v-if="currentView === 'welcome'"
@@ -9,6 +12,7 @@
       @select-project="handleOpenProject"
       @add-project="handleSelectProject"
       @resume-session="handleResumeSession"
+      @open-settings="sidebarStore.openSettings()"
     />
     <KeepAlive v-else>
       <TerminalView
@@ -35,6 +39,7 @@ import { useAppShortcuts } from '@/composables/useAppShortcuts'
 import WelcomeView from '@/components/WelcomeView.vue'
 import ProjectSelectView from '@/components/ProjectSelectView.vue'
 import TerminalView from '@/components/TerminalView.vue'
+import SettingsOverlay from '@/components/settings/SettingsOverlay.vue'
 
 type ViewType = 'welcome' | 'projects' | 'terminal'
 
@@ -63,17 +68,13 @@ onMounted(async () => {
     }
   }
 
-  // Listen for menu events
+  // Listen for menu events — 设置可在任何视图打开
   unlistenSettings = await onMenuSettings(() => {
-    if (currentView.value === 'terminal') {
-      sidebarStore.openSettings()
-    }
+    sidebarStore.openSettings()
   })
 
   unlistenShortcuts = await onMenuShortcuts(() => {
-    if (currentView.value === 'terminal') {
-      sidebarStore.openSettings('shortcuts')
-    }
+    sidebarStore.openSettings('shortcuts')
   })
 
   unlistenFontSize = await onConfigFontSize((size) => {

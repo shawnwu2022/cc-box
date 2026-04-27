@@ -62,7 +62,12 @@
     <!-- 右侧：项目列表 -->
     <div class="projects-panel">
       <header class="panel-header">
-        <h2>Projects</h2>
+        <div class="header-row">
+          <h2>Projects</h2>
+          <button class="settings-btn" @click="$emit('openSettings')" title="Settings (Ctrl+,)">
+            <img src="@/assets/icons/settings.svg" alt="Settings" />
+          </button>
+        </div>
         <div class="search-box">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"/>
@@ -120,6 +125,7 @@ const emit = defineEmits<{
   selectProject: [path: string]
   addProject: []
   resumeSession: [projectPath: string, sessionId: string, sessionName?: string]
+  openSettings: []
 }>()
 
 const appStore = useAppStore()
@@ -398,12 +404,47 @@ async function handleSaveDefault() {
   border-bottom: 1px solid var(--border-color);
 }
 
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
 .projects-panel .panel-header h2 {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 12px;
   letter-spacing: -0.3px;
+}
+
+.settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.settings-btn img {
+  width: 16px;
+  height: 16px;
+  opacity: 0.85;
+}
+
+.settings-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.settings-btn:hover img {
+  opacity: 1;
 }
 
 .search-box {

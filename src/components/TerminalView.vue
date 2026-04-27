@@ -8,51 +8,43 @@
       @open-folder="handleOpenFolder"
     />
 
-    <!-- 设置模式：全页设置界面 -->
-    <SettingsView
-      v-if="sidebarStore.showSettings"
-      @close="sidebarStore.closeSettings()"
+    <!-- 侧边栏 + 终端 -->
+    <SidebarPanel
+      :visible="sidebarStore.panelVisible"
+      :active-panel="sidebarStore.activePanel"
+      @close="sidebarStore.closePanel"
+      @switch-session="handleSwitchSession"
+      @rename-session="handleRenameSession"
+      @restart-session="handleRestartSession"
+      @new-session="handleNewSession"
+      @resume-session="handleResumeSession"
+      @close-tab="handleCloseTab"
     />
 
-    <!-- 正常模式：侧边栏 + 终端 -->
-    <template v-else>
-      <SidebarPanel
-        :visible="sidebarStore.panelVisible"
-        :active-panel="sidebarStore.activePanel"
-        @close="sidebarStore.closePanel"
-        @switch-session="handleSwitchSession"
-        @rename-session="handleRenameSession"
-        @restart-session="handleRestartSession"
-        @new-session="handleNewSession"
-        @resume-session="handleResumeSession"
-        @close-tab="handleCloseTab"
+    <!-- 主内容区 -->
+    <div class="main-content">
+      <TerminalHeader
+        :project-name="appStore.currentProject || 'Claude Code'"
+        @back="handleBack"
       />
-
-      <!-- 主内容区 -->
-      <div class="main-content">
-        <TerminalHeader
-          :project-name="appStore.currentProject || 'Claude Code'"
-          @back="handleBack"
-        />
-        <div class="terminal-container">
-          <!-- 空状态提示：没有任何 session -->
-          <div v-if="showEmptyState" class="empty-state-overlay">
-            <div class="empty-state-content">
-              <p class="empty-state-text">Start a new Claude session</p>
-              <button class="empty-state-btn" @click="handleNewSession">
-                <img src="@/assets/icons/plus.svg" alt="New" />
-                New Session
-              </button>
-            </div>
+      <div class="terminal-container">
+        <!-- 空状态提示：没有任何 session -->
+        <div v-if="showEmptyState" class="empty-state-overlay">
+          <div class="empty-state-content">
+            <p class="empty-state-text">Start a new Claude session</p>
+            <button class="empty-state-btn" @click="handleNewSession">
+              <img src="@/assets/icons/plus.svg" alt="New" />
+              New Session
+            </button>
           </div>
-          <XTermTerminal
-            ref="terminalRef"
-            :font-size="appStore.fontSize"
-            @pty-started="handlePtyStarted"
-          />
         </div>
+        <XTermTerminal
+          ref="terminalRef"
+          :font-size="appStore.fontSize"
+          @pty-started="handlePtyStarted"
+        />
       </div>
-    </template>
+    </div>
   </div>
 </template>
 
@@ -69,7 +61,6 @@ import TerminalHeader from './TerminalHeader.vue'
 import XTermTerminal from './XTermTerminal.vue'
 import IconBar from './IconBar.vue'
 import SidebarPanel from './sidebar/SidebarPanel.vue'
-import SettingsView from './settings/SettingsView.vue'
 
 const emit = defineEmits<{
   back: []
