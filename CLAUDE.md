@@ -101,6 +101,22 @@ npm run tauri:build        # 生产构建
   npm run build:win
   ```
 
+### 版本发布（快速参考）
+```bash
+# 1. 更新版本号（手动编辑）
+vim src-tauri/Cargo.toml package.json src-tauri/tauri.conf.json
+
+# 2. 提交并打标签
+git add -A && git commit -m "Release v1.2.3"
+git push origin main
+git tag -a v1.2.3 -m "Release v1.2.3"
+git push origin v1.2.3
+
+# 3. 等待 CI 构建完成后发布
+gh release edit v1.2.3 --draft=false
+```
+详细流程 → [docs/release-process.md](docs/release-process.md)
+
 ## 详细文档
 
 | 文档 | 内容 |
@@ -111,6 +127,8 @@ npm run tauri:build        # 生产构建
 | [docs/interaction.md](docs/interaction.md) | 交互规则、快捷键处理、输入透明机制 |
 | [docs/data-persistence.md](docs/data-persistence.md) | 数据存储架构、文件路径、JSON 结构 |
 | [docs/roadmap.md](docs/roadmap.md) | 开发路线图、进度跟踪、待办事项 |
+| [docs/release-process.md](docs/release-process.md) | 版本发布流程、版本号更新、CI/CD 发布 |
+| [docs/build-and-release.md](docs/build-and-release.md) | 本地打包、代码签名、应用商店发布、体积优化 |
 
 外部参考：[Claude Code 线上文档](https://code.claude.com/docs/llms.txt)
 
