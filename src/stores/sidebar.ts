@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { getAllAgents, getAllSkills, getAllMcpServers, getAllPlugins } from '@/api/tauri'
+import type { AgentInfo, SkillInfo, McpServerInfo, PluginInfo } from '@/types'
 
 export type SidebarPanelType = 'sessions' | 'skills' | 'agents' | 'mcp' | 'plugins' | null
 
@@ -39,6 +41,82 @@ export const useSidebarStore = defineStore('sidebar', () => {
     user: true,
     project: true
   })
+
+  // ========== 预加载数据 ==========
+
+  // 数据
+  const skills = ref<SkillInfo[]>([])
+  const agents = ref<AgentInfo[]>([])
+  const mcpServers = ref<McpServerInfo[]>([])
+  const plugins = ref<PluginInfo[]>([])
+
+  // 加载状态
+  const skillsLoading = ref(false)
+  const agentsLoading = ref(false)
+  const mcpServersLoading = ref(false)
+  const pluginsLoading = ref(false)
+
+  // 已加载的 cwd（用于判断是否需要重新加载）
+  const loadedCwd = ref<string | null>(null)
+
+  // 加载所有 sidebar 数据
+  async function loadAllSidebarData(cwd: string) {
+    if (loadedCwd.value === cwd) return // 已加载过
+
+    loadedCwd.value = cwd
+
+    // 并行加载所有数据
+    await Promise.all([
+      loadSkills(cwd),
+      loadAgents(cwd),
+      loadMcpServers(cwd),
+      loadPlugins(cwd),
+    ])
+  }
+
+  async function loadSkills(cwd: string) {
+    skillsLoading.value = true
+    try {
+      skills.value = await getAllSkills(cwd)
+    } catch (err) {
+      console.error('[SidebarStore] Failed to load skills:', err)
+    } finally {
+      skillsLoading.value = false
+    }
+  }
+
+  async function loadAgents(cwd: string) {
+    agentsLoading.value = true
+    try {
+      agents.value = await getAllAgents(cwd)
+    } catch (err) {
+      console.error('[SidebarStore] Failed to load agents:', err)
+    } finally {
+      agentsLoading.value = false
+    }
+  }
+
+  async function loadMcpServers(cwd: string) {
+    mcpServersLoading.value = true
+    try {
+      mcpServers.value = await getAllMcpServers(cwd)
+    } catch (err) {
+      console.error('[SidebarStore] Failed to load mcp servers:', err)
+    } finally {
+      mcpServersLoading.value = false
+    }
+  }
+
+  async function loadPlugins(cwd: string) {
+    pluginsLoading.value = true
+    try {
+      plugins.value = await getAllPlugins(cwd)
+    } catch (err) {
+      console.error('[SidebarStore] Failed to load plugins:', err)
+    } finally {
+      pluginsLoading.value = false
+    }
+  }
 
   // 切换面板
   function togglePanel(panel: SidebarPanelType) {
@@ -116,6 +194,22 @@ export const useSidebarStore = defineStore('sidebar', () => {
     agentsExpandedGroups,
     mcpExpandedGroups,
     pluginsExpandedGroups,
+    // 预加载数据
+    skills,
+    agents,
+    mcpServers,
+    plugins,
+    skillsLoading,
+    agentsLoading,
+    mcpServersLoading,
+    pluginsLoading,
+    loadedCwd,
+    loadAllSidebarData,
+    loadSkills,
+    loadAgents,
+    loadMcpServers,
+    loadPlugins,
+    // 操作函数
     togglePanel,
     closePanel,
     openSettings,

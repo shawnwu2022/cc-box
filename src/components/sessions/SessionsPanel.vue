@@ -60,21 +60,27 @@
     <footer class="panel-footer">
       <div class="action-buttons">
         <button
-          class="action-btn"
+          class="action-btn with-hint"
           @click="$emit('newSession')"
-          title="New session"
+          title="New session (Ctrl+N)"
         >
-          <img src="@/assets/icons/plus.svg" alt="New session" />
-          New
+          <div class="btn-content">
+            <img src="@/assets/icons/plus.svg" alt="New session" />
+            <span class="btn-label">New</span>
+          </div>
+          <span class="btn-hint">Alt+N</span>
         </button>
         <button
-          class="action-btn"
+          class="action-btn with-hint"
           @click="$emit('restartSession')"
           :disabled="!sessionStore.activeTab"
-          title="Restart session"
+          title="Restart session (Alt+R)"
         >
-          <img src="@/assets/icons/refresh.svg" alt="Restart" />
-          Restart
+          <div class="btn-content">
+            <img src="@/assets/icons/refresh.svg" alt="Restart" />
+            <span class="btn-label">Restart</span>
+          </div>
+          <span class="btn-hint">Alt+R</span>
         </button>
       </div>
 
@@ -290,6 +296,29 @@ onUnmounted(() => {
 .action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.action-btn.with-hint {
+  flex-direction: column;
+  padding: 6px 12px;
+  gap: 2px;
+}
+
+.btn-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-label {
+  font-size: 13px;
+}
+
+.btn-hint {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
 }
 
 .options-content {

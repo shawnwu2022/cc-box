@@ -1,5 +1,5 @@
 <template>
-  <div class="terminal-view">
+  <div class="terminal-view" data-terminal-view>
     <!-- 图标栏（常驻） -->
     <IconBar
       :active-panel="sidebarStore.activePanel"
@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useSessionStore } from '@/stores/session'
 import { useSidebarStore, type SidebarPanelType } from '@/stores/sidebar'
@@ -95,6 +95,10 @@ function updateWindowTitle(cwd: string) {
 
 // 初始化
 onMounted(async () => {
+  // 监听快捷键事件（必须在 cwd 检查之前设置）
+  window.addEventListener('terminal:newSession', handleNewSession)
+  window.addEventListener('terminal:restartSession', handleRestartSession)
+
   const cwd = appStore.cwd
   if (!cwd) return
 
@@ -125,6 +129,11 @@ onMounted(async () => {
   } catch (err) {
     console.error('[TerminalView] onMounted ERROR:', err)
   }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('terminal:newSession', handleNewSession)
+  window.removeEventListener('terminal:restartSession', handleRestartSession)
 })
 
 // KeepAlive 激活 → 改为 visible watcher（v-show 常驻 DOM）

@@ -66,7 +66,9 @@ async function setupFocusRecovery() {
 
 | 快捷键 | 功能 | 说明 |
 |--------|------|------|
-| Ctrl+Shift+N | 新建窗口 | 打开新的 CC-Box 窗口 |
+| Alt+N | 新建会话 | 仅终端视图有效 |
+| Alt+R | 重启会话 | 仅终端视图有效 |
+| Ctrl+Shift+N | 新建应用实例 | 启动独立的进程实例 |
 | Ctrl+Shift+← | 窗口左移半屏 | 将窗口移动到屏幕左半边 |
 | Ctrl+Shift+→ | 窗口右移半屏 | 将窗口移动到屏幕右半边 |
 | Ctrl+Shift+R | 重启应用 | 清理所有 PTY 并刷新页面 |
@@ -74,6 +76,9 @@ async function setupFocusRecovery() {
 | Ctrl+Plus / Ctrl+= | 增大字体 | 终端字体 +1 |
 | Ctrl+Minus | 缩小字体 | 终端字体 -1 |
 | Ctrl+0 | 重置字体 | 终端字体恢复为 12 |
+
+**终端视图可见性检查**：
+部分快捷键（Alt+N、Alt+R）仅在终端视图可见时生效，避免在 Welcome/Projects 视图中误触发。
 
 **实现代码**：
 ```typescript

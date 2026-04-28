@@ -1686,24 +1686,36 @@ fn detect_git_bash_path() -> Option<String> {
         return None;
     }
 
-    // where git → 同目录下找 bash.exe
-    let output = std::process::Command::new("where")
-        .arg("git")
-        .output()
-        .ok()?;
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    if !output.status.success() {
-        return None;
+        // where git → 同目录下找 bash.exe
+        let output = std::process::Command::new("where")
+            .arg("git")
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let git_path = stdout.lines().next()?.trim();
+        let parent = Path::new(git_path).parent()?;
+        let bash_path = parent.join("bash.exe");
+
+        if bash_path.exists() {
+            Some(bash_path.to_string_lossy().to_string())
+        } else {
+            None
+        }
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let git_path = stdout.lines().next()?.trim();
-    let parent = Path::new(git_path).parent()?;
-    let bash_path = parent.join("bash.exe");
-
-    if bash_path.exists() {
-        Some(bash_path.to_string_lossy().to_string())
-    } else {
+    #[cfg(not(target_os = "windows"))]
+    {
         None
     }
 }

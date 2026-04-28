@@ -143,12 +143,16 @@ async function handleSelectProject() {
       customArgs: ''
     })
     currentView.value = 'terminal'
+    // 启动时自动加载 sidebar 数据
+    sidebarStore.loadAllSidebarData(result.path)
   }
 }
 
 async function handleOpenProject(path: string) {
   appStore.setCwd(path)
   currentView.value = 'terminal'
+  // 启动时自动加载 sidebar 数据
+  sidebarStore.loadAllSidebarData(path)
 }
 
 function handleResumeSession(projectPath: string, sessionId: string, sessionName?: string) {
@@ -156,6 +160,8 @@ function handleResumeSession(projectPath: string, sessionId: string, sessionName
   appStore.setClaudeOptions({ resume: sessionId })
   appStore.setPendingResume(sessionId, sessionName)
   currentView.value = 'terminal'
+  // 启动时自动加载 sidebar 数据
+  sidebarStore.loadAllSidebarData(projectPath)
 }
 
 function handleBack() {

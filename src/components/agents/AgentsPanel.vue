@@ -73,7 +73,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useAppStore } from '@/stores/app'
-import { getAllAgents } from '@/api/tauri'
 import type { AgentInfo } from '@/types'
 import AgentGroup from './AgentGroup.vue'
 import PanelHeader from '../sidebar/PanelHeader.vue'
@@ -81,10 +80,11 @@ import PanelHeader from '../sidebar/PanelHeader.vue'
 const sidebarStore = useSidebarStore()
 const appStore = useAppStore()
 
-const agents = ref<AgentInfo[]>([])
-const loading = ref(false)
 const error = ref<string | null>(null)
-const loadedCwd = ref<string | null>(null)
+
+// 使用 sidebar store 的数据（已预加载）
+const agents = computed(() => sidebarStore.agents)
+const loading = computed(() => sidebarStore.agentsLoading)
 
 // 所有 agents
 const allAgents = computed(() => agents.value)
@@ -106,35 +106,17 @@ const projectAgents = computed(() =>
   agents.value.filter(a => a.sourceType === 'project')
 )
 
-// 加载 Agents（带缓存）
-async function loadAgents(projectPath: string, force = false) {
-  if (!projectPath) return
-  if (!force && loadedCwd.value === projectPath && agents.value.length > 0) return
-
-  loading.value = true
-  error.value = null
-
-  try {
-    const result = await getAllAgents(projectPath)
-    agents.value = result
-    loadedCwd.value = projectPath
-  } catch (err) {
-    error.value = 'Failed to load agents'
-    console.error('[AgentsPanel] Failed to load agents:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
 function handleRefresh() {
   if (appStore.cwd) {
-    loadAgents(appStore.cwd, true)
+    error.value = null
+    sidebarStore.loadAgents(appStore.cwd)
   }
 }
 
 onMounted(() => {
-  if (appStore.cwd) {
-    loadAgents(appStore.cwd)
+  // 如果 sidebar store 还没有数据，触发加载
+  if (appStore.cwd && sidebarStore.agents.length === 0) {
+    sidebarStore.loadAgents(appStore.cwd)
   }
 })
 </script>

@@ -29,7 +29,7 @@ import {
   logMessage,
 } from '@/api/tauri'
 import { registerTerminalCommand } from '@/composables/useTerminalCommand'
-import { readText } from '@tauri-apps/plugin-clipboard-manager'
+import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const props = defineProps<{
@@ -168,15 +168,41 @@ function createTerminal(tabId: string): Terminal {
     }
   })
 
-  // Ctrl+V 粘贴
+  // Ctrl+V 粘贴 / Ctrl+C 复制 / Ctrl+Shift+C 复制
   term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-    if (event.type === 'keydown' && event.ctrlKey && event.key === 'v') {
+    if (event.type !== 'keydown') return true
+
+    // Ctrl+C 复制（如果有选中文本）或发送 SIGINT（如果没有）
+    if (event.ctrlKey && event.key === 'c' && !event.shiftKey) {
+      const selection = term.getSelection()
+      if (selection) {
+        event.preventDefault()
+        writeText(selection).catch(() => {})
+        return false
+      }
+      // 无选中文本，让 Ctrl+C 作为 SIGINT
+      return true
+    }
+
+    // Ctrl+Shift+C 强制复制
+    if (event.ctrlKey && event.shiftKey && event.key === 'C') {
+      event.preventDefault()
+      const selection = term.getSelection()
+      if (selection) {
+        writeText(selection).catch(() => {})
+      }
+      return false
+    }
+
+    // Ctrl+V 粘贴
+    if (event.ctrlKey && event.key === 'v') {
       event.preventDefault()
       readText().then(text => {
         if (text) term.paste(text)
       }).catch(() => {})
       return false
     }
+
     return true
   })
 

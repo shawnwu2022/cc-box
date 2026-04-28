@@ -329,6 +329,41 @@ pub async fn log_message(level: String, message: String) {
     }
 }
 
+/// 获取当前应用可执行文件路径（用于启动新实例）
+#[tauri::command]
+pub fn get_app_path() -> String {
+    std::env::current_exe()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string()
+}
+
+/// 启动新的应用实例
+#[tauri::command]
+pub fn spawn_new_instance() -> Result<(), String> {
+    let app_path = std::env::current_exe()
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        std::process::Command::new(&app_path)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::process::Command::new(&app_path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 // ==================== Updater Commands ====================
 
 /// 检查 GitHub Releases 是否有新版本

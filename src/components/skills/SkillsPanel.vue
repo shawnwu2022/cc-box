@@ -64,7 +64,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useAppStore } from '@/stores/app'
-import { getAllSkills } from '@/api/tauri'
 import type { SkillInfo } from '@/types'
 import SkillGroup from './SkillGroup.vue'
 import PanelHeader from '../sidebar/PanelHeader.vue'
@@ -72,10 +71,11 @@ import PanelHeader from '../sidebar/PanelHeader.vue'
 const sidebarStore = useSidebarStore()
 const appStore = useAppStore()
 
-const skills = ref<SkillInfo[]>([])
-const loading = ref(false)
 const error = ref<string | null>(null)
-const loadedCwd = ref<string | null>(null)
+
+// 使用 sidebar store 的数据（已预加载）
+const skills = computed(() => sidebarStore.skills)
+const loading = computed(() => sidebarStore.skillsLoading)
 
 // 所有 skills
 const allSkills = computed(() => skills.value)
@@ -93,35 +93,17 @@ const pluginSkills = computed(() =>
   skills.value.filter(s => s.sourceType === 'plugin')
 )
 
-// 加载 Skills（带缓存）
-async function loadSkills(projectPath: string, force = false) {
-  if (!projectPath) return
-  if (!force && loadedCwd.value === projectPath && skills.value.length > 0) return
-
-  loading.value = true
-  error.value = null
-
-  try {
-    const result = await getAllSkills(projectPath)
-    skills.value = result
-    loadedCwd.value = projectPath
-  } catch (err) {
-    error.value = 'Failed to load skills'
-    console.error('[SkillsPanel] Failed to load skills:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
 function handleRefresh() {
   if (appStore.cwd) {
-    loadSkills(appStore.cwd, true)
+    error.value = null
+    sidebarStore.loadSkills(appStore.cwd)
   }
 }
 
 onMounted(() => {
-  if (appStore.cwd) {
-    loadSkills(appStore.cwd)
+  // 如果 sidebar store 还没有数据，触发加载
+  if (appStore.cwd && sidebarStore.skills.length === 0) {
+    sidebarStore.loadSkills(appStore.cwd)
   }
 })
 </script>

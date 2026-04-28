@@ -91,6 +91,8 @@ pub fn run() {
             commands::get_mcp_server_detail,
             commands::test_communication,
             commands::check_for_updates,
+            commands::get_app_path,
+            commands::spawn_new_instance,
             commands::log_message,
         ])
         .run(tauri::generate_context!())

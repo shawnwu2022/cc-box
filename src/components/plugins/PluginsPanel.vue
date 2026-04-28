@@ -54,7 +54,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useAppStore } from '@/stores/app'
-import { getAllPlugins } from '@/api/tauri'
 import type { PluginInfo } from '@/types'
 import PluginGroup from './PluginGroup.vue'
 import PanelHeader from '../sidebar/PanelHeader.vue'
@@ -62,10 +61,11 @@ import PanelHeader from '../sidebar/PanelHeader.vue'
 const sidebarStore = useSidebarStore()
 const appStore = useAppStore()
 
-const plugins = ref<PluginInfo[]>([])
-const loading = ref(false)
 const error = ref<string | null>(null)
-const loadedCwd = ref<string | null>(null)
+
+// 使用 sidebar store 的数据（已预加载）
+const plugins = computed(() => sidebarStore.plugins)
+const loading = computed(() => sidebarStore.pluginsLoading)
 
 // 按 scope 分组
 const userPlugins = computed(() => {
@@ -76,35 +76,17 @@ const projectPlugins = computed(() => {
   return plugins.value.filter(p => p.scope === 'project' && p.enabled)
 })
 
-// 加载 Plugins（带缓存）
-async function loadPlugins(projectPath: string, force = false) {
-  if (!projectPath) return
-  if (!force && loadedCwd.value === projectPath && plugins.value.length > 0) return
-
-  loading.value = true
-  error.value = null
-
-  try {
-    const result = await getAllPlugins(projectPath)
-    plugins.value = result
-    loadedCwd.value = projectPath
-  } catch (err) {
-    error.value = 'Failed to load plugins'
-    console.error('[PluginsPanel] Failed to load plugins:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
 function handleRefresh() {
   if (appStore.cwd) {
-    loadPlugins(appStore.cwd, true)
+    error.value = null
+    sidebarStore.loadPlugins(appStore.cwd)
   }
 }
 
 onMounted(() => {
-  if (appStore.cwd) {
-    loadPlugins(appStore.cwd)
+  // 如果 sidebar store 还没有数据，触发加载
+  if (appStore.cwd && sidebarStore.plugins.length === 0) {
+    sidebarStore.loadPlugins(appStore.cwd)
   }
 })
 </script>

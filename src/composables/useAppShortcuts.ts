@@ -1,9 +1,9 @@
-import { Window, getCurrentWindow, currentMonitor } from '@tauri-apps/api/window'
-import { Webview, getCurrentWebview } from '@tauri-apps/api/webview'
+import { getCurrentWindow, currentMonitor } from '@tauri-apps/api/window'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { LogicalSize, LogicalPosition } from '@tauri-apps/api/dpi'
 import { useAppStore } from '@/stores/app'
 import { useSidebarStore } from '@/stores/sidebar'
-import { ptyKillAll } from '@/api/tauri'
+import { ptyKillAll, spawnNewInstance } from '@/api/tauri'
 
 export async function snapWindow(side: 'left' | 'right') {
   try {
@@ -26,26 +26,12 @@ export async function snapWindow(side: 'left' | 'right') {
   }
 }
 
-export function openNewWindow() {
-  const label = `win_${Date.now()}`
-  const appWindow = new Window(label, {
-    title: 'CC-Box',
-    width: 800,
-    height: 600,
-    minWidth: 500,
-    minHeight: 400,
-    center: true,
-  })
-
-  appWindow.once('tauri://created', () => {
-    new Webview(appWindow, label, {
-      url: '/',
-      x: 0,
-      y: 0,
-      width: 800,
-      height: 600,
-    })
-  })
+export async function openNewAppInstance() {
+  try {
+    await spawnNewInstance()
+  } catch (err) {
+    console.error('Failed to open new instance:', err)
+  }
 }
 
 export function useAppShortcuts() {
@@ -54,37 +40,68 @@ export function useAppShortcuts() {
 
   let unlistenFocus: (() => void) | null = null
 
+  // 检查终端视图是否可见
+  function isTerminalVisible(): boolean {
+    const terminalView = document.querySelector('[data-terminal-view]')
+    return terminalView !== null && terminalView.checkVisibility()
+  }
+
+  // 发送终端操作事件（由 TerminalView 监听）
+  function emitTerminalAction(action: 'newSession' | 'restartSession') {
+    window.dispatchEvent(new CustomEvent(`terminal:${action}`))
+  }
+
   async function handleKeydown(e: KeyboardEvent) {
     const ctrl = e.ctrlKey || e.metaKey
     const shift = e.shiftKey
-    const key = e.key
+    const alt = e.altKey
+    const key = e.key.toLowerCase()
+    // console.log(ctrl, shift, alt, key);
 
-    // Ctrl+Shift+N — 新建窗口
-    if (ctrl && shift && key === 'N') {
+    // Alt+N — 新建会话（仅终端视图有效）
+    if (alt && key === 'n' && !ctrl && !shift) {
+      if (!isTerminalVisible()) return
       e.preventDefault()
       e.stopPropagation()
-      openNewWindow()
+      emitTerminalAction('newSession')
       return
     }
 
-    // Ctrl+Shift+← — 窗口左移半屏
-    if (ctrl && shift && key === 'ArrowLeft') {
+    // Alt+R — 重启会话（仅终端视图有效）
+    if (alt && key === 'r' && !ctrl && !shift) {
+      if (!isTerminalVisible()) return
+      e.preventDefault()
+      e.stopPropagation()
+      emitTerminalAction('restartSession')
+      return
+    }
+
+    // Ctrl+Shift+N — 新建应用实例（全局有效）
+    if (ctrl && shift && key === 'n') {
+      e.preventDefault()
+      e.stopPropagation()
+      await openNewAppInstance()
+      return
+    }
+
+    // Ctrl+Shift+← — 窗口左移半屏（全局有效）
+    if (ctrl && shift && key === 'arrowleft') {
       e.preventDefault()
       e.stopPropagation()
       await snapWindow('left')
       return
     }
 
-    // Ctrl+Shift+→ — 窗口右移半屏
-    if (ctrl && shift && key === 'ArrowRight') {
+    // Ctrl+Shift+→ — 窗口右移半屏（全局有效）
+    if (ctrl && shift && key === 'arrowright') {
       e.preventDefault()
       e.stopPropagation()
       await snapWindow('right')
       return
     }
 
-    // Ctrl+Shift+R — 重启应用
-    if (ctrl && shift && key === 'R') {
+    // Ctrl+Shift+R — 重启应用（全局有效）
+    if (ctrl && shift && key === 'r') {
       e.preventDefault()
       e.stopPropagation()
       try { await ptyKillAll() } catch { /* ignore */ }
@@ -92,7 +109,7 @@ export function useAppShortcuts() {
       return
     }
 
-    // Ctrl+, — 打开设置
+    // Ctrl+, — 打开设置（全局有效）
     if (ctrl && key === ',') {
       e.preventDefault()
       e.stopPropagation()
@@ -100,7 +117,7 @@ export function useAppShortcuts() {
       return
     }
 
-    // Ctrl+Plus / Ctrl+= — 增大字体
+    // Ctrl+Plus / Ctrl+= — 增大字体（全局有效）
     if (ctrl && (key === '+' || key === '=')) {
       e.preventDefault()
       e.stopPropagation()
@@ -108,7 +125,7 @@ export function useAppShortcuts() {
       return
     }
 
-    // Ctrl+Minus — 缩小字体
+    // Ctrl+Minus — 缩小字体（全局有效）
     if (ctrl && key === '-') {
       e.preventDefault()
       e.stopPropagation()
@@ -116,7 +133,7 @@ export function useAppShortcuts() {
       return
     }
 
-    // Ctrl+0 — 重置字体
+    // Ctrl+0 — 重置字体（全局有效）
     if (ctrl && key === '0') {
       e.preventDefault()
       e.stopPropagation()
@@ -139,5 +156,5 @@ export function useAppShortcuts() {
     unlistenFocus?.()
   }
 
-  return { handleKeydown, setupFocusRecovery, cleanup }
+  return { handleKeydown, setupFocusRecovery, cleanup, isTerminalVisible }
 }

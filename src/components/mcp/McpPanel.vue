@@ -64,7 +64,6 @@
 import { ref, computed, onMounted, provide } from 'vue'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useAppStore } from '@/stores/app'
-import { getAllMcpServers } from '@/api/tauri'
 import type { McpServerInfo, McpServerDetail } from '@/types'
 import McpGroup from './McpGroup.vue'
 import PanelHeader from '../sidebar/PanelHeader.vue'
@@ -72,14 +71,15 @@ import PanelHeader from '../sidebar/PanelHeader.vue'
 const sidebarStore = useSidebarStore()
 const appStore = useAppStore()
 
-const servers = ref<McpServerInfo[]>([])
-const loading = ref(false)
 const error = ref<string | null>(null)
-const loadedCwd = ref<string | null>(null)
 
 // MCP Detail 缓存（提供给子组件）
 const detailCache = new Map<string, McpServerDetail>()
 provide('mcpDetailCache', detailCache)
+
+// 使用 sidebar store 的数据（已预加载）
+const servers = computed(() => sidebarStore.mcpServers)
+const loading = computed(() => sidebarStore.mcpServersLoading)
 
 // 所有 servers
 const allServers = computed(() => servers.value)
@@ -97,35 +97,17 @@ const projectServers = computed(() =>
   servers.value.filter(s => s.sourceType === 'project')
 )
 
-// 加载 MCP Servers（带缓存）
-async function loadMcpServers(projectPath: string, force = false) {
-  if (!projectPath) return
-  if (!force && loadedCwd.value === projectPath && servers.value.length > 0) return
-
-  loading.value = true
-  error.value = null
-
-  try {
-    const result = await getAllMcpServers(projectPath)
-    servers.value = result
-    loadedCwd.value = projectPath
-  } catch (err) {
-    error.value = 'Failed to load MCP servers'
-    console.error('[McpPanel] Failed to load MCP servers:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
 function handleRefresh() {
   if (appStore.cwd) {
-    loadMcpServers(appStore.cwd, true)
+    error.value = null
+    sidebarStore.loadMcpServers(appStore.cwd)
   }
 }
 
 onMounted(() => {
-  if (appStore.cwd) {
-    loadMcpServers(appStore.cwd)
+  // 如果 sidebar store 还没有数据，触发加载
+  if (appStore.cwd && sidebarStore.mcpServers.length === 0) {
+    sidebarStore.loadMcpServers(appStore.cwd)
   }
 })
 </script>

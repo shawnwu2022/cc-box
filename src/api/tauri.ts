@@ -184,6 +184,16 @@ export const checkForUpdates = (): Promise<UpdateInfo> =>
   invoke<UpdateInfo>('check_for_updates');
 
 // ============================================
+// App Instance
+// ============================================
+
+export const getAppPath = (): Promise<string> =>
+  invoke<string>('get_app_path');
+
+export const spawnNewInstance = (): Promise<void> =>
+  invoke<void>('spawn_new_instance');
+
+// ============================================
 // Logging
 // ============================================
 
