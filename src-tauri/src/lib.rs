@@ -1,11 +1,44 @@
-// Learn more about Tauri commands at https://tauri.app/v2/guides/features/command/
-
 mod pty;
 mod commands;
 mod store;
 mod checks;
 mod mcp;
 mod updater;
+mod logger;
+
+use std::sync::LazyLock;
+use std::sync::Mutex;
+
+/// 全局缓存环境检查结果（setup 前执行，仅一次）
+static CHECK_RESULTS: LazyLock<Mutex<Vec<checks::CheckResult>>> = LazyLock::new(|| {
+    let result = checks::run_checks();
+    for failed in result.failed_checks() {
+        log::error!("[Check Failed] {}: {}", failed.name, failed.message);
+    }
+    if result.all_passed() {
+        log::info!("Environment checks passed");
+    }
+    Mutex::new(result.checks)
+});
+
+/// 获取缓存的检查结果
+pub fn get_check_results() -> Vec<checks::CheckResult> {
+    CHECK_RESULTS.lock().unwrap().clone()
+}
+
+/// 重新运行检查并更新缓存
+pub fn rerun_checks() -> Vec<checks::CheckResult> {
+    let result = checks::run_checks();
+    for failed in result.failed_checks() {
+        log::error!("[Check Failed] {}: {}", failed.name, failed.message);
+    }
+    if result.all_passed() {
+        log::info!("Environment checks passed");
+    }
+    let mut cache = CHECK_RESULTS.lock().unwrap();
+    *cache = result.checks.clone();
+    result.checks
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,30 +55,17 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            // 初始化日志（开发模式下输出到控制台）
-            #[cfg(debug_assertions)]
-            {
-                log::set_max_level(log::LevelFilter::Debug);
-                // 简单的日志输出到 stderr
-                log::set_logger(&SimpleLogger).ok();
-                log::info!("Application starting in debug mode");
-            }
+            logger::init();
 
-            // 初始化 PTY 管理器
             pty::init_pty_manager(app.handle().clone());
             log::info!("PTY manager initialized");
-
-            // 检查环境
-            let checks_result = checks::run_checks();
-            if !checks_result.all_passed() {
-                log::warn!("Environment checks failed: {:?}", checks_result.failed_checks());
-            } else {
-                log::info!("Environment checks passed");
-            }
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::get_home_data,
+            commands::get_check_results,
+            commands::run_checks,
             commands::pty_spawn,
             commands::pty_input,
             commands::pty_resize,
@@ -71,26 +91,8 @@ pub fn run() {
             commands::get_mcp_server_detail,
             commands::test_communication,
             commands::check_for_updates,
+            commands::log_message,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-/// 简单的日志输出器（输出到 stderr）
-#[cfg(debug_assertions)]
-struct SimpleLogger;
-
-#[cfg(debug_assertions)]
-impl log::Log for SimpleLogger {
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= log::Level::Debug
-    }
-
-    fn log(&self, record: &log::Record) {
-        if self.enabled(record.metadata()) {
-            eprintln!("[{}][{}] {}", record.target(), record.level(), record.args());
-        }
-    }
-
-    fn flush(&self) {}
 }

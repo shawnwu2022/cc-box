@@ -24,7 +24,7 @@
 
 | 文件 | 用途 |
 |------|------|
-| `~/.claude-gui/config.json` | GUI 配置（启动选项默认值、主题、字号等） |
+| `~/.cc-box/config.json` | GUI 配置（启动选项默认值、主题、字号等） |
 
 ## ~/.claude.json 结构
 
@@ -50,7 +50,7 @@
 
 项目列表按 `lastDuration` 降序排序，最近使用的项目排在最前面。
 
-## ~/.claude-gui/config.json 结构
+## ~/.cc-box/config.json 结构
 
 应用专属配置，保存 GUI 特有设置：
 

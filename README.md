@@ -138,7 +138,7 @@ Output goes to `src-tauri/target/release/bundle/`.
 <details>
 <summary><strong>Does this modify my Claude Code config?</strong></summary>
 
-No. The app only reads native Claude Code files. All GUI-specific settings are stored separately in `~/.claude-gui/`. You can go back to the CLI at any time.
+No. The app only reads native Claude Code files. All GUI-specific settings are stored separately in `~/.cc-box/`. You can go back to the CLI at any time.
 </details>
 
 <details>

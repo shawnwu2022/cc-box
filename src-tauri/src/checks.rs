@@ -1,38 +1,52 @@
 //! 环境检测模块
 
+use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::env;
+use std::process::Command;
 
 /// 检查结果
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckResult {
-    name: String,
-    passed: bool,
-    message: String,
+    pub name: String,
+    pub passed: bool,
+    pub message: String,
+    /// 检测到的路径（无论通过与否，只要找到了就带上）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detected_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 impl CheckResult {
-    fn pass(name: &str, message: &str) -> Self {
+    fn pass_with_path(name: &str, message: &str, path: &str) -> Self {
         Self {
             name: name.to_string(),
             passed: true,
             message: message.to_string(),
+            detected_path: Some(path.to_string()),
+            action: None,
+            url: None,
         }
     }
 
-    fn fail(name: &str, message: &str) -> Self {
+    fn fail_with_path(name: &str, message: String, path: Option<String>, action: &str, url: &str) -> Self {
         Self {
             name: name.to_string(),
             passed: false,
-            message: message.to_string(),
+            message,
+            detected_path: path,
+            action: Some(action.to_string()),
+            url: Some(url.to_string()),
         }
     }
 }
 
 /// 检查结果集合
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ChecksResult {
-    checks: Vec<CheckResult>,
+    pub checks: Vec<CheckResult>,
 }
 
 impl ChecksResult {
@@ -47,95 +61,184 @@ impl ChecksResult {
 
 /// 运行所有检查
 pub fn run_checks() -> ChecksResult {
+    let (claude_path, git_bash_path) = read_config_paths();
+
     let checks = vec![
-        check_claude_config_dir(),
-        check_git_bash(),
-        check_claude_cli(),
+        check_claude_cli(&claude_path),
+        #[cfg(target_os = "windows")]
+        check_git_bash(&git_bash_path),
     ];
+
+    // 将通过的检查项检测到的路径自动保存到配置
+    save_detected_paths(&checks);
 
     ChecksResult { checks }
 }
 
-/// 检查 Claude 配置目录
-fn check_claude_config_dir() -> CheckResult {
-    let claude_dir = dirs::home_dir()
-        .map(|h| h.join(".claude"));
+/// 将检测到的路径保存到配置文件（仅保存通过的检查项）
+fn save_detected_paths(checks: &[CheckResult]) {
+    let mut updates = serde_json::Map::new();
 
-    match claude_dir {
-        Some(dir) if dir.exists() => {
-            CheckResult::pass("Claude config dir", &format!("Found: {}", dir.display()))
-        }
-        Some(dir) => {
-            CheckResult::fail("Claude config dir", &format!("Not found: {}", dir.display()))
-        }
-        None => {
-            CheckResult::fail("Claude config dir", "Could not find home directory")
-        }
-    }
-}
-
-/// 检查 Git Bash（仅 Windows）
-fn check_git_bash() -> CheckResult {
-    if !cfg!(target_os = "windows") {
-        return CheckResult::pass("Git Bash", "Not required on non-Windows");
-    }
-
-    // 候选路径
-    let candidates = [
-        "D:\\Program Files\\Git\\bin\\bash.exe",
-        "C:\\Program Files\\Git\\bin\\bash.exe",
-        "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-    ];
-
-    for path in &candidates {
-        if Path::new(path).exists() {
-            return CheckResult::pass("Git Bash", &format!("Found: {}", path));
-        }
-    }
-
-    // 从 PATH 查找
-    let path_env = env::var("PATH").unwrap_or_default();
-    for entry in path_env.split(';') {
-        if entry.contains("Git") && entry.contains("bin") {
-            let bash_path = format!("{}\\bash.exe", entry.trim_end_matches('\\'));
-            if Path::new(&bash_path).exists() {
-                return CheckResult::pass("Git Bash", &format!("Found in PATH: {}", bash_path));
+    for check in checks {
+        if check.passed {
+            if let Some(ref path) = check.detected_path {
+                match check.name.as_str() {
+                    "Claude CLI" => {
+                        updates.insert("claudePath".to_string(), serde_json::Value::String(path.clone()));
+                    }
+                    "Git Bash" => {
+                        updates.insert("gitBashPath".to_string(), serde_json::Value::String(path.clone()));
+                    }
+                    _ => {}
+                }
             }
         }
     }
 
-    // 检查环境变量
-    if env::var("CLAUDE_CODE_GIT_BASH_PATH").is_ok() {
-        return CheckResult::pass("Git Bash", "Set via CLAUDE_CODE_GIT_BASH_PATH");
+    if !updates.is_empty() {
+        match crate::store::update_app_config(serde_json::Value::Object(updates)) {
+            Ok(()) => log::info!("[Check] Detected paths saved to config"),
+            Err(e) => log::warn!("[Check] Failed to save detected paths: {}", e),
+        }
+    }
+}
+
+fn read_config_paths() -> (Option<String>, Option<String>) {
+    match crate::store::get_app_config() {
+        Ok(config) => (config.claude_path, config.git_bash_path),
+        Err(_) => (None, None),
+    }
+}
+
+/// 用 where (Windows) / which (Unix) 查找可执行文件，返回所有结果
+fn find_all_executables(name: &str) -> Vec<String> {
+    let output = match run_locate(name) {
+        Some(o) => o,
+        None => {
+            log::warn!("[Check] Failed to run locate for '{}'", name);
+            return Vec::new();
+        }
+    };
+
+    if !output.status.success() {
+        log::warn!("[Check] locate '{}' exited with status: {}", name, output.status);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.trim().is_empty() {
+            log::warn!("[Check] stderr: {}", stderr.trim());
+        }
+        return Vec::new();
     }
 
-    CheckResult::fail("Git Bash", "Not found. Claude CLI may not work properly.")
+    let results: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && Path::new(s).exists())
+        .collect();
+
+    log::debug!("[Check] locate '{}' found {} result(s): {:?}", name, results.len(), results);
+    results
+}
+
+#[cfg(target_os = "windows")]
+fn run_locate(name: &str) -> Option<std::process::Output> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    Command::new("cmd")
+        .args(["/C", "where", name])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_locate(name: &str) -> Option<std::process::Output> {
+    Command::new("which").arg(name).output().ok()
 }
 
 /// 检查 Claude CLI
-fn check_claude_cli() -> CheckResult {
-    // Windows: 检查 ~/.local/bin/claude.exe
-    if cfg!(target_os = "windows") {
-        if let Some(home) = dirs::home_dir() {
-            let claude_path = home.join(".local").join("bin").join("claude.exe");
-            if claude_path.exists() {
-                return CheckResult::pass("Claude CLI", &format!("Found: {}", claude_path.display()));
+fn check_claude_cli(config_path: &Option<String>) -> CheckResult {
+    // 1. 配置的自定义路径
+    if let Some(ref path) = config_path {
+        if Path::new(path).exists() {
+            return CheckResult::pass_with_path("Claude CLI", &format!("Found (custom): {}", path), path);
+        }
+    }
+
+    // 2. where/which 查找
+    let exe_name = if cfg!(target_os = "windows") { "claude.exe" } else { "claude" };
+    let found = find_all_executables(exe_name);
+
+    if let Some(path) = found.first() {
+        return CheckResult::pass_with_path("Claude CLI", &format!("Found: {}", path), path);
+    }
+
+    CheckResult::fail_with_path(
+        "Claude CLI",
+        "Claude CLI not found. You can set a custom path below.".to_string(),
+        None,
+        "View installation guide",
+        "https://code.claude.com/docs",
+    )
+}
+
+/// 检查 Git Bash（仅 Windows）
+#[cfg(target_os = "windows")]
+fn check_git_bash(config_path: &Option<String>) -> CheckResult {
+    // 1. 配置中保存的路径
+    if let Some(ref path) = config_path {
+        if Path::new(path).exists() {
+            return CheckResult::pass_with_path("Git Bash", &format!("Found (config): {}", path), path);
+        }
+    }
+
+    // 2. 环境变量
+    if let Ok(path) = std::env::var("CLAUDE_CODE_GIT_BASH_PATH") {
+        if Path::new(&path).exists() {
+            return CheckResult::pass_with_path("Git Bash", &format!("Found (env): {}", path), &path);
+        }
+    }
+
+    // 3. where git → 在 git 安装目录下找 bash.exe
+    if let Some(bash_path) = detect_git_bash_from_git() {
+        return CheckResult::pass_with_path("Git Bash", &format!("Found: {}", bash_path), &bash_path);
+    }
+
+    CheckResult::fail_with_path(
+        "Git Bash",
+        "Git Bash not found. You can set a custom path below.".to_string(),
+        None,
+        "Install Git for Windows",
+        "https://git-scm.com/download/win",
+    )
+}
+
+/// 通过 where git 查找 Git 安装目录下的 bash.exe
+#[cfg(target_os = "windows")]
+fn detect_git_bash_from_git() -> Option<String> {
+    let exe_name = if cfg!(target_os = "windows") { "git.exe" } else { "git" };
+    let git_paths = find_all_executables(exe_name);
+
+    for git_path in &git_paths {
+        // git.exe 通常位于 <git-install>/cmd/git.exe 或 <git-install>/bin/git.exe
+        let path = Path::new(git_path);
+        if let Some(parent) = path.parent() {
+            let git_install_dir = if parent.file_name().map(|n| n == "cmd").unwrap_or(false)
+                || parent.file_name().map(|n| n == "bin").unwrap_or(false)
+            {
+                parent.parent()
+            } else {
+                Some(parent)
+            };
+
+            if let Some(install_dir) = git_install_dir {
+                let bash_path = install_dir.join("bin").join("bash.exe");
+                if bash_path.exists() {
+                    log::info!("[Check] Git Bash found via 'where git': {}", bash_path.display());
+                    return Some(bash_path.to_string_lossy().to_string());
+                }
             }
         }
     }
 
-    // 从 PATH 查找
-    let path_env = env::var("PATH").unwrap_or_default();
-    let separator = if cfg!(target_os = "windows") { ';' } else { ':' };
-
-    for entry in path_env.split(separator) {
-        let claude_name = if cfg!(target_os = "windows") { "claude.exe" } else { "claude" };
-        let claude_path = format!("{}{}{}", entry.trim_end_matches('\\').trim_end_matches('/'),
-            if cfg!(target_os = "windows") { "\\" } else { "/" }, claude_name);
-        if Path::new(&claude_path).exists() {
-            return CheckResult::pass("Claude CLI", &format!("Found in PATH: {}", claude_path));
-        }
-    }
-
-    CheckResult::fail("Claude CLI", "Not found. Please install Claude CLI.")
+    None
 }

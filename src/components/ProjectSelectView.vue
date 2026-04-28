@@ -81,7 +81,7 @@
         </div>
       </header>
 
-      <div class="project-list">
+      <div class="project-list" ref="projectListRef" @scroll="handleProjectScroll">
         <button
           v-for="project in filteredProjects"
           :key="project.path"
@@ -97,7 +97,11 @@
           </div>
         </button>
 
-        <div v-if="filteredProjects.length === 0" class="empty-list">
+        <div v-if="appStore.isLoadingProjects" class="loading-more">
+          <span>Loading...</span>
+        </div>
+
+        <div v-if="filteredProjects.length === 0 && !appStore.isLoadingProjects" class="empty-list">
           <span v-if="searchQuery">No matching projects</span>
           <span v-else>No projects yet</span>
         </div>
@@ -130,6 +134,7 @@ const emit = defineEmits<{
 
 const appStore = useAppStore()
 const searchQuery = ref('')
+const projectListRef = ref<HTMLElement | null>(null)
 
 const localOptions = ref({
   skipPermissions: appStore.claudeOptions.skipPermissions,
@@ -144,12 +149,22 @@ const recentSessions = computed(() => appStore.cachedRecentSessions)
 
 const filteredProjects = computed(() => {
   const query = searchQuery.value.toLowerCase()
-  return projects.value.filter(p => {
-    if (!query) return true
-    return p.name.toLowerCase().includes(query) ||
-           p.path.toLowerCase().includes(query)
-  })
+  if (!query) return projects.value
+  return projects.value.filter(p =>
+    p.name.toLowerCase().includes(query) ||
+    p.path.toLowerCase().includes(query)
+  )
 })
+
+function handleProjectScroll() {
+  const el = projectListRef.value
+  if (!el || searchQuery.value) return
+
+  const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 80
+  if (nearBottom && appStore.hasMoreProjects && !appStore.isLoadingProjects) {
+    appStore.loadMoreProjects()
+  }
+}
 
 watch(localOptions, (val) => {
   appStore.setClaudeOptions(val)
@@ -539,6 +554,13 @@ async function handleSaveDefault() {
   text-align: center;
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+.loading-more {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 12px;
 }
 
 .panel-footer {

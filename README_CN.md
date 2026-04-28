@@ -138,7 +138,7 @@ npm run build:linux   # Linux (x86_64)
 <details>
 <summary><strong>这会修改我的 Claude Code 配置吗？</strong></summary>
 
-不会。应用只读取 Claude Code 原生文件。所有 GUI 专属设置独立存储在 `~/.claude-gui/`。随时可以回到纯 CLI。
+不会。应用只读取 Claude Code 原生文件。所有 GUI 专属设置独立存储在 `~/.cc-box/`。随时可以回到纯 CLI。
 </details>
 
 <details>

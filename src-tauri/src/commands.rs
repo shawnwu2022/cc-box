@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
 use crate::pty::get_pty_manager;
-use crate::store::{AppConfig, Project, SessionInfo, SessionDetails, ProjectConfig, AgentInfo, McpServerInfo, PluginInfo, SkillInfo};
+use crate::store::{AppConfig, HomeData, Project, SessionInfo, SessionDetails, ProjectConfig, AgentInfo, McpServerInfo, PluginInfo, SkillInfo};
+use crate::checks::CheckResult;
 
 // ==================== PTY Commands ====================
 
@@ -101,10 +102,37 @@ pub async fn pty_kill_all() -> Result<(), String> {
 
 // ==================== Store Commands ====================
 
-/// 获取项目列表
+/// 获取环境检查结果
 #[tauri::command]
-pub async fn get_projects() -> Result<Vec<Project>, String> {
-    crate::store::get_projects().map_err(|e| e.to_string())
+pub async fn get_check_results() -> Result<Vec<CheckResult>, String> {
+    Ok(crate::get_check_results())
+}
+
+/// 重新运行环境检查
+#[tauri::command]
+pub async fn run_checks() -> Result<Vec<CheckResult>, String> {
+    Ok(crate::rerun_checks())
+}
+
+/// 一次获取首页数据（项目列表 + 近期会话），避免重复 IO
+#[tauri::command]
+pub async fn get_home_data(
+    project_limit: Option<usize>,
+    session_limit: Option<usize>,
+) -> Result<HomeData, String> {
+    let project_limit = project_limit.unwrap_or(12);
+    let session_limit = session_limit.unwrap_or(20);
+    crate::store::get_home_data(project_limit, session_limit)
+        .map_err(|e| e.to_string())
+}
+
+/// 获取项目列表（支持分页）
+#[tauri::command]
+pub async fn get_projects(
+    limit: Option<usize>,
+    offset: Option<usize>,
+) -> Result<Vec<Project>, String> {
+    crate::store::get_projects(limit, offset).map_err(|e| e.to_string())
 }
 
 /// 获取项目信息
@@ -285,6 +313,20 @@ pub async fn get_mcp_server_detail(
     let headers = server.headers.as_ref();
 
     crate::mcp::get_mcp_server_detail_cached(&server_name, url, command, headers, force_refresh).await
+}
+
+// ==================== Logging Commands ====================
+
+/// 前端日志写入
+#[tauri::command]
+pub async fn log_message(level: String, message: String) {
+    match level.as_str() {
+        "error" => log::error!("[Frontend] {}", message),
+        "warn" => log::warn!("[Frontend] {}", message),
+        "info" => log::info!("[Frontend] {}", message),
+        "debug" => log::debug!("[Frontend] {}", message),
+        _ => log::info!("[Frontend] {}", message),
+    }
 }
 
 // ==================== Updater Commands ====================

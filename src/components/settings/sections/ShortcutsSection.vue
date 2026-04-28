@@ -27,11 +27,11 @@ const filteredGroups = computed(() => [
     hint: '',
     items: [
       { key: 'Ctrl+Shift+N', desc: 'Open new window' },
+      { key: 'Ctrl+Shift+← / →', desc: 'Snap window to left / right half' },
       { key: 'Ctrl+Shift+R', desc: 'Restart application' },
       { key: 'Ctrl+,', desc: 'Open settings' },
       { key: 'Ctrl+Plus / −', desc: 'Increase / decrease font size' },
       { key: 'Ctrl+0', desc: 'Reset font size' },
-      { key: 'F11', desc: 'Toggle fullscreen' },
     ]
   },
   {

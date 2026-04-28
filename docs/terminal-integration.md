@@ -2,7 +2,7 @@
 
 ## 架构概述
 
-本项目使用 **xterm.js + node-pty** 直接运行 Claude CLI，实现完全的原生终端体验。
+本项目使用 **Tauri 2 + xterm.js + portable-pty** 直接运行 Claude CLI，实现完全的原生终端体验。
 
 ### 核心依赖
 
@@ -13,137 +13,94 @@
 | @xterm/addon-search | ^0.16.0 | 终端内搜索 |
 | @xterm/addon-web-links | ^0.12.0 | 链接点击 |
 | @xterm/addon-serialize | ^0.14.0 | 会话序列化 |
-| node-pty | ^1.1.0 | 伪终端进程管理 |
+| portable-pty | ^0.8 | 伪终端进程管理（Rust） |
+| tauri | ^2 | 应用框架 |
 
-## 主进程 PTY 模块 (main/pty.ts)
+## Rust 后端 PTY 模块 (src-tauri/src/pty.rs)
 
 ### 核心功能
 
-```typescript
-// 检测 Git Bash 路径（Windows 必需）
-export function detectGitBash(): string | null
-
+```rust
 // 启动 Claude CLI 进程
-export function spawnClaude(
-  cwd: string,
-  cols: number,
-  rows: number,
-  args: string[]
-): PtyInstance | null
-
-// 启动普通 Shell
-export function spawnTerminal(cwd, cols, rows): PtyInstance | null
+pub fn spawn(&self, cwd: String, cols: u16, rows: u16, args: Option<Vec<String>>) -> Result<PtyInfo>
 
 // 写入数据到 PTY
-export function writeToPty(id: string, data: string): boolean
+pub fn write(&self, id: &str, data: &str) -> Result<()>
 
 // resize PTY
-export function resizePty(id: string, cols: number, rows: number): boolean
+pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<()>
 
 // 终止 PTY
-export function killPty(id: string): boolean
-export function killAllPty(): void
+pub fn kill(&self, id: &str) -> Result<()>
+pub fn kill_all(&self)
 ```
-
-### Git Bash 检测逻辑
-
-Windows 上 Claude CLI 需要 Git Bash。检测顺序：
-
-1. 环境变量 `CLAUDE_CODE_GIT_BASH_PATH`
-2. 常见安装路径：
-   - `D:\Program Files\Git\bin\bash.exe`
-   - `C:\Program Files\Git\bin\bash.exe`
-   - `C:\Program Files (x86)\Git\bin\bash.exe`
-3. PATH 环境变量中的 Git bin 目录
-
-检测到的路径会自动设置为 `CLAUDE_CODE_GIT_BASH_PATH` 环境变量，传递给 PTY 进程。
 
 ### Claude 进程启动
 
-```typescript
+```rust
 // Windows
-shell: 'cmd.exe'
-shellArgs: ['/c', 'claude', ...args]
-env: {
-  ...process.env,
-  CLAUDE_CODE_GIT_BASH_PATH: detectedPath, // 关键！
-  TERM: 'xterm-256color'
-}
+CommandBuilder::new("claude")
+    .args(["--history", "prompt"])
+    .env("CLAUDE_CODE_GIT_BASH_PATH", detected_path)
+    .env("TERM", "xterm-256color")
 
 // Unix
-shell: '/bin/bash'
-shellArgs: ['-l', '-c', `claude ${args.join(' ')}`]
+CommandBuilder::new("claude")
+    .arg("--history")
+    .arg("prompt")
 ```
 
 ### 数据流
 
 ```
-PTY onData → mainWindow.webContents.send('pty:output', { id, data })
-PTY onExit → mainWindow.webContents.send('pty:exit', { id, exitCode })
+PTY reader → emit('pty-output', { id, data }) → frontend
+PTY exit → emit('pty-exit', { id, exit_code }) → frontend
 ```
 
-## IPC 通道 (main/ipc.ts)
+## IPC 通道 (Tauri Commands)
 
-### PTY 操作通道
+### PTY 操作命令
 
-| 通道 | 方向 | 参数 | 返回 |
+| 命令 | 方向 | 参数 | 返回 |
 |------|------|------|------|
-| pty:spawn | renderer→main | { cwd, cols, rows, type, args } | { id, type, cwd } |
-| pty:input | renderer→main | { id, data } | boolean |
-| pty:resize | renderer→main | { id, cols, rows } | boolean |
-| pty:kill | renderer→main | { id } | boolean |
-| pty:list | renderer→main | - | string[] |
-| pty:info | renderer→main | { id } | PtyInfo |
-| pty:killAll | renderer→main | - | void |
+| pty_spawn | renderer→main | { cwd, cols, rows, type, args } | PtySpawnResult |
+| pty_input | renderer→main | { id, data } | boolean |
+| pty_resize | renderer→main | { id, cols, rows } | boolean |
+| pty_kill | renderer→main | { id } | boolean |
+| pty_kill_all | renderer→main | - | void |
 
-### PTY 事件通道
+### PTY 事件
 
-| 通道 | 方向 | 数据 |
+| 事件 | 方向 | 数据 |
 |------|------|------|
 | pty:output | main→renderer | { id, data } |
-| pty:exit | main→renderer | { id, exitCode, signal? } |
-| terminal:keydown | main→renderer | { key, modifiers } |
+| pty:exit | main→renderer | { id, exit_code, signal? } |
 
-### 其他通道
-
-| 通道 | 用途 |
-|------|------|
-| dialog:selectDirectory | 目录选择对话框 |
-| store:getFavorites | 获取收藏项目 |
-| store:addFavorite | 添加收藏 |
-| store:removeFavorite | 移除收藏 |
-| shell:exec | 执行 shell 命令 |
-| shell:listDir | 列出目录内容 |
-
-## Preload API (preload/index.ts)
+## 前端 API (src/api/tauri.ts)
 
 ### PTY 操作
 
 ```typescript
 interface PtySpawnOptions {
   cwd: string
-  cols?: number
-  rows?: number
+  cols: number
+  rows: number
   type: 'claude' | 'shell'
   args?: string[]
 }
 
-window.api.ptySpawn(options): Promise<PtyInfo | null>
-window.api.ptyInput(id, data): Promise<boolean>
-window.api.ptyResize(id, cols, rows): Promise<boolean>
-window.api.ptyKill(id): Promise<boolean>
-window.api.ptyList(): Promise<string[]>
-window.api.ptyInfo(id): Promise<PtyInfo | null>
-window.api.ptyKillAll(): Promise<void>
+ptySpawn(options: PtySpawnOptions): Promise<PtySpawnResult>
+ptyInput(id: string, data: string): Promise<boolean>
+ptyResize(id: string, cols: number, rows: number): Promise<boolean>
+ptyKill(id: string): Promise<boolean>
+ptyKillAll(): Promise<void>
 ```
 
 ### PTY 事件监听
 
 ```typescript
-window.api.onPtyOutput((event, { id, data }) => { ... })
-window.api.onPtyExit((event, { id, exitCode }) => { ... })
-window.api.onTerminalKeydown((event, { key, modifiers }) => { ... })
-window.api.removeListener(channel)
+onPtyOutput((payload) => { ... }): Promise<UnlistenFn>
+onPtyExit((payload) => { ... }): Promise<UnlistenFn>
 ```
 
 ## 渲染进程终端组件 (XTermTerminal.vue)
@@ -180,32 +137,38 @@ const lightTheme = {
 ```typescript
 // 用户输入 → PTY
 term.onData(data => {
-  if (ptyId.value) {
-    window.api.ptyInput(ptyId.value, data)
+  const instance = terminalInstances.get(tabId)
+  if (instance) {
+    ptyInput(instance.ptyId, data)
   }
 })
 
 // PTY 输出 → Terminal
-window.api.onPtyOutput((event, { id, data }) => {
-  if (id === ptyId.value && term) {
-    term.write(data)
+onPtyOutput(({ id, data }) => {
+  const instance = terminalInstances.get(tabId)
+  if (instance && id === instance.ptyId) {
+    instance.term.write(data)
   }
 })
 
 // resize 同步
 term.onResize(({ cols, rows }) => {
-  window.api.ptyResize(ptyId.value, cols, rows)
+  ptyResize(instance.ptyId, cols, rows)
 })
 ```
 
-### 特殊快捷键处理
+### Ctrl+V 粘贴处理
 
 ```typescript
-// Ctrl+W 被 Electron 拦截，需要手动发送
-window.api.onTerminalKeydown((event, { key, modifiers }) => {
-  if (modifiers.includes('control') && key === 'w') {
-    window.api.ptyInput(ptyId.value, '\x17') // Ctrl+W ASCII
+term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+  if (event.ctrlKey && event.key === 'v') {
+    event.preventDefault()
+    readText().then(text => {
+      if (text) term.paste(text)
+    })
+    return false
   }
+  return true
 })
 ```
 
@@ -213,76 +176,93 @@ window.api.onTerminalKeydown((event, { key, modifiers }) => {
 
 ### 原则
 
-**所有 Claude Code 快捷键直接发送到 PTY，由 Claude CLI 处理。**
+**应用级快捷键由 DOM 处理，终端快捷键由 xterm.js + PTY 原生处理。**
 
-- xterm.js 的 `onData` 会发送所有按键（包括 Ctrl/Alt 组合）
-- Claude CLI 有完整的 readline/keybindings 处理机制
-- GUI 层不做任何快捷键映射或拦截
+- 应用快捷键：`src/composables/useAppShortcuts.ts` 中注册全局 `keydown` 监听器（capturing phase）
+- 终端快捷键：xterm.js 通过 `onData` 发送到 PTY，由 Claude CLI 处理
+- 窗口焦点恢复：监听 `Window.onFocusChanged`，窗口获焦时调用 `Webview.setFocus()`
 
-### Claude Code 常用快捷键
+### 应用级快捷键
 
 | 快捷键 | 功能 | 处理方 |
 |--------|------|--------|
-| Ctrl+C | 取消当前输入/生成 | Claude CLI |
-| Ctrl+D | 退出 Claude Code | Claude CLI |
-| Ctrl+L | 清屏 | Claude CLI |
-| Ctrl+R | 反向搜索历史 | Claude CLI |
-| Ctrl+B | 后台运行任务 | Claude CLI |
-| Alt+P | 切换模型 | Claude CLI |
-| Alt+T | 切换扩展思考 | Claude CLI |
-| Ctrl+W | 后台运行（被拦截，手动发送） | PTY |
+| Ctrl+Shift+N | 新建窗口 | useAppShortcuts |
+| Ctrl+Shift+←/→ | 窗口左移/右移半屏 | useAppShortcuts |
+| Ctrl+Shift+R | 重启应用 | useAppShortcuts |
+| Ctrl+, | 打开设置 | useAppShortcuts |
+| Ctrl+Plus/Minus | 增大/减小字体 | useAppShortcuts |
+| Ctrl+0 | 重置字体 | useAppShortcuts |
 
-### Electron 快捷键处理
+### 终端快捷键（由 Claude CLI 处理）
+
+| 快捷键 | 功能 | 处理方 |
+|--------|------|--------|
+| Ctrl+C | 取消当前输入/生成 | xterm.js → PTY → Claude CLI |
+| Ctrl+D | 退出 Claude Code | xterm.js → PTY → Claude CLI |
+| Ctrl+L | 清屏 | xterm.js → PTY → Claude CLI |
+| Ctrl+R | 反向搜索历史 | xterm.js → PTY → Claude CLI |
+| Ctrl+W | 删除前一个单词 | xterm.js 发送 `\x17` → PTY |
+| Ctrl+B | 后台运行任务 | xterm.js → PTY → Claude CLI |
+| Alt+P | 切换模型 | xterm.js → PTY → Claude CLI |
+| Alt+T | 切换扩展思考 | xterm.js → PTY → Claude CLI |
+
+### 窗口焦点恢复
 
 ```typescript
-// main/index.ts
-mainWindow.webContents.on('before-input-event', (event, input) => {
-  // Ctrl+W: 阻止关闭窗口，发送到终端
-  if (hasControl && key === 'w') {
-    event.preventDefault()
-    mainWindow.webContents.send('terminal:keydown', { key, modifiers })
-  }
-  // 其他 Ctrl/Alt 组合：不拦截，让 xterm.js 处理
-})
+// src/composables/useAppShortcuts.ts
+async function setupFocusRecovery() {
+  const win = getCurrentWindow()
+  unlistenFocus = await win.onFocusChanged(({ payload: focused }) => {
+    if (focused) {
+      // 窗口获得焦点时，恢复 webview 焦点
+      getCurrentWebview().setFocus().catch(() => {})
+    }
+  })
+}
 ```
 
-## 环境检查 (main/checks.ts)
+## 环境检查 (src-tauri/src/checks.rs)
 
 ### 检查项
 
-```typescript
-export function runAllChecks(): CheckResult[] {
-  return [
-    checkNodeVersion(),      // Node.js >= 18
-    checkNodePty(),          // node-pty 模块可用
-    checkClaudeCli(),        // claude 命令可用
-    checkGitBash(),          // Git Bash 路径（Windows）
-    checkShell(),            // 系统 Shell 可用
-    checkClaudeConfigDir(),  // ~/.claude 目录
-  ]
+```rust
+pub fn run_checks() -> CheckResults {
+    vec![
+        check_claude_cli(),    // claude 命令可用
+        check_git_bash(),      // Git Bash 路径（Windows）
+    ]
 }
 ```
 
 ### 启动流程
 
-```typescript
-// main/index.ts
-async function createWindow() {
-  const canStart = await performStartupChecks()
-  if (!canStart) {
-    app.quit()
-    return
-  }
-  // 创建窗口...
-}
+```rust
+// src-tauri/src/lib.rs
+.on_window_event(|_window, event| {
+    if let tauri::WindowEvent::CloseRequested { .. } = event {
+        if let Some(manager) = pty::get_pty_manager() {
+            manager.kill_all();
+        }
+    }
+})
 ```
 
 ## 进程生命周期
 
 ```
-启动 → 环境检查 → 窗口创建 → PTY spawn → Claude CLI 运行
-                                              ↓
-                                       用户交互（双向数据流）
-                                              ↓
-关闭窗口 → killAllPty() → PTY 进程清理 → Claude CLI 退出
+启动 → 环境检查 → PTY spawn → Claude CLI 运行
+                              ↓
+                       用户交互（双向数据流）
+                              ↓
+关闭窗口 → kill_all() → PTY 进程清理 → Claude CLI 退出
 ```
+
+## 与 Electron 架构的差异
+
+| 特性 | Electron | Tauri |
+|------|----------|-------|
+| PTY 实现 | node-pty (Node) | portable-pty (Rust) |
+| 快捷键拦截 | `before-input-event` | DOM capturing phase |
+| Ctrl+W 处理 | 需手动拦截发送 | xterm.js 原生处理 |
+| IPC | ipcMain/ipcRenderer | invoke/listen |
+| 进程通信 | webContents.send | emit/listen |

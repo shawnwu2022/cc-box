@@ -26,10 +26,11 @@ import {
   ptyKill,
   onPtyOutput,
   onPtyExit,
-  onTerminalKeydown,
+  logMessage,
 } from '@/api/tauri'
 import { registerTerminalCommand } from '@/composables/useTerminalCommand'
 import { readText } from '@tauri-apps/plugin-clipboard-manager'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const props = defineProps<{
   fontSize?: number
@@ -82,7 +83,6 @@ const isPtyStarting = ref<boolean>(false)
 // Unlisten functions
 let unlistenPtyOutput: (() => void) | null = null
 let unlistenPtyExit: (() => void) | null = null
-let unlistenKeydown: (() => void) | null = null
 
 // ResizeObserver
 let resizeObserver: ResizeObserver | null = null
@@ -226,14 +226,6 @@ async function setupEventListeners() {
       }
     }
   })
-
-  // 快捷键处理（Ctrl+W 等）
-  unlistenKeydown = await onTerminalKeydown(({ key, modifiers }) => {
-    const instance = terminalInstances.get(currentDisplayTabId.value ?? '')
-    if (instance && modifiers.includes('control') && key.toLowerCase() === 'w') {
-      ptyInput(instance.ptyId, '\x17')
-    }
-  })
 }
 
 // 监听 fontSize 变化
@@ -305,7 +297,14 @@ async function createTerminalForTab(tabId: string, ptyId: string) {
  */
 async function startTab(tabId: string) {
   const tab = sessionStore.tabs.get(tabId)
-  if (!tab || isPtyStarting.value) return
+  if (!tab) {
+    logMessage('warn', `startTab: tab not found, tabId=${tabId}`)
+    return
+  }
+  if (isPtyStarting.value) {
+    logMessage('warn', `startTab: blocked by isPtyStarting, tabId=${tabId}`)
+    return
+  }
 
   // 已有运行中的 PTY
   if (tab.ptyId && tab.status === 'running') {
@@ -354,6 +353,7 @@ async function startTab(tabId: string) {
     }
   } catch (err) {
     console.error('[XTerm] startTab ERROR:', err)
+    logMessage('error', `startTab failed, tabId=${tabId}: ${err}`)
   } finally {
     isPtyStarting.value = false
   }
@@ -418,6 +418,7 @@ async function restartTab(tabId: string) {
     }
   } catch (err) {
     console.error('[XTerm] restartTab ERROR:', err)
+    logMessage('error', `restartTab failed, tabId=${tabId}: ${err}`)
   } finally {
     isPtyStarting.value = false
   }
@@ -467,7 +468,10 @@ async function startWithOptions(cwd: string, opts: {
  * 新建会话（无参数模式）
  */
 async function startNewSession(cwd: string) {
-  if (isPtyStarting.value) return
+  if (isPtyStarting.value) {
+    logMessage('warn', `startNewSession: blocked by isPtyStarting, cwd=${cwd}`)
+    return
+  }
 
   const tabId = sessionStore.createTab(cwd)
   sessionStore.setActiveTab(tabId)
@@ -514,7 +518,6 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
   unlistenPtyOutput?.()
   unlistenPtyExit?.()
-  unlistenKeydown?.()
   for (const instance of terminalInstances.values()) {
     instance.term.dispose()
   }

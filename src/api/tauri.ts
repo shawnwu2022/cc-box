@@ -19,6 +19,8 @@ import type {
   PluginInfo,
   SkillInfo,
   UpdateInfo,
+  HomeData,
+  CheckResult,
 } from '@/types';
 
 // 重新导出类型（保持兼容性）
@@ -95,15 +97,21 @@ export const onConfigFontSize = (callback: (size: number) => void): Promise<Unli
 export const onTerminalRestart = (callback: (data: { cwd: string }) => void): Promise<UnlistenFn> =>
   listen<{ cwd: string }>('terminal:restart', (event) => callback(event.payload));
 
-export const onTerminalKeydown = (callback: (data: { key: string; modifiers: string[] }) => void): Promise<UnlistenFn> =>
-  listen<{ key: string; modifiers: string[] }>('terminal:keydown', (event) => callback(event.payload));
-
 // ============================================
 // Projects and Sessions
 // ============================================
 
-export const getProjects = (): Promise<Project[]> =>
-  invoke<Project[]>('get_projects');
+export const getCheckResults = (): Promise<CheckResult[]> =>
+  invoke<CheckResult[]>('get_check_results');
+
+export const runChecks = (): Promise<CheckResult[]> =>
+  invoke<CheckResult[]>('run_checks');
+
+export const getHomeData = (projectLimit?: number, sessionLimit?: number): Promise<HomeData> =>
+  invoke<HomeData>('get_home_data', { projectLimit, sessionLimit });
+
+export const getProjects = (limit?: number, offset?: number): Promise<Project[]> =>
+  invoke<Project[]>('get_projects', { limit, offset });
 
 export const getProjectInfo = (path: string): Promise<Project | null> =>
   invoke<Project | null>('get_project_info', { path });
@@ -174,6 +182,13 @@ export const openInFileManager = (path: string): Promise<void> =>
 
 export const checkForUpdates = (): Promise<UpdateInfo> =>
   invoke<UpdateInfo>('check_for_updates');
+
+// ============================================
+// Logging
+// ============================================
+
+export const logMessage = (level: 'error' | 'warn' | 'info' | 'debug', message: string): Promise<void> =>
+  invoke<void>('log_message', { level, message });
 
 // ============================================
 // Dialog (Tauri dialog plugin)

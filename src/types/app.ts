@@ -1,5 +1,20 @@
 // App 配置相关类型定义
 
+export interface CheckResult {
+  name: string
+  passed: boolean
+  message: string
+  detectedPath?: string
+  action?: string
+  url?: string
+}
+
+export interface HomeData {
+  projects: import('./project').Project[]
+  recentSessions: import('./session').SessionInfo[]
+  hasMore: boolean
+}
+
 export interface AppConfig {
   defaultContinue?: boolean
   defaultSkipPermissions?: boolean

@@ -32,7 +32,10 @@
         @click.stop="$emit('restart', id)"
         title="Restart"
       >
-        <img src="@/assets/icons/refresh.svg" alt="Restart" />
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"/>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
       </button>
       <!-- 重命名按钮 -->
       <button
@@ -41,7 +44,10 @@
         @click.stop="startRename"
         title="Rename"
       >
-        <img src="@/assets/icons/edit.svg" alt="Rename" />
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+          <path d="m15 5 4 4"/>
+        </svg>
       </button>
       <!-- 关闭按钮 -->
       <button
@@ -247,11 +253,6 @@ function cancelRename() {
   opacity: 0;
   transition: opacity 0.15s ease;
   flex-shrink: 0;
-}
-
-.action-btn img {
-  width: 12px;
-  height: 12px;
 }
 
 .session-item:hover .action-btn {

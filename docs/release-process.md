@@ -1,224 +1,136 @@
 # 版本发布流程
 
-本文档描述 CC-Box 的完整版本发布流程，从版本号更新到最终发布。
+本文档描述 CC-Box 的版本号管理、本地打包、CI/CD 发布、签名与分发。
 
 ## 版本号规则
 
-CC-Box 遵循 [语义化版本](https://semver.org/lang/zh-CN/) (Semantic Versioning)：
-
-- **主版本号 (Major)**: 不兼容的 API 变更
-- **次版本号 (Minor)**: 向下兼容的功能新增
-- **修订号 (Patch)**: 向下兼容的问题修复
-
-示例：`v1.2.3`
-- `1` = 主版本号
-- `2` = 次版本号
-- `3` = 修订号
+遵循 [语义化版本](https://semver.org/lang/zh-CN/)：`vMAJOR.MINOR.PATCH`
 
 ## 版本号更新位置
 
-发布新版本时，需要同步更新以下文件中的版本号：
-
-| 文件 | 路径 | 说明 |
-|------|------|------|
-| **Cargo.toml** | `src-tauri/Cargo.toml` | Rust crate 版本 |
-| **package.json** | `package.json` | npm 包版本 |
-| **tauri.conf.json** | `src-tauri/tauri.conf.json` | Tauri 应用版本 |
+| 文件 | 路径 |
+|------|------|
+| Cargo.toml | `src-tauri/Cargo.toml` → `version` |
+| package.json | `package.json` → `version` |
+| tauri.conf.json | `src-tauri/tauri.conf.json` → `version` |
 
 三个文件的版本号必须保持一致。
 
 ## 发布前检查清单
 
-在开始发布流程前，确认以下事项：
-
 - [ ] 所有已计划的 feature 已完成
 - [ ] 所有已知 bug 已修复
 - [ ] 更新了 `docs/roadmap.md` 中的进度
-- [ ] 更新了 `CHANGELOG.md`（如果存在）
 - [ ] 本地构建测试通过 (`npm run tauri:build`)
-- [ ] 在测试环境验证核心功能
-- [ ] 检查敏感信息不会被提交（API token、密钥等）
-
-## 发布流程
-
-### 1. 创建发布分支
-
-```bash
-# 确保在 main 分支且是最新状态
-git checkout main
-git pull origin main
-
-# 创建发布分支
-git checkout -b release/v1.2.3
-```
-
-### 2. 更新版本号
-
-手动编辑以下文件，将版本号从旧版本改为新版本（例如 `v1.2.2` → `v1.2.3`）：
-
-```bash
-# 1. 更新 src-tauri/Cargo.toml
-# 2. 更新 package.json
-# 3. 更新 src-tauri/tauri.conf.json
-```
-
-示例：
-```toml
-# src-tauri/Cargo.toml
-[package]
-name = "cc-box"
-version = "1.2.3"  # 修改这里
-```
-
-```json
-// package.json
-{
-  "name": "cc-box",
-  "version": "1.2.3"  // 修改这里
-}
-```
-
-```json
-// src-tauri/tauri.conf.json
-{
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "CC-Box",
-  "version": "1.2.3"  // 修改这里
-}
-```
-
-### 3. 提交版本更新
-
-```bash
-git add -A
-git commit -m "Bump version to v1.2.3"
-```
-
-### 4. 合并到 main 分支
-
-```bash
-git checkout main
-git merge release/v1.2.3
-git push origin main
-```
-
-### 5. 创建并推送 Git 标签
-
-```bash
-# 创建 annotated tag
-git tag -a v1.2.3 -m "Release v1.2.3"
-
-# 推送标签到远程
-git push origin v1.2.3
-```
-
-⚠️ **重要**：标签名必须以 `v` 开头（如 `v1.2.3`），这是 GitHub Release workflow 的触发条件。
-
-### 6. 等待 CI 构建
-
-推送标签后，GitHub Actions 会自动触发构建流程：
-
-1. 访问 https://github.com/orczh-hj/cc-box/actions
-2. 查看最新的 `Release` workflow 运行状态
-3. 等待三个平台构建完成（约 5-10 分钟）
-
-构建平台：
-- **Windows** (x64): 生成 `.exe` 和 `.msi`
-- **macOS** (x64): 生成 `.dmg`
-- **Linux** (x64): 生成 `.deb` 和 `.AppImage`
-
-### 7. 发布 GitHub Release
-
-构建完成后，workflow 会自动创建一个**草稿 Release**。你需要：
-
-1. 访问 https://github.com/orczh-hj/cc-box/releases
-2. 找到 `v1.2.3` 草稿 Release
-3. 检查自动生成的 Release Notes
-4. 补充更新内容（新增功能、修复、已知问题等）
-5. 点击 **Publish release**
-
-或者使用 CLI：
-
-```bash
-# 编辑并发布现有的草稿 Release
-gh release edit v1.2.3 --notes "更新内容..."
-
-# 或者直接发布草稿
-gh release edit v1.2.3 --draft=false
-```
-
-### 8. 验证发布
-
-1. 从 Release 页面下载各平台安装包测试
-2. 在干净环境中测试安装和卸载流程
-3. 验证核心功能正常工作
+- [ ] 检查敏感信息不会被提交
 
 ## 快速发布命令
 
-如果是小版本更新（如 bugfix），可以使用以下一键流程：
-
 ```bash
-# 1. 更新版本号（手动编辑文件后）
+# 1. 更新版本号（手动编辑以下三个文件）
 vim src-tauri/Cargo.toml package.json src-tauri/tauri.conf.json
 
 # 2. 提交并打标签
-git add -A
-git commit -m "Release v1.2.3"
+git add -A && git commit -m "Release v1.2.3"
 git push origin main
 git tag -a v1.2.3 -m "Release v1.2.3"
 git push origin v1.2.3
 
-# 3. 等待 CI 构建完成后，发布 Release
+# 3. 等待 CI 构建完成后发布
 gh release edit v1.2.3 --draft=false
 ```
 
-## 回滚流程
+## 本地打包
 
-如果发布后发现严重问题需要回滚：
-
-### 删除标签和 Release
-
+### Windows
 ```bash
-# 删除远程标签
-git push origin :refs/tags/v1.2.3
+npm run build:win
+```
+输出: `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/`
+- NSIS 安装程序: `bundle/nsis/*.exe`
+- MSI 安装程序: `bundle/msi/*.msi`
+- 免安装版: `release/*.exe`
 
-# 删除本地标签
-git tag -d v1.2.3
+> 首次打包下载 NSIS 组件时可能需要代理：
+> ```bash
+> set HTTP_PROXY=http://127.0.0.1:33210
+> set HTTPS_PROXY=http://127.0.0.1:33210
+> ```
 
-# 通过 GitHub CLI 删除 Release
-gh release delete v1.2.3
+### macOS
+```bash
+npm run build:mac
+```
+输出: `src-tauri/target/universal-apple-darwin/release/bundle/`
+- DMG 镜像: `bundle/dmg/*.dmg`
+- APP 包: `bundle/macos/*.app`
+
+### Linux
+```bash
+npm run build:linux
+```
+输出: `src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/`
+- Debian 包: `bundle/deb/*.deb`
+- AppImage: `bundle/appimage/*.AppImage`
+
+## CI/CD 发布（GitHub Actions）
+
+推送 `v*` 标签后自动触发：
+
+```
+git push origin v1.2.3
+  → GitHub Actions 自动构建三平台
+  → 创建草稿 Release（附带构建产物）
+  → 审核后发布
 ```
 
-### 发布修复版本
+构建产物：
+- **Windows** (x64): `.exe` + `.msi`
+- **macOS** (Universal): `.dmg` + `.app`
+- **Linux** (x64): `.deb` + `.AppImage`
 
-1. 修复问题
-2. 创建新的修订版本（如 `v1.2.4`）
-3. 按正常流程发布
+### 发布草稿
 
-## 常见问题
+```bash
+# CLI 发布草稿
+gh release edit v1.2.3 --notes "更新内容..."
+gh release edit v1.2.3 --draft=false
+```
 
-### Q: CI 构建失败怎么办？
+或在 https://github.com/orczh-hj/cc-box/releases 手动发布。
 
-A: 检查以下事项：
-- 版本号在所有文件中是否一致
-- 代码是否能通过本地编译
-- 查看 GitHub Actions 的详细错误日志
-- 修复后推送新的 commit，标签会自动重试构建
+## 签名与公证（可选）
 
-### Q: 如何只构建特定平台？
+### Windows 代码签名
+在 `src-tauri/tauri.conf.json` 中配置:
+```json
+"bundle": {
+  "windows": {
+    "certificateThumbprint": "证书指纹",
+    "timestampUrl": "http://timestamp.digicert.com"
+  }
+}
+```
 
-A: 修改 `.github/workflows/release.yml` 中的 `matrix.include` 配置，注释掉不需要的平台。
+### macOS 代码签名
+```bash
+security import certificate.p12 -k ~/Library/Keychains/login.keychain-db
+```
+在 `tauri.conf.json` 配置 `signingIdentity` 和 `hardenedRuntime`。
 
-### Q: Release Notes 如何自动生成？
+## 回滚流程
 
-A: GitHub Actions 的 `generate_release_notes: true` 会自动生成基于 commits 和 PRs 的 Release Notes。你可以在此基础上编辑补充。
+```bash
+# 删除标签和 Release
+git push origin :refs/tags/v1.2.3
+git tag -d v1.2.3
+gh release delete v1.2.3
 
-### Q: 如何配置代码签名？
+# 修复后发布新版本
+```
 
-A: 参见 [打包与分发指南](./build-and-release.md#签名与公证可选)。
+## 体积优化
 
-## 相关文档
-
-- [打包与分发指南](./build-and-release.md) — 本地打包、签名、应用商店发布
-- [roadmap.md](./roadmap.md) — 开发路线图和版本计划
-- [GitHub Actions 文档](https://docs.github.com/en/actions)
+当前已启用：
+- `strip = true` — 移除调试符号
+- `lto = true` — 链接时优化

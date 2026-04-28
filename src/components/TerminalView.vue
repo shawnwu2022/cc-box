@@ -54,7 +54,7 @@ import { useAppStore } from '@/stores/app'
 import { useSessionStore } from '@/stores/session'
 import { useSidebarStore, type SidebarPanelType } from '@/stores/sidebar'
 import { useConfigStore } from '@/stores/config'
-import { openInFileManager } from '@/api/tauri'
+import { openInFileManager, logMessage } from '@/api/tauri'
 import { sendTerminalCommand } from '@/composables/useTerminalCommand'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import TerminalHeader from './TerminalHeader.vue'
@@ -121,15 +121,6 @@ onMounted(async () => {
       if (terminalRef.value?.startTab) {
         terminalRef.value.startTab(tabId)
       }
-    } else if (appStore.shouldAutoOpenSessions) {
-      // 从 ProjectSelectView 点击项目进入，不自动启动，也不打开侧边栏
-      appStore.setAutoOpenSessions(false)
-    } else if (!hasStartedPty) {
-      hasStartedPty = true
-      await nextTick()
-      if (terminalRef.value?.startWithOptions) {
-        terminalRef.value.startWithOptions(cwd, appStore.claudeOptions)
-      }
     }
   } catch (err) {
     console.error('[TerminalView] onMounted ERROR:', err)
@@ -179,14 +170,6 @@ watch(() => appStore.cwd, async (newCwd, oldCwd) => {
         if (terminalRef.value?.startTab) {
           terminalRef.value.startTab(tabId)
         }
-      } else if (appStore.shouldAutoOpenSessions) {
-        appStore.setAutoOpenSessions(false)
-      } else if (!hasStartedPty) {
-        hasStartedPty = true
-        await nextTick()
-        if (terminalRef.value?.startWithOptions) {
-          terminalRef.value.startWithOptions(newCwd, appStore.claudeOptions)
-        }
       }
     } catch (err) {
       console.error('[TerminalView] cwd watch ERROR:', err)
@@ -223,9 +206,15 @@ function handleRenameSession(tabId: string, name: string) {
 // 新建会话
 function handleNewSession() {
   const cwd = appStore.cwd
-  if (cwd && terminalRef.value) {
-    terminalRef.value.startNewSession(cwd)
+  if (!cwd) {
+    logMessage('warn', 'handleNewSession: no cwd')
+    return
   }
+  if (!terminalRef.value) {
+    logMessage('warn', 'handleNewSession: no terminalRef')
+    return
+  }
+  terminalRef.value.startNewSession(cwd)
 }
 
 // 重启会话

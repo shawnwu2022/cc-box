@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 /// 项目信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +69,10 @@ pub struct AppConfig {
     pub last_opened_project: Option<String>,
     #[serde(rename = "windowSize")]
     pub window_size: Option<WindowSize>,
+    #[serde(rename = "claudePath")]
+    pub claude_path: Option<String>,
+    #[serde(rename = "gitBashPath")]
+    pub git_bash_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,6 +174,10 @@ pub struct ProjectConfig {
     pub hooks: Vec<HookItem>,
 }
 
+/// 真实项目路径 → Claude 项目目录列表的缓存
+/// 同一 real_path 可能对应多个 Claude 项目目录（如编码规则变更后新旧目录共存）
+static PROJECT_PATH_MAPPING: Mutex<Option<HashMap<String, Vec<PathBuf>>>> = Mutex::new(None);
+
 // ==================== 辅助函数 ====================
 
 /// 获取 Claude 配置目录
@@ -181,7 +190,7 @@ fn get_claude_dir() -> Result<PathBuf> {
 /// 获取 GUI 配置目录
 fn get_gui_config_dir() -> Result<PathBuf> {
     dirs::home_dir()
-        .map(|h| h.join(".claude-gui"))
+        .map(|h| h.join(".cc-box"))
         .context("Home directory not found")
 }
 
@@ -190,18 +199,57 @@ fn get_gui_config_path() -> Result<PathBuf> {
     get_gui_config_dir().map(|d| d.join("config.json"))
 }
 
-/// 将项目路径转换为 Claude Code 的项目目录名
-/// Claude Code 的编码规则：: \ / _ 都替换为 -，移除开头的 -
-/// 例如: D:\orczh\Documents\project -> D--orczh-Documents-project
-fn encode_project_path(path: &str) -> String {
-    let encoded = path
-        .replace(':', "-")
-        .replace('\\', "-")
-        .replace('/', "-")
-        .replace('_', "-");
+/// 扫描 ~/.claude/projects/ 构建真实路径到项目目录的映射
+/// 每个目录通过读取 JSONL 中的 cwd 字段获取真实项目路径
+fn build_project_path_mapping() -> HashMap<String, Vec<PathBuf>> {
+    let claude_dir = match get_claude_dir() {
+        Ok(d) => d,
+        Err(_) => return HashMap::new(),
+    };
+    let projects_dir = claude_dir.join("projects");
 
-    // 移除开头的 -
-    encoded.trim_start_matches('-').to_string()
+    if !projects_dir.exists() {
+        return HashMap::new();
+    }
+
+    let mut mapping: HashMap<String, Vec<PathBuf>> = HashMap::new();
+
+    if let Ok(entries) = fs::read_dir(&projects_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+
+            if let Some(real_path) = extract_project_path_from_jsonl(&path) {
+                mapping.entry(real_path).or_default().push(path);
+            }
+        }
+    }
+
+    mapping
+}
+
+/// 根据真实项目路径查找对应的 Claude 项目目录列表
+/// 使用缓存避免重复扫描
+fn get_project_dirs(project_path: &str) -> Vec<PathBuf> {
+    let mut cache = PROJECT_PATH_MAPPING.lock().unwrap_or_else(|e| e.into_inner());
+
+    if cache.is_none() {
+        *cache = Some(build_project_path_mapping());
+    }
+
+    cache
+        .as_ref()
+        .and_then(|m| m.get(project_path))
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// 清除项目路径映射缓存（供外部调用以强制刷新）
+pub fn invalidate_project_path_mapping() {
+    let mut cache = PROJECT_PATH_MAPPING.lock().unwrap_or_else(|e| e.into_inner());
+    *cache = None;
 }
 
 /// 从 JSONL 文件提取真实项目路径
@@ -274,8 +322,87 @@ fn get_project_last_modified(project_dir: &Path) -> u64 {
 
 // ==================== 公开函数 ====================
 
-/// 获取项目列表
-pub fn get_projects() -> Result<Vec<Project>> {
+/// 首页数据（一次遍历同时返回项目和近期会话）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeData {
+    pub projects: Vec<Project>,
+    pub recent_sessions: Vec<SessionInfo>,
+    pub has_more: bool,
+}
+
+/// 一次遍历获取首页所需全部数据，避免重复 IO
+pub fn get_home_data(project_limit: usize, session_limit: usize) -> Result<HomeData> {
+    let claude_dir = get_claude_dir()?;
+    let projects_dir = claude_dir.join("projects");
+
+    if !projects_dir.exists() {
+        return Ok(HomeData {
+            projects: Vec::new(),
+            recent_sessions: Vec::new(),
+            has_more: false,
+        });
+    }
+
+    let mut projects = Vec::new();
+    let mut all_sessions = Vec::new();
+
+    for entry in fs::read_dir(&projects_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        let real_path = match extract_project_path_from_jsonl(&path) {
+            Some(p) => p,
+            None => continue,
+        };
+
+        let last_modified = fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .map(|t| t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0))
+            .unwrap_or(0);
+
+        projects.push(Project {
+            path: real_path.clone(),
+            name: Path::new(&real_path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&real_path)
+                .to_string(),
+            last_session_id: None,
+            last_cost: None,
+            last_duration: Some(last_modified),
+        });
+
+        // 同一次遍历中收集每个项目的前 3 条会话
+        if let Ok(sessions) = get_sessions(&real_path, 3, 0) {
+            all_sessions.extend(sessions);
+        }
+    }
+
+    // 按最后修改时间排序
+    projects.sort_by(|a, b| {
+        b.last_duration.unwrap_or(0).cmp(&a.last_duration.unwrap_or(0))
+    });
+
+    let has_more = projects.len() > project_limit;
+    let paginated_projects = projects.into_iter().take(project_limit).collect();
+
+    all_sessions.sort_by(|a, b| b.last_active_at.cmp(&a.last_active_at));
+    all_sessions.truncate(session_limit);
+
+    Ok(HomeData {
+        projects: paginated_projects,
+        recent_sessions: all_sessions,
+        has_more,
+    })
+}
+
+/// 获取项目列表（支持分页）
+pub fn get_projects(limit: Option<usize>, offset: Option<usize>) -> Result<Vec<Project>> {
     let claude_dir = get_claude_dir()?;
     let projects_dir = claude_dir.join("projects");
 
@@ -293,17 +420,19 @@ pub fn get_projects() -> Result<Vec<Project>> {
             continue;
         }
 
-        // 从 JSONL 提取真实路径（唯一途径）
         let real_path = match extract_project_path_from_jsonl(&path) {
             Some(p) => p,
             None => {
-                // 无法获取真实路径，跳过此项目
                 log::warn!("Could not extract path from JSONL for {:?}", path);
                 continue;
             }
         };
 
-        let last_modified = get_project_last_modified(&path);
+        // 优先用目录修改时间（快），避免遍历所有 JSONL 文件
+        let last_modified = fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .map(|t| t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0))
+            .unwrap_or(0);
 
         let project = Project {
             path: real_path.clone(),
@@ -325,12 +454,18 @@ pub fn get_projects() -> Result<Vec<Project>> {
         b.last_duration.unwrap_or(0).cmp(&a.last_duration.unwrap_or(0))
     });
 
-    Ok(projects)
+    // 分页
+    let offset = offset.unwrap_or(0);
+    let limit = limit.unwrap_or(projects.len());
+    let start = offset.min(projects.len());
+    let end = (offset + limit).min(projects.len());
+
+    Ok(projects[start..end].to_vec())
 }
 
 /// 获取项目信息
 pub fn get_project_info(path: &str) -> Result<Option<Project>> {
-    let projects = get_projects()?;
+    let projects = get_projects(None, None)?;
     Ok(projects.iter().find(|p| p.path == path).cloned())
 }
 
@@ -385,40 +520,44 @@ fn extract_session_name(jsonl_path: &Path) -> String {
 
 /// 获取会话列表
 pub fn get_sessions(project_path: &str, limit: usize, offset: usize) -> Result<Vec<SessionInfo>> {
-    let encoded_path = encode_project_path(project_path);
-    let claude_dir = get_claude_dir()?;
-    let project_dir = claude_dir.join("projects").join(encoded_path);
+    let project_dirs = get_project_dirs(project_path);
 
-    if !project_dir.exists() {
+    if project_dirs.is_empty() {
         return Ok(Vec::new());
     }
 
     let mut sessions = Vec::new();
 
-    for entry in fs::read_dir(&project_dir)? {
-        let entry = entry?;
-        let path = entry.path();
+    for project_dir in &project_dirs {
+        if !project_dir.exists() {
+            continue;
+        }
 
-        if path.extension().map(|e| e == "jsonl").unwrap_or(false)
-            && !path.file_name().map(|n| n.to_str().unwrap_or("").starts_with("agent-")).unwrap_or(false) {
-            let session_id = path.file_stem()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_string();
+        for entry in fs::read_dir(project_dir)? {
+            let entry = entry?;
+            let path = entry.path();
 
-            let name = extract_session_name(&path);
+            if path.extension().map(|e| e == "jsonl").unwrap_or(false)
+                && !path.file_name().map(|n| n.to_str().unwrap_or("").starts_with("agent-")).unwrap_or(false) {
+                let session_id = path.file_stem()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
 
-            let last_active_at = fs::metadata(&path)
-                .and_then(|m| m.modified())
-                .map(|t| t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0))
-                .unwrap_or(0);
+                let name = extract_session_name(&path);
 
-            sessions.push(SessionInfo {
-                session_id,
-                name,
-                project_path: project_path.to_string(),
-                last_active_at,
-            });
+                let last_active_at = fs::metadata(&path)
+                    .and_then(|m| m.modified())
+                    .map(|t| t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0))
+                    .unwrap_or(0);
+
+                sessions.push(SessionInfo {
+                    session_id,
+                    name,
+                    project_path: project_path.to_string(),
+                    last_active_at,
+                });
+            }
         }
     }
 
@@ -434,12 +573,14 @@ pub fn get_sessions(project_path: &str, limit: usize, offset: usize) -> Result<V
 
 /// 获取所有项目的近期会话（跨项目，按 lastActiveAt 降序排列）
 pub fn get_all_recent_sessions(limit: usize) -> Result<Vec<SessionInfo>> {
-    let projects = get_projects()?;
+    let projects = get_projects(None, None)?;
     let mut all_sessions = Vec::new();
 
+    // 每个项目只取前 3 条，减少 IO 开销
+    let per_project = 3.min(limit);
+
     for project in &projects {
-        // 每个项目取最多 limit 条（后续截断）
-        if let Ok(sessions) = get_sessions(&project.path, limit, 0) {
+        if let Ok(sessions) = get_sessions(&project.path, per_project, 0) {
             all_sessions.extend(sessions);
         }
     }
@@ -455,39 +596,44 @@ pub fn get_all_recent_sessions(limit: usize) -> Result<Vec<SessionInfo>> {
 
 /// 获取会话总数
 pub fn get_session_count(project_path: &str) -> Result<usize> {
-    let encoded_path = encode_project_path(project_path);
-    let claude_dir = get_claude_dir()?;
-    let project_dir = claude_dir.join("projects").join(encoded_path);
+    let project_dirs = get_project_dirs(project_path);
 
-    if !project_dir.exists() {
+    if project_dirs.is_empty() {
         return Ok(0);
     }
 
-    let count = fs::read_dir(&project_dir)?
-        .filter(|e| {
-            e.as_ref().ok().map(|entry| {
-                let path = entry.path();
-                path.extension().map(|e| e == "jsonl").unwrap_or(false)
-                    && !path.file_name().map(|n| n.to_str().unwrap_or("").starts_with("agent-")).unwrap_or(false)
-            }).unwrap_or(false)
-        })
-        .count();
+    let mut count = 0;
+    for project_dir in &project_dirs {
+        if !project_dir.exists() {
+            continue;
+        }
+
+        count += fs::read_dir(project_dir)?
+            .filter(|e| {
+                e.as_ref().ok().map(|entry| {
+                    let path = entry.path();
+                    path.extension().map(|e| e == "jsonl").unwrap_or(false)
+                        && !path.file_name().map(|n| n.to_str().unwrap_or("").starts_with("agent-")).unwrap_or(false)
+                }).unwrap_or(false)
+            })
+            .count();
+    }
 
     Ok(count)
 }
 
 /// 获取会话详情
 pub fn get_session_details(project_path: &str, session_id: &str) -> Result<Option<SessionDetails>> {
-    let encoded_path = encode_project_path(project_path);
-    let claude_dir = get_claude_dir()?;
-    let session_file = claude_dir
-        .join("projects")
-        .join(encoded_path)
-        .join(format!("{}.jsonl", session_id));
+    let project_dirs = get_project_dirs(project_path);
 
-    if !session_file.exists() {
-        return Ok(None);
-    }
+    let session_file = project_dirs.iter()
+        .map(|dir| dir.join(format!("{}.jsonl", session_id)))
+        .find(|f| f.exists());
+
+    let session_file = match session_file {
+        Some(f) => f,
+        None => return Ok(None),
+    };
 
     let content = fs::read_to_string(&session_file)?;
     let mut message_count = 0;
@@ -1540,35 +1686,26 @@ fn detect_git_bash_path() -> Option<String> {
         return None;
     }
 
-    // 常见安装路径
-    let candidates = [
-        "D:\\Program Files\\Git\\bin\\bash.exe",
-        "C:\\Program Files\\Git\\bin\\bash.exe",
-        "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-    ];
+    // where git → 同目录下找 bash.exe
+    let output = std::process::Command::new("where")
+        .arg("git")
+        .output()
+        .ok()?;
 
-    for path in &candidates {
-        if Path::new(path).exists() {
-            return Some(path.to_string());
-        }
+    if !output.status.success() {
+        return None;
     }
 
-    // 从 PATH 环境变量查找
-    if let Ok(path_env) = std::env::var("PATH") {
-        for entry in path_env.split(';') {
-            if entry.contains("Git") && entry.contains("bin") {
-                let bash_path = format!(
-                    "{}\\bash.exe",
-                    entry.trim_end_matches('\\').trim_end_matches('/')
-                );
-                if Path::new(&bash_path).exists() {
-                    return Some(bash_path);
-                }
-            }
-        }
-    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let git_path = stdout.lines().next()?.trim();
+    let parent = Path::new(git_path).parent()?;
+    let bash_path = parent.join("bash.exe");
 
-    None
+    if bash_path.exists() {
+        Some(bash_path.to_string_lossy().to_string())
+    } else {
+        None
+    }
 }
 
 /// 解析 claude agents list 输出

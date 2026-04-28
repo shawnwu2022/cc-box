@@ -73,14 +73,6 @@
                   <kbd>Ctrl+0</kbd>
                   <span>Reset zoom</span>
                 </div>
-                <div class="shortcut-item">
-                  <kbd>Ctrl+Full Screen</kbd>
-                  <span>Toggle fullscreen</span>
-                </div>
-                <div class="shortcut-item">
-                  <kbd>F11</kbd>
-                  <span>Toggle fullscreen</span>
-                </div>
               </div>
             </section>
 

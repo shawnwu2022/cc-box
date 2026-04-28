@@ -18,7 +18,7 @@
 ### 设计原则
 
 - **CLI 优先，GUI 增强** — 直接运行 Claude CLI 二进制文件，输入行为与原生终端完全一致；GUI 只做 CLI 做不好或做起来不方便的事
-- **轻量透明** — JSON 文件存储，不引入数据库/路由/状态机；原生数据只读，GUI 配置独立保存在 `~/.claude-gui/config.json`
+- **轻量透明** — JSON 文件存储，不引入数据库/路由/状态机；原生数据只读，GUI 配置独立保存在 `~/.cc-box/config.json`
 - **功能边界** — CLI 里已经很好用的功能（对话交互、slash 命令、快捷键、模型切换），不在 GUI 里重复实现；GUI 专注于管理、可视化、辅助三类增强
 - **可逆性** — 用户可随时回到纯 CLI，GUI 不修改任何 Claude Code 原生配置文件，不留副作用
 - **最小依赖** — 完全兼容 Claude Code 任何更新，无需适配 SDK API；新功能通过读取原生配置文件和 CLI 命令获取
@@ -124,11 +124,12 @@ gh release edit v1.2.3 --draft=false
 | [docs/terminal-integration.md](docs/terminal-integration.md) | 终端集成架构、PTY 生命周期、IPC 命令与事件对照 |
 | [docs/layout-design.md](docs/layout-design.md) | 布局设计、窗口结构、色彩系统、排版规范 |
 | [docs/components.md](docs/components.md) | 组件树、各组件职责与 props/events、Store 结构 |
-| [docs/interaction.md](docs/interaction.md) | 交互规则、快捷键处理、输入透明机制 |
+| [docs/interaction.md](docs/interaction.md) | **快捷键处理架构**、三场景输入处理、DOM 捕获期监听、窗口焦点恢复 |
 | [docs/data-persistence.md](docs/data-persistence.md) | 数据存储架构、文件路径、JSON 结构 |
+| [docs/startup-checks.md](docs/startup-checks.md) | 启动先决条件检查、路径检测与自动保存 |
 | [docs/roadmap.md](docs/roadmap.md) | 开发路线图、进度跟踪、待办事项 |
-| [docs/release-process.md](docs/release-process.md) | 版本发布流程、版本号更新、CI/CD 发布 |
-| [docs/build-and-release.md](docs/build-and-release.md) | 本地打包、代码签名、应用商店发布、体积优化 |
+| [docs/logging.md](docs/logging.md) | 日志文件路径、级别策略、轮转与清理机制 |
+| [docs/release-process.md](docs/release-process.md) | 版本号管理、本地打包、CI/CD 发布、签名与分发 |
 
 外部参考：[Claude Code 线上文档](https://code.claude.com/docs/llms.txt)
 

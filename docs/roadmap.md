@@ -42,7 +42,7 @@
 |---|------|--------|----------|------|
 | 3A | 会话输出缓冲恢复 | P0 | `XTermTerminal.vue`, `stores/session.ts` | 切换 tab 时用 SerializeAddon 序列化/恢复终端内容。依赖已装但未用的 @xterm/addon-serialize |
 | 3B | Token 用量/成本统计 | P0 | `commands.rs`, `store.rs`(扩展聚合), `StatsPanel.vue`(新建), `tauri.ts` | 后端已有 total_tokens/total_cost 解析（store.rs:477-510），需新增聚合命令和前端面板 |
-| 3C | 会话历史持久化 | P1 | `stores/session.ts`, `store.rs` | 退出时序列化 tabs 到 `~/.claude-gui/tabs.json`，启动时恢复 |
+| 3C | 会话历史持久化 | P1 | `stores/session.ts`, `store.rs` | 退出时序列化 tabs 到 `~/.cc-box/tabs.json`，启动时恢复 |
 | 3D | MCP 工具详情完善 | P1 | `McpSubItem.vue`, `McpItem.vue` | 增加 inputSchema 展示、工具名复制、连接状态刷新 |
 
 ## Phase 4 — 工作流加速 + 外观

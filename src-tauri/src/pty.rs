@@ -87,6 +87,28 @@ impl PtyManager {
         }
     }
 
+    /// 使用 where (Windows) / which (Unix) 查找可执行文件
+    fn find_executable(name: &str) -> Option<String> {
+        let cmd = if cfg!(target_os = "windows") {
+            "where"
+        } else {
+            "which"
+        };
+
+        let output = std::process::Command::new(cmd)
+            .arg(name)
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // where/which 可能返回多行，取第一个
+        stdout.lines().next().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    }
+
     /// 检测 Git Bash 路径（Windows）
     fn detect_git_bash() -> Option<String> {
         if !cfg!(target_os = "windows") {
@@ -95,47 +117,32 @@ impl PtyManager {
 
         log::debug!("Detecting Git Bash on Windows...");
 
-        // 常见安装路径
-        let candidates = [
-            "D:\\Program Files\\Git\\bin\\bash.exe",
-            "C:\\Program Files\\Git\\bin\\bash.exe",
-            "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-        ];
-
-        for path in &candidates {
-            if Path::new(path).exists() {
-                log::info!("Git Bash found at candidate path: {}", path);
-                return Some(path.to_string());
-            }
-        }
-
-        // 从 PATH 环境变量查找
-        let path_env = match env::var("PATH") {
-            Ok(p) => p,
-            Err(e) => {
-                log::warn!("Failed to read PATH environment: {}", e);
-                return None;
-            }
-        };
-
-        for entry in path_env.split(';') {
-            if entry.contains("Git") && entry.contains("bin") {
-                let bash_path = format!(
-                    "{}\\bash.exe",
-                    entry.trim_end_matches('\\').trim_end_matches('/')
-                );
-                if Path::new(&bash_path).exists() {
-                    log::info!("Git Bash found in PATH: {}", bash_path);
-                    return Some(bash_path);
+        // 1. 配置文件
+        if let Ok(config) = crate::store::get_app_config() {
+            if let Some(ref path) = config.git_bash_path {
+                if Path::new(path).exists() {
+                    log::info!("Git Bash path from config: {}", path);
+                    return Some(path.clone());
                 }
             }
         }
 
-        // 检查环境变量覆盖
+        // 2. 环境变量
         if let Ok(path) = env::var("CLAUDE_CODE_GIT_BASH_PATH") {
             if Path::new(&path).exists() {
-                log::info!("Git Bash found via CLAUDE_CODE_GIT_BASH_PATH: {}", path);
+                log::info!("Git Bash found via env var: {}", path);
                 return Some(path);
+            }
+        }
+
+        // 3. where git → 同目录下找 bash.exe
+        if let Some(git_path) = Self::find_executable("git") {
+            if let Some(parent) = Path::new(&git_path).parent() {
+                let bash_path = parent.join("bash.exe");
+                if bash_path.exists() {
+                    log::info!("Git Bash found via 'where git': {}", bash_path.display());
+                    return Some(bash_path.to_string_lossy().to_string());
+                }
             }
         }
 
@@ -147,56 +154,23 @@ impl PtyManager {
     fn detect_claude_path() -> Option<String> {
         log::debug!("Detecting Claude CLI path...");
 
-        // Windows: 优先检查用户目录下的安装
-        if cfg!(target_os = "windows") {
-            if let Some(home) = dirs::home_dir() {
-                let claude_path = home.join(".local").join("bin").join("claude.exe");
-                if claude_path.exists() {
-                    log::info!("Claude CLI found at: {}", claude_path.display());
-                    return Some(claude_path.to_string_lossy().to_string());
+        // 1. 配置文件
+        if let Ok(config) = crate::store::get_app_config() {
+            if let Some(ref path) = config.claude_path {
+                if Path::new(path).exists() {
+                    log::info!("Claude CLI path from config: {}", path);
+                    return Some(path.clone());
                 }
             }
         }
 
-        // 从 PATH 环境变量查找
-        let path_env = match env::var("PATH") {
-            Ok(p) => p,
-            Err(_) => return None,
-        };
-
-        let separator = if cfg!(target_os = "windows") {
-            ';'
-        } else {
-            ':'
-        };
-        let claude_name = if cfg!(target_os = "windows") {
-            "claude.exe"
-        } else {
-            "claude"
-        };
-
-        for entry in path_env.split(separator) {
-            let trimmed = entry.trim_end_matches('\\').trim_end_matches('/');
-            if trimmed.is_empty() {
-                continue;
-            }
-            let claude_path = format!(
-                "{}{}{}",
-                trimmed,
-                if cfg!(target_os = "windows") {
-                    "\\"
-                } else {
-                    "/"
-                },
-                claude_name
-            );
-            if Path::new(&claude_path).exists() {
-                log::info!("Claude CLI found in PATH: {}", claude_path);
-                return Some(claude_path);
-            }
+        // 2. where/which claude
+        if let Some(path) = Self::find_executable("claude") {
+            log::info!("Claude CLI found via 'where claude': {}", path);
+            return Some(path);
         }
 
-        log::warn!("Claude CLI not found in PATH or common locations");
+        log::warn!("Claude CLI not found");
         None
     }
 
@@ -266,8 +240,21 @@ impl PtyManager {
             }
         };
 
-        // 构建命令
-        let mut cmd = CommandBuilder::new(&claude_path);
+        // Windows: 非 .exe 路径（如 npm shim 脚本）需要通过 cmd.exe 执行
+        let mut cmd = if cfg!(target_os = "windows")
+            && !claude_path.to_lowercase().ends_with(".exe")
+        {
+            log::info!(
+                "Non-exe path detected, using cmd.exe to launch: {}",
+                claude_path
+            );
+            let mut c = CommandBuilder::new("cmd.exe");
+            c.arg("/C");
+            c.arg(&claude_path);
+            c
+        } else {
+            CommandBuilder::new(&claude_path)
+        };
 
         // 添加参数
         if let Some(extra_args) = &args {

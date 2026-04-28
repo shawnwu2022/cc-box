@@ -6,11 +6,15 @@ import {
   saveLastProject,
   getDefaultClaudeOptions,
   saveDefaultClaudeOptions,
+  getHomeData,
   getProjects,
-  getAllRecentSessions
+  getCheckResults,
+  runChecks
 } from '@/api/tauri'
 
-import type { ClaudeOptions, Project, SessionInfo } from '@/types'
+import type { ClaudeOptions, CheckResult, Project, SessionInfo } from '@/types'
+
+const PAGE_SIZE = 12
 
 export interface PendingResume {
   sessionId: string
@@ -26,10 +30,17 @@ export const useAppStore = defineStore('app', () => {
   const pendingResume = ref<PendingResume | null>(null)
   const shouldAutoOpenSessions = ref(false)
 
-  // 缓存：项目列表和近期会话
+  // 环境检查
+  const checkResults = ref<CheckResult[]>([])
+  const checkFailed = ref(false)
+
+  // 缓存：项目列表（分页）和近期会话
   const cachedProjects = ref<Project[]>([])
   const cachedRecentSessions = ref<SessionInfo[]>([])
   const cacheLoaded = ref(false)
+  const projectsPage = ref(0)
+  const hasMoreProjects = ref(true)
+  const isLoadingProjects = ref(false)
 
   // Claude 启动选项
   const claudeOptions = ref<ClaudeOptions>({
@@ -44,6 +55,8 @@ export const useAppStore = defineStore('app', () => {
     return parts[parts.length - 1] || cwd.value
   })
 
+  const failedChecks = computed(() => checkResults.value.filter(c => !c.passed))
+
   async function loadAppConfig() {
     try {
       const config = await getAppConfig()
@@ -55,27 +68,47 @@ export const useAppStore = defineStore('app', () => {
         skipPermissions: config.defaultSkipPermissions ?? false,
         customArgs: config.defaultCustomArgs ?? ''
       }
-
-      if (config.lastOpenedProject) {
-        cwd.value = config.lastOpenedProject
-      }
     } catch (err) {
       console.error('Failed to load app config:', err)
+    }
+  }
+
+  async function doChecks(force = false) {
+    try {
+      checkResults.value = force ? await runChecks() : await getCheckResults()
+      checkFailed.value = checkResults.value.some(c => !c.passed)
+    } catch (err) {
+      console.error('Failed to run checks:', err)
     }
   }
 
   async function loadCache() {
     if (cacheLoaded.value) return
     try {
-      const [projs, sessions] = await Promise.all([
-        getProjects(),
-        getAllRecentSessions(20)
-      ])
-      cachedProjects.value = projs
-      cachedRecentSessions.value = sessions
+      const data = await getHomeData(PAGE_SIZE, 20)
+      cachedProjects.value = data.projects
+      cachedRecentSessions.value = data.recentSessions
+      projectsPage.value = 1
+      hasMoreProjects.value = data.hasMore
       cacheLoaded.value = true
     } catch (err) {
       console.error('Failed to load cache:', err)
+    }
+  }
+
+  async function loadMoreProjects() {
+    if (isLoadingProjects.value || !hasMoreProjects.value) return
+    isLoadingProjects.value = true
+    try {
+      const offset = projectsPage.value * PAGE_SIZE
+      const projs = await getProjects(PAGE_SIZE, offset)
+      cachedProjects.value.push(...projs)
+      projectsPage.value++
+      hasMoreProjects.value = projs.length === PAGE_SIZE
+    } catch (err) {
+      console.error('Failed to load more projects:', err)
+    } finally {
+      isLoadingProjects.value = false
     }
   }
 
@@ -151,8 +184,6 @@ export const useAppStore = defineStore('app', () => {
     shouldAutoOpenSessions.value = val
   }
 
-  loadAppConfig()
-
   return {
     cwd,
     theme,
@@ -161,11 +192,18 @@ export const useAppStore = defineStore('app', () => {
     currentProject,
     pendingResume,
     shouldAutoOpenSessions,
+    checkResults,
+    checkFailed,
+    failedChecks,
     cachedProjects,
     cachedRecentSessions,
     cacheLoaded,
+    hasMoreProjects,
+    isLoadingProjects,
     loadAppConfig,
+    runChecks: doChecks,
     loadCache,
+    loadMoreProjects,
     refreshRecentSessions,
     setCwd,
     setTheme,
