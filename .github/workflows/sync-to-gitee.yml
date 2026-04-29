@@ -1,0 +1,29 @@
+name: Sync to Gitee
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Gitee
+        run: |
+          git remote add gitee https://oauth2:${{ secrets.GITEE_TOKEN }}@gitee.com/orczh/cc-box.git
+          git push gitee --all --force
+          git push gitee --tags --force
+
+      - name: Make Gitee repo public
+        run: |
+          curl -X PATCH "https://gitee.com/api/v5/repos/orczh/cc-box" \
+            -d "access_token=${{ secrets.GITEE_TOKEN }}" \
+            -d "name=cc-box" \
+            -d "private=false"
