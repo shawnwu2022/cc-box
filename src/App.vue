@@ -227,16 +227,17 @@ function initAfterChecks() {
 async function savePathsAndRetry() {
   isSavingPaths.value = true
   try {
-    const updates: Record<string, string> = {}
+    const updates: Record<string, string | null> = {}
     for (const check of appStore.checkResults) {
-      const val = checkInputs.value[check.name]?.trim()
-      if (!val) continue
-      if (check.name === 'Claude CLI') updates.claudePath = val
-      if (check.name === 'Git Bash') updates.gitBashPath = val
+      // 只处理未通过的检查项，不覆盖已通过的路径
+      if (!check.passed) {
+        const val = checkInputs.value[check.name]?.trim()
+        if (check.name === 'Claude CLI') updates.claudePath = val || null
+        if (check.name === 'Git Bash') updates.gitBashPath = val || null
+      }
     }
-    if (Object.keys(updates).length > 0) {
-      await updateAppConfig(updates)
-    }
+    // 即使是删除操作（传 null），也需要调用 updateAppConfig
+    await updateAppConfig(updates)
     await appStore.runChecks(true)
     if (!appStore.checkFailed) {
       initAfterChecks()

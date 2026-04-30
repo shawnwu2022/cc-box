@@ -62,7 +62,7 @@
         <button
           class="action-btn with-hint"
           @click="$emit('newSession')"
-          title="New session (Ctrl+N)"
+          title="New session (Alt+N)"
         >
           <div class="btn-content">
             <img src="@/assets/icons/plus.svg" alt="New session" />

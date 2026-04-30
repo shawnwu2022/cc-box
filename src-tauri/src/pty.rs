@@ -150,11 +150,9 @@ impl PtyManager {
         None
     }
 
-    /// 检测 Claude CLI 路径
-    fn detect_claude_path() -> Option<String> {
-        log::debug!("Detecting Claude CLI path...");
-
-        // 1. 配置文件
+    /// 获取 Claude CLI 路径（优先使用配置，其次自动检测）
+    fn get_claude_path() -> Option<String> {
+        // 1. 配置文件中的自定义路径
         if let Ok(config) = crate::store::get_app_config() {
             if let Some(ref path) = config.claude_path {
                 if Path::new(path).exists() {
@@ -164,124 +162,15 @@ impl PtyManager {
             }
         }
 
-        // 2. where/which claude
-        if let Some(path) = Self::find_executable("claude") {
-            log::info!("Claude CLI found via 'where claude': {}", path);
-            return Some(path);
-        }
-
-        log::warn!("Claude CLI not found");
-        None
+        // 2. 自动检测（where/which）
+        Self::find_executable("claude")
     }
 
-    /// 判断是否需要用node启动（从配置读取或检测）
-    fn should_use_node_launcher(claude_path: &str) -> bool {
-        // 1. 从配置读取启动类型
-        if let Ok(config) = crate::store::get_app_config() {
-            if let Some(ref launcher_type) = config.claude_launcher_type {
-                if launcher_type == "node" {
-                    log::info!("Launcher type from config: node");
-                    return true;
-                } else if launcher_type == "direct" {
-                    log::info!("Launcher type from config: direct");
-                    return false;
-                }
-            }
-        }
-
-        // 2. 配置无值时进行检测
-        let needs_node = Self::detect_needs_node(claude_path);
-
-        // 3. 保存检测结果到配置
-        let launcher_type = if needs_node { "node" } else { "direct" };
-        let updates = serde_json::json!({ "claudeLauncherType": launcher_type });
-        if let Err(e) = crate::store::update_app_config(updates) {
-            log::warn!("Failed to save launcher type: {}", e);
-        }
-
-        needs_node
-    }
-
-    /// 检测文件是否需要node执行
-    fn detect_needs_node(path: &str) -> bool {
-        // 1. 直接检查扩展名
-        if path.ends_with(".js") {
-            log::info!("Direct .js file: {}", path);
-            return true;
-        }
-
-        // 2. 检查文件内容
-        if let Ok(content) = std::fs::read_to_string(path) {
-            let first_lines = content.lines().take(5).collect::<Vec<_>>();
-
-            // 检查node shebang
-            if first_lines.iter().any(|line| line.contains("#!/usr/bin/env node")) {
-                log::info!("Detected Node.js script by shebang: {}", path);
-                return true;
-            }
-
-            // 检查Anthropic版权信息（cli.js的特征）
-            if first_lines.iter().any(|line|
-                line.contains("// (c) Anthropic") && line.contains("Version:")
-            ) {
-                log::info!("Detected Anthropic CLI.js by content: {}", path);
-                return true;
-            }
-        }
-
-        // 3. Mac/Linux: 解析符号链接
-        #[cfg(not(target_os = "windows"))]
-        {
-            if let Ok(full_path) = std::fs::canonicalize(path) {
-                let full_path_str = full_path.to_string_lossy();
-
-                // 检查真实文件扩展名
-                if full_path_str.ends_with(".js") {
-                    log::info!("Symlink points to .js file: {} -> {}", path, full_path_str);
-                    return true;
-                }
-
-                // 检查真实文件内容
-                if let Ok(content) = std::fs::read_to_string(&full_path) {
-                    let first_lines = content.lines().take(5).collect::<Vec<_>>();
-                    if first_lines.iter().any(|line| line.contains("#!/usr/bin/env node")) {
-                        log::info!("Real file is Node.js script: {}", full_path_str);
-                        return true;
-                    }
-                    // 检查Anthropic版权信息
-                    if first_lines.iter().any(|line|
-                        line.contains("// (c) Anthropic") && line.contains("Version:")
-                    ) {
-                        log::info!("Real file is Anthropic CLI.js: {}", full_path_str);
-                        return true;
-                    }
-                }
-            }
-        }
-
-        false
-    }
-
-    /// 构建环境变量（继承父进程环境 + 自定义设置）
-    fn build_env_vars(cwd: &str) -> Vec<(String, String)> {
-        let mut env_vars: Vec<(String, String)> = Vec::new();
-
-        // 基础终端环境变量
-        env_vars.push(("TERM".to_string(), "xterm-256color".to_string()));
-        env_vars.push(("COLORTERM".to_string(), "truecolor".to_string()));
-        env_vars.push(("PWD".to_string(), cwd.to_string()));
-
-        // Windows 特定：Git Bash 路径
-        if cfg!(target_os = "windows") {
-            if let Some(git_bash) = Self::detect_git_bash() {
-                env_vars.push(("CLAUDE_CODE_GIT_BASH_PATH".to_string(), git_bash));
-            }
-        }
-
-        env_vars
-    }
-
-    /// 启动 Claude CLI
+    /// 启动 Claude CLI（通过 shell 执行，模拟终端行为）
+    ///
+    /// 核心思路：PTY 启动 shell，然后在 shell 里运行 `claude` 命令。
+    /// 这与用户在终端里直接输入 `claude` 的行为完全一致，
+    /// 不管 claude 是 npm 安装还是原生可执行文件，都能正常工作。
     pub fn spawn_claude(
         &self,
         cwd: &str,
@@ -291,7 +180,7 @@ impl PtyManager {
     ) -> Result<PtyInfo> {
         let id = Uuid::new_v4().to_string();
         log::info!(
-            "Spawning Claude CLI with id={}, cwd={}, size={}x{}",
+            "Spawning Claude CLI via shell with id={}, cwd={}, size={}x{}",
             id,
             cwd,
             cols,
@@ -317,8 +206,8 @@ impl PtyManager {
             })
             .with_context(|| format!("Failed to open PTY with size {}x{}", cols, rows))?;
 
-        // 检测 Claude CLI 路径
-        let claude_path = match Self::detect_claude_path() {
+        // 获取 Claude CLI 路径（配置优先，其次自动检测）
+        let claude_path = match Self::get_claude_path() {
             Some(p) => p,
             None => {
                 let err_msg = "Claude CLI not found. Please install Claude CLI first (npm install -g @anthropic-ai/claude-code)";
@@ -328,78 +217,90 @@ impl PtyManager {
             }
         };
 
-        // Windows: 非 .exe 路径需要特殊处理
-        // Mac/Linux: 检测启动类型，node脚本需要用node执行
-        let mut cmd = if cfg!(target_os = "windows")
-            && !claude_path.to_lowercase().ends_with(".exe")
-        {
-            // Windows上检查是否是node脚本
-            if Self::should_use_node_launcher(&claude_path) {
-                let node_path = match Self::find_executable("node") {
-                    Some(p) => p,
-                    None => {
-                        let err_msg = "Claude CLI is a Node.js script but 'node' command not found. Please install Node.js first.";
-                        log::error!("{}", err_msg);
-                        self.emit_error(&id, err_msg, "node_detection");
-                        return Err(anyhow!("{}", err_msg));
-                    }
+        // 构建启动命令
+        // 如果是自定义路径（不在标准 PATH 中），使用完整路径
+        // 如果是自动检测的路径（在 PATH 中），直接使用 "claude" 命令名
+        let claude_cmd = if let Ok(config) = crate::store::get_app_config() {
+            if let Some(ref custom_path) = config.claude_path {
+                // 用户配置了自定义路径，使用完整路径确保正确
+                let base = if let Some(extra_args) = &args {
+                    format!("\"{}\" {}", custom_path, extra_args.join(" "))
+                } else {
+                    format!("\"{}\"", custom_path)
                 };
-                log::info!("Windows Node.js script, using node to launch: {} {}", node_path, claude_path);
-                let mut c = CommandBuilder::new(&node_path);
-                c.arg(&claude_path);
-                c
+                log::info!("Using custom Claude path: {}", custom_path);
+                base
             } else {
-                // Windows shim脚本用cmd.exe执行
-                log::info!("Windows shim, using cmd.exe to launch: {}", claude_path);
-                let mut c = CommandBuilder::new("cmd.exe");
-                c.arg("/C");
-                c.arg(&claude_path);
-                c
-            }
-        } else if Self::should_use_node_launcher(&claude_path) {
-            // Mac/Linux: node脚本需要用node执行
-            let node_path = match Self::find_executable("node") {
-                Some(p) => p,
-                None => {
-                    let err_msg = "Claude CLI is a Node.js script but 'node' command not found. Please install Node.js first.";
-                    log::error!("{}", err_msg);
-                    self.emit_error(&id, err_msg, "node_detection");
-                    return Err(anyhow!("{}", err_msg));
+                // 自动检测的路径，使用命令名（shell 自动从 PATH 查找）
+                if let Some(extra_args) = &args {
+                    format!("claude {}", extra_args.join(" "))
+                } else {
+                    "claude".to_string()
                 }
-            };
-            log::info!("Using Node.js to launch Claude CLI: {} {}", node_path, claude_path);
-            let mut c = CommandBuilder::new(&node_path);
-            c.arg(&claude_path);
-            c
+            }
         } else {
-            CommandBuilder::new(&claude_path)
+            if let Some(extra_args) = &args {
+                format!("claude {}", extra_args.join(" "))
+            } else {
+                "claude".to_string()
+            }
         };
 
-        // 添加参数
-        if let Some(extra_args) = &args {
-            for arg in extra_args {
-                cmd.arg(arg);
+        // 构建命令：不同平台使用不同的 shell
+        let mut cmd = if cfg!(target_os = "windows") {
+            // Windows: 使用 Git Bash 或 PowerShell
+            if let Some(git_bash) = Self::detect_git_bash() {
+                log::info!("Using Git Bash to launch Claude: {}", git_bash);
+                let mut c = CommandBuilder::new(&git_bash);
+                c.arg("-c");
+                c.arg(&claude_cmd);
+                c
+            } else {
+                // fallback: PowerShell
+                log::info!("Using PowerShell to launch Claude");
+                let mut c = CommandBuilder::new("powershell.exe");
+                c.arg("-NoLogo");
+                c.arg("-Command");
+                c.arg(&claude_cmd);
+                c
             }
-        }
+        } else {
+            // Mac/Linux: 使用 bash -i（交互模式，加载用户配置）
+            log::info!("Using bash -i to launch Claude");
+            let mut c = CommandBuilder::new("/bin/bash");
+            c.arg("-i");
+            c.arg("-c");
+            c.arg(&claude_cmd);
+            c
+        };
+
         cmd.cwd(cwd);
 
-        // 关键：先继承所有父进程环境变量，再添加自定义
+        // 关键：继承所有父进程环境变量（确保 PATH 正确）
         for (key, value) in env::vars() {
             cmd.env(key, value);
         }
 
-        // 添加自定义环境变量（会覆盖同名的父进程变量）
-        for (key, value) in Self::build_env_vars(cwd) {
-            cmd.env(key, value);
+        // 添加终端环境变量
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
+
+        // Windows 特定：Claude CLI 需要知道 Git Bash 的位置
+        // 即使通过 bash 运行，非交互模式下 Claude 可能无法自动检测
+        if cfg!(target_os = "windows") {
+            if let Some(git_bash) = Self::detect_git_bash() {
+                cmd.env("CLAUDE_CODE_GIT_BASH_PATH", &git_bash);
+                log::debug!("Set CLAUDE_CODE_GIT_BASH_PATH={}", git_bash);
+            }
         }
 
-        log::debug!("Command: {:?} with args: {:?}", claude_path, args);
+        log::debug!("Shell command: {:?}", claude_cmd);
 
-        // 启动进程 - 存储 child 句柄
+        // 启动进程
         let child = match pair.slave.spawn_command(cmd) {
             Ok(c) => c,
             Err(e) => {
-                let err_msg = format!("Failed to spawn Claude CLI '{}': {}", claude_path, e);
+                let err_msg = format!("Failed to spawn shell command '{}': {}", claude_cmd, e);
                 log::error!("{}", err_msg);
                 self.emit_error(&id, &err_msg, "spawn");
                 return Err(anyhow!("{}", err_msg));
@@ -456,7 +357,7 @@ impl PtyManager {
         self.instances.lock().insert(id.clone(), instance);
         self.writers.lock().insert(id.clone(), writer);
 
-        log::info!("[{}] Claude CLI spawned successfully", id);
+        log::info!("[{}] Claude CLI spawned successfully via shell", id);
 
         Ok(PtyInfo {
             id,

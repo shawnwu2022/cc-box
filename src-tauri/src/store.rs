@@ -73,9 +73,6 @@ pub struct AppConfig {
     pub claude_path: Option<String>,
     #[serde(rename = "gitBashPath")]
     pub git_bash_path: Option<String>,
-    /// Claude启动类型："direct" 或 "node"
-    #[serde(rename = "claudeLauncherType")]
-    pub claude_launcher_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
