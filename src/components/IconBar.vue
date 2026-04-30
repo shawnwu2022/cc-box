@@ -60,8 +60,8 @@
       <button
         class="icon-btn settings-btn"
         :class="{ active: sidebarStore.showSettings }"
-        @click="$emit('toggleSettings')"
-        title="Settings"
+        @click="handleSettingsClick"
+        title="Settings (Ctrl+,)"
       >
         <img src="@/assets/icons/settings.svg" alt="Settings" />
         <span v-if="sidebarStore.updateAvailable" class="update-badge"></span>
@@ -94,6 +94,14 @@ defineEmits<{
 }>()
 
 const sidebarStore = useSidebarStore()
+
+function handleSettingsClick() {
+  if (sidebarStore.updateAvailable) {
+    sidebarStore.openSettings('update')
+  } else {
+    sidebarStore.toggleSettings()
+  }
+}
 </script>
 
 <style scoped>

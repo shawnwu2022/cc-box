@@ -24,44 +24,42 @@
     </div>
 
     <!-- 操作按钮 -->
-    <template v-if="isActive || isHovered">
-      <!-- 重启按钮（已停止的 Tab） -->
-      <button
-        v-if="isStopped"
-        class="action-btn restart-btn"
-        @click.stop="$emit('restart', id)"
-        title="Restart"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="23 4 23 10 17 10"/>
-          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-        </svg>
-      </button>
-      <!-- 重命名按钮 -->
-      <button
-        v-if="isActive"
-        class="action-btn rename-btn"
-        @click.stop="startRename"
-        title="Rename"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-          <path d="m15 5 4 4"/>
-        </svg>
-      </button>
-      <!-- 关闭按钮 -->
-      <button
-        v-if="closable"
-        class="action-btn close-action-btn"
-        @click.stop="$emit('close', id)"
-        title="Close"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
-    </template>
+    <!-- 重启按钮（已停止的 Tab） -->
+    <button
+      v-if="isStopped"
+      class="action-btn restart-btn"
+      @click.stop="$emit('restart', id)"
+      title="Restart"
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+      </svg>
+    </button>
+    <!-- 重命名按钮 -->
+    <button
+      v-if="isActive"
+      class="action-btn rename-btn"
+      @click.stop="startRename"
+      title="Rename"
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+        <path d="m15 5 4 4"/>
+      </svg>
+    </button>
+    <!-- 关闭按钮 -->
+    <button
+      v-if="closable"
+      class="action-btn close-action-btn"
+      @click.stop="$emit('close', id)"
+      title="Close"
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"/>
+        <line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
 
     <!-- 时间信息 -->
     <span class="time-info">{{ timeAgo }}</span>
@@ -92,7 +90,6 @@ const isRenaming = ref(false)
 const newName = ref('')
 const renameInputRef = ref<HTMLInputElement>()
 const inputWidth = ref('auto')
-const isHovered = ref(false)
 
 // 计算时间差
 const timeAgo = computed(() => {
@@ -250,13 +247,19 @@ function cancelRename() {
   color: var(--text-secondary);
   cursor: pointer;
   border-radius: 3px;
-  opacity: 0;
-  transition: opacity 0.15s ease;
   flex-shrink: 0;
+}
+
+.session-item:not(:hover) .action-btn {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0s 0.15s;
 }
 
 .session-item:hover .action-btn {
   opacity: 1;
+  visibility: visible;
+  transition: opacity 0.15s ease, visibility 0s;
 }
 
 .action-btn:hover {

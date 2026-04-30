@@ -47,7 +47,7 @@ export function useAppShortcuts() {
   }
 
   // 发送终端操作事件（由 TerminalView 监听）
-  function emitTerminalAction(action: 'newSession' | 'restartSession') {
+  function emitTerminalAction(action: 'newSession' | 'restartSession' | 'backToProjects') {
     window.dispatchEvent(new CustomEvent(`terminal:${action}`))
   }
 
@@ -106,6 +106,15 @@ export function useAppShortcuts() {
       e.stopPropagation()
       try { await ptyKillAll() } catch { /* ignore */ }
       window.location.reload()
+      return
+    }
+
+    // Ctrl+Shift+H — 回到 Project Select（仅终端视图有效）
+    if (ctrl && shift && key === 'h') {
+      if (!isTerminalVisible()) return
+      e.preventDefault()
+      e.stopPropagation()
+      emitTerminalAction('backToProjects')
       return
     }
 

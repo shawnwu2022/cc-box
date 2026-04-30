@@ -61,7 +61,7 @@
       <div class="action-buttons">
         <button
           class="action-btn with-hint"
-          @click="$emit('newSession')"
+          @click="applyLocalOptionsToStore(); $emit('newSession')"
           title="New session (Alt+N)"
         >
           <div class="btn-content">
@@ -72,7 +72,7 @@
         </button>
         <button
           class="action-btn with-hint"
-          @click="$emit('restartSession')"
+          @click="applyLocalOptionsToStore(); $emit('restartSession')"
           :disabled="!sessionStore.activeTab"
           title="Restart session (Alt+R)"
         >
@@ -140,10 +140,10 @@ const filteredHistory = computed(() => {
   )
 })
 
-// 同步选项到 store
-watch(localOptions, (val) => {
-  appStore.setClaudeOptions(val)
-}, { deep: true })
+// 同步选项到 store（仅在使用时临时设置，不持续同步）
+function applyLocalOptionsToStore() {
+  appStore.setClaudeOptions(localOptions.value)
+}
 
 watch(() => appStore.cwd, (newCwd) => {
   if (newCwd) {

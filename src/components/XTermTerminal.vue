@@ -147,6 +147,7 @@ function createTerminal(tabId: string): Terminal {
     theme: lightTheme,
     allowProposedApi: true,
     macOptionIsMeta: true,
+    scrollback: 10000,
   })
 
   const fitAddon = new FitAddon()
@@ -282,6 +283,8 @@ watch(() => sessionStore.activeTabId, async (newTabId, oldTabId) => {
   const existingInstance = terminalInstances.get(newTabId)
 
   if (existingInstance) {
+    const buf = existingInstance.term.buffer.active
+    existingInstance.term.refresh(0, Math.max(buf.length - 1, 0))
     requestAnimationFrame(() => existingInstance.fitAddon.fit())
   } else {
     const tab = sessionStore.tabs.get(newTabId)
@@ -308,8 +311,18 @@ async function createTerminalForTab(tabId: string, ptyId: string) {
 
   const el = await waitForElement(tabId)
   if (el) {
+    // display:none 时 xterm 无法获取尺寸，临时显示
+    const isActive = tabId === currentDisplayTabId.value
+    if (!isActive) el.style.display = 'block'
+
     term.open(el)
-    if (tabId === currentDisplayTabId.value) {
+
+    if (!isActive) {
+      requestAnimationFrame(() => {
+        fitAddon.fit()
+        el.style.display = ''
+      })
+    } else {
       requestAnimationFrame(() => fitAddon.fit())
     }
   }
@@ -442,6 +455,8 @@ async function restartTab(tabId: string) {
         sessionStore.startMatchPolling(tabId)
       }
     }
+
+    appStore.resetClaudeOptions()
   } catch (err) {
     console.error('[XTerm] restartTab ERROR:', err)
     logMessage('error', `restartTab failed, tabId=${tabId}: ${err}`)
@@ -502,6 +517,7 @@ async function startNewSession(cwd: string) {
   const tabId = sessionStore.createTab(cwd)
   sessionStore.setActiveTab(tabId)
   await startTab(tabId)
+  appStore.resetClaudeOptions()
 }
 
 // 清理所有 PTY
@@ -582,13 +598,11 @@ defineExpose({
   height: 100%;
   padding: 8px;
   box-sizing: border-box;
-  visibility: hidden;
-  pointer-events: none;
+  display: none;
 }
 
 .terminal-wrapper.active {
-  visibility: visible;
-  pointer-events: auto;
+  display: block;
 }
 
 .terminal-wrapper :deep(.xterm) {

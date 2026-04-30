@@ -2,13 +2,13 @@
   <header class="terminal-header">
     <span class="project-name">{{ projectName }}</span>
     <div class="header-right">
-      <button class="header-btn" @click="snapWindow('left')" title="Snap to left half">
+      <button class="header-btn" @click="snapWindow('left')" title="Snap to left half (Ctrl+Shift+←)">
         <img src="@/assets/icons/half-left.svg" alt="Snap left" />
       </button>
-      <button class="header-btn" @click="snapWindow('right')" title="Snap to right half">
+      <button class="header-btn" @click="snapWindow('right')" title="Snap to right half (Ctrl+Shift+→)">
         <img src="@/assets/icons/half-right.svg" alt="Snap right" />
       </button>
-      <button class="header-btn home-btn" @click="$emit('back')" title="Back to projects">
+      <button class="header-btn home-btn" @click="$emit('back')" title="Back to projects (Ctrl+Shift+H)">
         <img src="@/assets/icons/home.svg" alt="Home" />
       </button>
     </div>

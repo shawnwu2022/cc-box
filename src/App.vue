@@ -78,7 +78,8 @@ import {
   onMenuShortcuts,
   onConfigFontSize,
   onTerminalRestart,
-  updateAppConfig
+  updateAppConfig,
+  checkForUpdates
 } from '@/api/tauri'
 import { useAppShortcuts } from '@/composables/useAppShortcuts'
 import WelcomeView from '@/components/WelcomeView.vue'
@@ -222,6 +223,13 @@ function initAfterChecks() {
       appStore.setCwd(data.cwd)
     }
   }).then(fn => { unlistenRestart = fn })
+
+  // 后台检查更新
+  checkForUpdates().then(info => {
+    if (info.hasUpdate) {
+      sidebarStore.updateAvailable = true
+    }
+  }).catch(() => {})
 }
 
 async function savePathsAndRetry() {
