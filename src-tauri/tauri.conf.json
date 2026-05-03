@@ -46,7 +46,7 @@
       "frameworks": [],
       "minimumSystemVersion": "10.13",
       "exceptionDomain": "",
-      "signingIdentity": null,
+      "signingIdentity": "-",
       "hardenedRuntime": false,
       "entitlements": null
     },
