@@ -133,71 +133,75 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           TAG="${GITHUB_REF#refs/tags/}"
           BODY=$(gh release view "$TAG" --json body -q '.body')
           NAME=$(gh release view "$TAG" --json name -q '.name')
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
-          echo "$BODY" > release_body.md
+          echo "$BODY" > /tmp/release_body.txt
+
+      - name: Download GitHub release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.gh_release.outputs.tag }}"
+          mkdir -p /tmp/release-assets
+          gh release download "$TAG" --dir /tmp/release-assets --repo "$GITHUB_REPOSITORY"
+          echo "Downloaded assets:"
+          ls -la /tmp/release-assets
 
       - name: Create Gitee Release and Upload Assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
+          set -euo pipefail
           TAG="${{ steps.gh_release.outputs.tag }}"
           NAME="${{ steps.gh_release.outputs.name }}"
-          BODY=$(cat release_body.md)
+          GITEE_API="https://gitee.com/api/v5/repos/orczh/cc-box"
 
           # Check if release already exists on Gitee
-          EXISTING=$(curl -s "https://gitee.com/api/v5/repos/orczh/cc-box/releases/tags/$TAG?access_token=$GITEE_TOKEN")
-          RELEASE_ID=$(echo "$EXISTING" | python3 -c "
-          import sys, json
-          try:
-              data = json.load(sys.stdin)
-              if isinstance(data, dict) and 'id' in data:
-                  print(data['id'])
-                  sys.exit(0)
-          except: pass
-          sys.exit(1)
-          " 2>/dev/null || true)
+          HTTP_CODE=$(curl -s -o /tmp/gitee_existing.json -w "%{http_code}" \
+            "${GITEE_API}/releases/tags/${TAG}?access_token=${GITEE_TOKEN}")
 
-          if [ -n "$RELEASE_ID" ]; then
+          RELEASE_ID=""
+          if [ "$HTTP_CODE" = "200" ]; then
+            RELEASE_ID=$(jq -r '.id' /tmp/gitee_existing.json)
             echo "Release $TAG already exists on Gitee (id=$RELEASE_ID), uploading assets..."
           else
-            # Create release
-            RESPONSE=$(curl -s -X POST "https://gitee.com/api/v5/repos/orczh/cc-box/releases" \
-              -d "access_token=$GITEE_TOKEN" \
-              -d "tag_name=$TAG" \
-              -d "name=${NAME:-$TAG}" \
-              -d "body=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.stdin.read()))" <<< "$BODY")" \
-              -d "prerelease=false")
-            RELEASE_ID=$(echo "$RESPONSE" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-if isinstance(data, dict) and 'id' in data:
-    print(data['id'])
-else:
-    print(f'ERROR: {data}', file=sys.stderr)
-    sys.exit(1)
-")
+            echo "Release $TAG not found on Gitee (HTTP $HTTP_CODE), creating..."
+            RESPONSE=$(curl -s -X POST "${GITEE_API}/releases" \
+              --data-urlencode "access_token=${GITEE_TOKEN}" \
+              --data-urlencode "tag_name=${TAG}" \
+              --data-urlencode "name=${NAME:-${TAG}}" \
+              --data-urlencode "body@/tmp/release_body.txt" \
+              --data-urlencode "prerelease=false")
+            RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')
+            if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+              echo "ERROR: Failed to create Gitee release. Response:"
+              echo "$RESPONSE" | jq . 2>/dev/null || echo "$RESPONSE"
+              exit 1
+            fi
             echo "Created Gitee release $TAG (id=$RELEASE_ID)"
           fi
 
-          # Download GitHub release assets and upload to Gitee
-          ASSETS=$(gh release view "$TAG" --json assets -q '.assets[] | "\(.name) \(.url)"')
-
-          mkdir -p /tmp/release-assets
-          while IFS=' ' read -r name url; do
-            [ -z "$name" ] && continue
-            echo "Downloading $name..."
-            curl -sL -o "/tmp/release-assets/$name" -H "Authorization: token $GITHUB_TOKEN" "$url"
-
-            echo "Uploading $name to Gitee (release_id=$RELEASE_ID)..."
-            curl -s -X POST "https://gitee.com/api/v5/repos/orczh/cc-box/releases/$RELEASE_ID/attach_files" \
-              -F "access_token=$GITEE_TOKEN" \
-              -F "file=@/tmp/release-assets/$name"
-            echo ""
-          done <<< "$ASSETS"
+          # Upload all downloaded assets to Gitee
+          UPLOAD_URL="${GITEE_API}/releases/${RELEASE_ID}/attach_files"
+          for file in /tmp/release-assets/*; do
+            [ -f "$file" ] || continue
+            FNAME=$(basename "$file")
+            echo "Uploading $FNAME to Gitee (release_id=$RELEASE_ID)..."
+            HTTP_CODE=$(curl -s -o /tmp/gitee_upload.json -w "%{http_code}" \
+              -X POST "$UPLOAD_URL" \
+              -F "access_token=${GITEE_TOKEN}" \
+              -F "file=@${file}")
+            if [ "$HTTP_CODE" -ge 300 ] || [ "$HTTP_CODE" -lt 200 ]; then
+              echo "WARNING: Upload of $FNAME returned HTTP $HTTP_CODE"
+              cat /tmp/gitee_upload.json
+            else
+              echo "  Uploaded: $FNAME (HTTP $HTTP_CODE)"
+            fi
+          done
 
           echo "All assets uploaded to Gitee"
