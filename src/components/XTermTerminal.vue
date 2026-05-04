@@ -1,5 +1,5 @@
 <template>
-  <div ref="containerRef" class="xterm-container">
+  <div ref="containerRef" class="xterm-container" :class="{ 'drag-over': isDragOver }">
     <!-- 动态渲染每个 Tab 的终端容器 -->
     <div
       v-for="[tabId] in terminalInstances"
@@ -31,6 +31,7 @@ import {
 import { registerTerminalCommand } from '@/composables/useTerminalCommand'
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 
 const props = defineProps<{
   fontSize?: number
@@ -43,6 +44,7 @@ const emit = defineEmits<{
 const appStore = useAppStore()
 const sessionStore = useSessionStore()
 const containerRef = ref<HTMLElement>()
+const isDragOver = ref(false)
 
 // 等待 DOM 元素可用
 async function waitForElement(tabId: string, timeout = 10000): Promise<HTMLElement | null> {
@@ -83,6 +85,7 @@ const isPtyStarting = ref<boolean>(false)
 // Unlisten functions
 let unlistenPtyOutput: (() => void) | null = null
 let unlistenPtyExit: (() => void) | null = null
+let unlistenDragDrop: (() => void) | null = null
 
 // ResizeObserver
 let resizeObserver: ResizeObserver | null = null
@@ -223,6 +226,22 @@ onMounted(async () => {
 
 // 设置事件监听器
 async function setupEventListeners() {
+  // 文件拖放 → 将路径输入终端
+  unlistenDragDrop = await getCurrentWebview().onDragDropEvent((event) => {
+    if (event.payload.type === 'drop') {
+      isDragOver.value = false
+      const paths = event.payload.paths
+      if (paths.length > 0) {
+        const text = paths.map(p => p.includes(' ') ? `"${p}"` : p).join(' ')
+        sendText(text)
+      }
+    } else if (event.payload.type === 'enter' || event.payload.type === 'over') {
+      isDragOver.value = true
+    } else {
+      isDragOver.value = false
+    }
+  })
+
   // PTY 输出 → 写入对应 Tab 的 Terminal + 触发会话匹配
   unlistenPtyOutput = await onPtyOutput(({ id, data }) => {
     for (const [tabId, instance] of terminalInstances) {
@@ -560,6 +579,7 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
   unlistenPtyOutput?.()
   unlistenPtyExit?.()
+  unlistenDragDrop?.()
   for (const instance of terminalInstances.values()) {
     instance.term.dispose()
   }
@@ -588,6 +608,11 @@ defineExpose({
   border-radius: 8px;
   position: relative;
   overflow: hidden;
+  transition: box-shadow 0.15s ease;
+}
+
+.xterm-container.drag-over {
+  box-shadow: inset 0 0 0 2px var(--accent-gold);
 }
 
 .terminal-wrapper {
