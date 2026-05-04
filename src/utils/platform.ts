@@ -11,3 +11,6 @@ export function detectPlatform(): Platform {
 export const platform = detectPlatform()
 export const isMac = platform === 'macos'
 export const isWindows = platform === 'windows'
+
+export const ctrl = isMac ? 'Control' : 'Ctrl'
+export const alt = isMac ? 'Option' : 'Alt'

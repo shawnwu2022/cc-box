@@ -4,13 +4,13 @@
       <span v-if="sessionName" class="header-title">{{ sessionName }}</span>
     </div>
     <div class="header-right">
-      <button class="header-btn" @click="snapWindow('left')" title="Snap to left half (Ctrl+Shift+←)">
+      <button class="header-btn" @click="snapWindow('left')" :title="`Snap to left half (${ctrl}+Shift+←)`">
         <img src="@/assets/icons/half-left.svg" alt="Snap left" />
       </button>
-      <button class="header-btn" @click="snapWindow('right')" title="Snap to right half (Ctrl+Shift+→)">
+      <button class="header-btn" @click="snapWindow('right')" :title="`Snap to right half (${ctrl}+Shift+→)`">
         <img src="@/assets/icons/half-right.svg" alt="Snap right" />
       </button>
-      <button class="header-btn home-btn" @click="$emit('back')" title="Back to projects (Ctrl+Shift+H)">
+      <button class="header-btn home-btn" @click="$emit('back')" :title="`Back to projects (${ctrl}+Shift+H)`">
         <img src="@/assets/icons/home.svg" alt="Home" />
       </button>
     </div>
@@ -21,6 +21,7 @@
 import { computed } from 'vue'
 import { snapWindow } from '@/composables/useAppShortcuts'
 import { useSessionStore } from '@/stores/session'
+import { ctrl } from '@/utils/platform'
 
 defineProps<{
   projectName: string

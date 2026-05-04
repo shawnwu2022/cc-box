@@ -61,7 +61,7 @@
         class="icon-btn settings-btn"
         :class="{ active: sidebarStore.showSettings }"
         @click="handleSettingsClick"
-        title="Settings (Ctrl+,)"
+        :title="`Settings (${ctrl}+,)`"
       >
         <img src="@/assets/icons/settings.svg" alt="Settings" />
         <span v-if="sidebarStore.updateAvailable" class="update-badge"></span>
@@ -82,6 +82,7 @@
 <script setup lang="ts">
 import type { SidebarPanelType } from '@/stores/sidebar'
 import { useSidebarStore } from '@/stores/sidebar'
+import { ctrl } from '@/utils/platform'
 
 defineProps<{
   activePanel: SidebarPanelType

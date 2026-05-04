@@ -4,7 +4,6 @@ import { useAppStore } from '@/stores/app'
 import { useSessionStore } from '@/stores/session'
 import { useSidebarStore } from '@/stores/sidebar'
 import { ptyKillAll, spawnNewInstance } from '@/api/tauri'
-import { isMac } from '@/utils/platform'
 
 export async function snapWindow(side: 'left' | 'right') {
   try {
@@ -13,6 +12,13 @@ export async function snapWindow(side: 'left' | 'right') {
     if (!monitor) return
 
     const scaleFactor = monitor.scaleFactor
+
+    // 计算窗口装饰边框尺寸（标题栏 + 边框）
+    const inner = await win.innerSize()
+    const outer = await win.outerSize()
+    const frameWidth = (outer.width - inner.width) / scaleFactor
+    const frameHeight = (outer.height - inner.height) / scaleFactor
+
     const halfWidth = Math.floor(monitor.size.width / scaleFactor / 2)
     const height = window.screen.availHeight
     const x = side === 'left'
@@ -21,7 +27,8 @@ export async function snapWindow(side: 'left' | 'right') {
     const y = monitor.position.y / scaleFactor
 
     await win.setPosition(new LogicalPosition(x, y))
-    await win.setSize(new LogicalSize(halfWidth, height))
+    // setSize 设置的是 webview 内部尺寸，需要减去边框使窗口外部恰好等于半屏
+    await win.setSize(new LogicalSize(halfWidth - frameWidth, height - frameHeight))
   } catch (err) {
     console.error(`Failed to snap ${side}:`, err)
   }
@@ -71,7 +78,7 @@ export function useAppShortcuts() {
   }
 
   function handleGlobalKeydown(e: KeyboardEvent) {
-    const mod = isMac ? e.metaKey : e.ctrlKey
+    const mod = e.ctrlKey
 
     // --- 全局快捷键（所有视图生效） ---
 

@@ -16,35 +16,35 @@
               <p class="hint">These shortcuts are passed directly to the terminal.</p>
               <div class="shortcuts-list">
                 <div class="shortcut-item">
-                  <kbd>Ctrl+C</kbd>
+                  <kbd>{{ ctrl }}+C</kbd>
                   <span>Cancel current input / interrupt</span>
                 </div>
                 <div class="shortcut-item">
-                  <kbd>Ctrl+D</kbd>
+                  <kbd>{{ ctrl }}+D</kbd>
                   <span>Exit Claude session</span>
                 </div>
                 <div class="shortcut-item">
-                  <kbd>Alt+P</kbd>
+                  <kbd>{{ alt }}+P</kbd>
                   <span>Enter plan mode</span>
                 </div>
                 <div class="shortcut-item">
-                  <kbd>Ctrl+L</kbd>
+                  <kbd>{{ ctrl }}+L</kbd>
                   <span>Clear terminal screen</span>
                 </div>
                 <div class="shortcut-item">
-                  <kbd>Ctrl+R</kbd>
+                  <kbd>{{ ctrl }}+R</kbd>
                   <span>Search command history</span>
                 </div>
                 <div class="shortcut-item">
-                  <kbd>Ctrl+W</kbd>
+                  <kbd>{{ ctrl }}+W</kbd>
                   <span>Delete word backward</span>
                 </div>
                 <div class="shortcut-item">
-                  <kbd>Ctrl+K</kbd>
+                  <kbd>{{ ctrl }}+K</kbd>
                   <span>Clear line after cursor</span>
                 </div>
                 <div class="shortcut-item">
-                  <kbd>Ctrl+U</kbd>
+                  <kbd>{{ ctrl }}+U</kbd>
                   <span>Clear line before cursor</span>
                 </div>
               </div>
@@ -54,23 +54,23 @@
               <h3>Application Shortcuts</h3>
               <div class="shortcuts-list">
                 <div class="shortcut-item">
-                  <kbd>Ctrl+Shift+N</kbd>
+                  <kbd>{{ ctrl }}+Shift+N</kbd>
                   <span>New window</span>
                 </div>
                 <div class="shortcut-item">
-                  <kbd>Ctrl+Shift+R</kbd>
+                  <kbd>{{ ctrl }}+Shift+R</kbd>
                   <span>Restart application</span>
                 </div>
                 <div class="shortcut-item">
-                  <kbd>Ctrl+,</kbd>
+                  <kbd>{{ ctrl }}+,</kbd>
                   <span>Settings</span>
                 </div>
                 <div class="shortcut-item">
-                  <kbd>Ctrl+Plus/-</kbd>
+                  <kbd>{{ ctrl }}+Plus/-</kbd>
                   <span>Zoom in/out</span>
                 </div>
                 <div class="shortcut-item">
-                  <kbd>Ctrl+0</kbd>
+                  <kbd>{{ ctrl }}+0</kbd>
                   <span>Reset zoom</span>
                 </div>
               </div>
@@ -118,6 +118,8 @@
 </template>
 
 <script setup lang="ts">
+import { ctrl, alt } from '@/utils/platform'
+
 defineProps<{
   visible: boolean
 }>()

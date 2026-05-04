@@ -64,7 +64,7 @@
       <header class="panel-header">
         <div class="header-row">
           <h2>Projects</h2>
-          <button class="settings-btn" @click="handleSettingsClick" title="Settings (Ctrl+,)">
+          <button class="settings-btn" @click="handleSettingsClick" :title="`Settings (${ctrl}+,)`">
             <img src="@/assets/icons/settings.svg" alt="Settings" />
             <span v-if="sidebarStore.updateAvailable" class="update-badge"></span>
           </button>
@@ -135,6 +135,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useSidebarStore } from '@/stores/sidebar'
+import { ctrl } from '@/utils/platform'
 import type { SessionInfo } from '@/api/tauri'
 
 const emit = defineEmits<{

@@ -17,47 +17,45 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-
-const isMac = computed(() => navigator.userAgent.includes('Mac'))
-const alt = computed(() => isMac.value ? 'Option' : 'Alt')
+import { ctrl, alt, isMac } from '@/utils/platform'
 
 const filteredGroups = computed(() => [
   {
     title: 'Application Shortcuts',
     hint: '',
     items: [
-      { key: 'Ctrl+Shift+N', desc: 'Open new window' },
-      { key: 'Ctrl+Shift+← / →', desc: 'Snap window to left / right half' },
-      { key: 'Ctrl+Shift+R', desc: 'Restart application' },
-      { key: 'Ctrl+Shift+H', desc: 'Back to project select' },
-      { key: 'Ctrl+,', desc: 'Toggle settings' },
-      { key: 'Ctrl+Plus / −', desc: 'Increase / decrease font size' },
-      { key: 'Ctrl+0', desc: 'Reset font size' },
+      { key: `${ctrl}+Shift+N`, desc: 'Open new window' },
+      { key: `${ctrl}+Shift+← / →`, desc: 'Snap window to left / right half' },
+      { key: `${ctrl}+Shift+R`, desc: 'Restart application' },
+      { key: `${ctrl}+Shift+H`, desc: 'Back to project select' },
+      { key: `${ctrl}+,`, desc: 'Toggle settings' },
+      { key: `${ctrl}+Plus / −`, desc: 'Increase / decrease font size' },
+      { key: `${ctrl}+0`, desc: 'Reset font size' },
     ]
   },
   {
     title: 'Session Management',
     hint: 'Only available in terminal view.',
     items: [
-      { key: `${alt.value}+N`, desc: 'New session' },
-      { key: `${alt.value}+R`, desc: 'Restart session' },
-      { key: `${alt.value}+↑ / ↓`, desc: 'Switch to previous / next tab' },
+      { key: `${alt}+N`, desc: 'New session' },
+      { key: `${alt}+R`, desc: 'Restart session' },
+      { key: `${alt}+↑ / ↓`, desc: 'Switch to previous / next tab' },
     ]
   },
   {
     title: 'Claude Code Shortcuts',
     hint: 'Shortcuts passed directly to the Claude terminal.',
     items: [
-      { key: 'Ctrl+C', desc: 'Cancel current input or generation' },
-      { key: 'Ctrl+D', desc: 'Exit Claude Code session' },
-      { key: `${alt.value}+P`, desc: 'Switch model without clearing prompt' },
-      { key: `${alt.value}+T`, desc: 'Toggle extended thinking' },
-      { key: `${alt.value}+O`, desc: 'Toggle fast mode' },
-      { key: 'Ctrl+L', desc: 'Clear prompt input and redraw screen' },
-      { key: 'Ctrl+R', desc: 'Reverse search command history' },
-      { key: 'Ctrl+O', desc: 'Toggle transcript viewer' },
-      { key: 'Ctrl+B', desc: 'Run task in background' },
-      { key: 'Ctrl+T', desc: 'Toggle task list' },
+      { key: `${ctrl}+C`, desc: 'Cancel current input or generation' },
+      { key: `${ctrl}+D`, desc: 'Exit Claude Code session' },
+      { key: `${alt}+P`, desc: 'Switch model without clearing prompt' },
+      { key: `${alt}+T`, desc: 'Toggle extended thinking' },
+      { key: `${alt}+O`, desc: 'Toggle fast mode' },
+      { key: `${ctrl}+L`, desc: 'Clear prompt input and redraw screen' },
+      { key: `${ctrl}+R`, desc: 'Reverse search command history' },
+      { key: `${ctrl}+O`, desc: 'Toggle transcript viewer' },
+      { key: `${ctrl}+B`, desc: 'Run task in background' },
+      { key: `${ctrl}+T`, desc: 'Toggle task list' },
       { key: 'Esc Esc', desc: 'Rewind or summarize' },
     ]
   },
@@ -65,14 +63,14 @@ const filteredGroups = computed(() => [
     title: 'Text Editing',
     hint: '',
     items: [
-      { key: 'Ctrl+A', desc: 'Move cursor to start of line' },
-      { key: 'Ctrl+E', desc: 'Move cursor to end of line' },
-      { key: 'Ctrl+W', desc: 'Delete previous word' },
-      { key: 'Ctrl+K', desc: 'Delete to end of line' },
-      { key: 'Ctrl+U', desc: 'Delete from cursor to start of line' },
-      { key: 'Ctrl+Y', desc: 'Paste deleted text' },
-      { key: `${alt.value}+B`, desc: 'Move cursor back one word' },
-      { key: `${alt.value}+F`, desc: 'Move cursor forward one word' },
+      { key: `${ctrl}+A`, desc: 'Move cursor to start of line' },
+      { key: `${ctrl}+E`, desc: 'Move cursor to end of line' },
+      { key: `${ctrl}+W`, desc: 'Delete previous word' },
+      { key: `${ctrl}+K`, desc: 'Delete to end of line' },
+      { key: `${ctrl}+U`, desc: 'Delete from cursor to start of line' },
+      { key: `${ctrl}+Y`, desc: 'Paste deleted text' },
+      { key: `${alt}+B`, desc: 'Move cursor back one word' },
+      { key: `${alt}+F`, desc: 'Move cursor forward one word' },
     ]
   },
   {
@@ -80,8 +78,8 @@ const filteredGroups = computed(() => [
     hint: '',
     items: [
       { key: '\\ + Enter', desc: 'Insert newline' },
-      { key: 'Ctrl+J', desc: 'Insert newline (any terminal)' },
-      ...(isMac.value
+      { key: `${ctrl}+J`, desc: 'Insert newline (any terminal)' },
+      ...(isMac
         ? [{ key: 'Shift+Enter', desc: 'Insert newline (iTerm2, WezTerm, etc.)' }]
         : [{ key: 'Shift+Enter', desc: 'Insert newline (if terminal supports it)' }]
       ),
