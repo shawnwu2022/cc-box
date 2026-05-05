@@ -188,7 +188,7 @@ function cancelRename() {
   top: 4px;
   bottom: 4px;
   width: 3px;
-  background: var(--accent-color);
+  background: var(--accent-gold);
   border-radius: 0 2px 2px 0;
 }
 
