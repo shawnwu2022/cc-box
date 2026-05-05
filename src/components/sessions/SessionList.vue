@@ -9,6 +9,7 @@
       :is-running="item.isRunning"
       :is-stopped="item.isStopped"
       :claude-state="item.claudeState"
+      :pending="item.pending"
       :last-active-at="item.lastActiveAt"
       :closable="closable && item.isTab"
       :snippet="item.snippet"
@@ -25,7 +26,6 @@ import { computed } from 'vue'
 import SessionItem from './SessionItem.vue'
 import type { TerminalTab, HistorySession } from '@/stores/session'
 import type { ClaudeState } from '@/types/hook'
-import { useHookStore } from '@/stores/hook'
 
 const props = defineProps<{
   tabs?: TerminalTab[]
@@ -52,9 +52,8 @@ interface ListItem {
   lastActiveAt: number
   snippet?: string
   claudeState?: ClaudeState
+  pending?: boolean
 }
-
-const hookStore = useHookStore()
 
 const items = computed<ListItem[]>(() => {
   const snippets = props.snippetMap
@@ -66,9 +65,8 @@ const items = computed<ListItem[]>(() => {
     isStopped: tab.status === 'stopped',
     isTab: true,
     lastActiveAt: tab.lastActiveAt,
-    claudeState: tab.status === 'running' && tab.ptyId
-      ? hookStore.getStateForPty(tab.ptyId)?.state
-      : undefined,
+    claudeState: tab.status === 'running' ? tab.claudeState : undefined,
+    pending: tab.status === 'running' ? tab.pending : undefined,
   }))
 
   const historyItems: ListItem[] = (props.history ?? []).map(s => ({

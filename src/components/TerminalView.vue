@@ -56,6 +56,7 @@ import { useSidebarStore, type SidebarPanelType } from '@/stores/sidebar'
 import { useConfigStore } from '@/stores/config'
 import { openInFileManager, logMessage } from '@/api/tauri'
 import { sendTerminalCommand } from '@/composables/useTerminalCommand'
+import { useWindowAttention } from '@/composables/useWindowAttention'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import TerminalHeader from './TerminalHeader.vue'
 import XTermTerminal from './XTermTerminal.vue'
@@ -75,6 +76,8 @@ const sessionStore = useSessionStore()
 const sidebarStore = useSidebarStore()
 const configStore = useConfigStore()
 const terminalRef = ref()
+
+useWindowAttention()
 
 // 标记是否已启动 PTY
 let hasStartedPty = false

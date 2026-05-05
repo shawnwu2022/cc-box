@@ -68,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import type { ClaudeState } from '@/types/hook'
 
 const props = defineProps<{
@@ -78,6 +78,7 @@ const props = defineProps<{
   isRunning?: boolean
   isStopped?: boolean
   claudeState?: ClaudeState
+  pending?: boolean
   lastActiveAt: number
   closable?: boolean
   snippet?: string
@@ -86,36 +87,14 @@ const props = defineProps<{
 const WORKING_STATES: ClaudeState[] = ['thinking', 'tool_executing', 'subagent_running', 'compacting']
 const PENDING_STATES: ClaudeState[] = ['waiting_permission', 'waiting_input']
 
-// 非当前 tab 工作结束后，标记"有未读结果"
-const hasPending = ref(false)
-
-watch(() => props.claudeState, (newState, oldState) => {
-  const fromWorking = WORKING_STATES.includes(oldState as ClaudeState)
-  const toIdle = newState === 'idle'
-  console.log('[session-item]', props.name, `claudeState: ${oldState ?? '—'} → ${newState}`, `isActive: ${props.isActive}`, `fromWorking: ${fromWorking}`, `toIdle: ${toIdle}`)
-  if (fromWorking && toIdle && !props.isActive) {
-    hasPending.value = true
-    console.log('[session-item]', props.name, '→ hasPending = true')
-  }
-})
-
-watch(() => props.isActive, (active) => {
-  if (active && hasPending.value) {
-    console.log('[session-item]', props.name, '→ hasPending = false (became active)')
-  }
-  if (active) hasPending.value = false
-})
-
 const dotClass = computed(() => {
-  let result: string
-  if (props.isStopped && !props.isActive) result = 'closed'
-  else if (props.isStopped) result = 'stopped'
-  else if (hasPending.value && !props.isActive) result = 'pending'
-  else if (props.claudeState && WORKING_STATES.includes(props.claudeState)) result = 'working'
-  else if (props.claudeState && PENDING_STATES.includes(props.claudeState)) result = 'pending'
-  else if (props.isRunning) result = 'running'
-  else result = ''
-  return result
+  if (props.isStopped && !props.isActive) return 'closed'
+  if (props.isStopped) return 'stopped'
+  if (props.claudeState && WORKING_STATES.includes(props.claudeState)) return 'working'
+  if (props.claudeState && PENDING_STATES.includes(props.claudeState)) return 'pending'
+  if (props.pending && !props.isActive) return 'pending'
+  if (props.isRunning) return 'running'
+  return ''
 })
 
 const emit = defineEmits<{

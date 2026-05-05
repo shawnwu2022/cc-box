@@ -379,14 +379,7 @@ pub fn get_home_data(project_limit: usize, session_limit: usize) -> Result<HomeD
             continue;
         }
 
-        let last_modified = fs::metadata(&path)
-            .and_then(|m| m.modified())
-            .map(|t| {
-                t.duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0)
-            })
-            .unwrap_or(0);
+        let last_modified = get_project_last_modified(&path);
 
         projects.push(Project {
             path: real_path.clone(),
@@ -458,15 +451,7 @@ pub fn get_projects(limit: Option<usize>, offset: Option<usize>) -> Result<Vec<P
             continue;
         }
 
-        // 优先用目录修改时间（快），避免遍历所有 JSONL 文件
-        let last_modified = fs::metadata(&path)
-            .and_then(|m| m.modified())
-            .map(|t| {
-                t.duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0)
-            })
-            .unwrap_or(0);
+        let last_modified = get_project_last_modified(&path);
 
         let project = Project {
             path: real_path.clone(),

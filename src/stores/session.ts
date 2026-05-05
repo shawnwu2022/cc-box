@@ -7,6 +7,12 @@ import {
   searchSessionMessages
 } from '@/api/tauri'
 import type { SessionSearchResult } from '@/types'
+import type { ClaudeState } from '@/types/hook'
+
+const WORKING_STATES: ClaudeState[] = ['thinking', 'tool_executing', 'subagent_running', 'compacting']
+const PENDING_STATES: ClaudeState[] = ['waiting_permission', 'waiting_input']
+const ACTIVE_STATES: ClaudeState[] = [...WORKING_STATES, ...PENDING_STATES]
+const STALENESS_THRESHOLD_MS = 120_000
 
 // ==================== Tab-Centric 数据模型 ====================
 
@@ -27,6 +33,10 @@ export interface TerminalTab {
   status: 'starting' | 'running' | 'stopped'
   createdAt: number
   lastActiveAt: number
+  claudeState: ClaudeState   // Claude 运行时状态
+  model?: string             // 模型名
+  lastStateUpdateAt: number  // 上次状态更新时间（用于过期检测）
+  pending: boolean           // 是否需要用户关注
 }
 
 /**
@@ -109,6 +119,9 @@ export const useSessionStore = defineStore('session', () => {
       status: 'stopped',
       createdAt: now,
       lastActiveAt: now,
+      claudeState: 'unknown',
+      lastStateUpdateAt: now,
+      pending: false,
     })
 
     return tabId
@@ -135,6 +148,7 @@ export const useSessionStore = defineStore('session', () => {
       if (tab.ptyId === ptyId) {
         tab.ptyId = null
         tab.status = 'stopped'
+        tab.claudeState = 'unknown'
         tab.lastActiveAt = Date.now()
         break
       }
@@ -277,6 +291,10 @@ export const useSessionStore = defineStore('session', () => {
   // ---- 活跃 Tab 管理 ----
 
   function setActiveTab(tabId: string | null) {
+    if (tabId) {
+      const tab = tabs.get(tabId)
+      if (tab) tab.pending = false
+    }
     activeTabId.value = tabId
   }
 
@@ -294,6 +312,57 @@ export const useSessionStore = defineStore('session', () => {
       if (tab.ptyId === ptyId) return tab
     }
     return null
+  }
+
+  // ---- Claude 运行时状态 ----
+
+  function updateClaudeState(ptyId: string, state: ClaudeState, model?: string) {
+    const tab = getTabByPtyId(ptyId)
+    if (!tab || tab.status !== 'running') return
+
+    const prevState = tab.claudeState
+    const wasActive = tab.tabId === activeTabId.value
+
+    tab.claudeState = state
+    tab.lastStateUpdateAt = Date.now()
+    if (model) tab.model = model
+
+    // Working → Pending：需要用户操作
+    if (WORKING_STATES.includes(prevState) && PENDING_STATES.includes(state)) {
+      tab.pending = true
+    }
+    // Working → Idle：工作完成
+    if (WORKING_STATES.includes(prevState) && state === 'idle') {
+      tab.pending = true
+    }
+  }
+
+  const hasPendingTabs = computed(() => {
+    for (const tab of tabs.values()) {
+      if (tab.pending) return true
+    }
+    return false
+  })
+
+  // ---- 过期检测 ----
+
+  let stalenessTimer: ReturnType<typeof setInterval> | null = null
+  let stalenessStarted = false
+
+  function ensureStalenessCheck() {
+    if (stalenessStarted) return
+    stalenessStarted = true
+    stalenessTimer = setInterval(() => {
+      const now = Date.now()
+      for (const tab of tabs.values()) {
+        if (tab.status !== 'running' || !tab.ptyId) continue
+        if (ACTIVE_STATES.includes(tab.claudeState) &&
+            now - tab.lastStateUpdateAt > STALENESS_THRESHOLD_MS) {
+          tab.claudeState = 'idle'
+          tab.lastStateUpdateAt = now
+        }
+      }
+    }, 30_000)
   }
 
   // ---- 历史会话 ----
@@ -352,6 +421,10 @@ export const useSessionStore = defineStore('session', () => {
     matchTimers.clear()
     for (const timer of matchDebounceTimers.values()) clearTimeout(timer)
     matchDebounceTimers.clear()
+    if (stalenessTimer) {
+      clearInterval(stalenessTimer)
+      stalenessTimer = null
+    }
 
     const ids = [...tabs.values()]
       .filter(t => t.ptyId)
@@ -383,6 +456,7 @@ export const useSessionStore = defineStore('session', () => {
     projectTabs,
     runningTabIds,
     claimedSessionIds,
+    hasPendingTabs,
 
     // Tab lifecycle
     createTab,
@@ -401,6 +475,10 @@ export const useSessionStore = defineStore('session', () => {
     getRunningTabForProject,
     getTabByPtyId,
     getProjectTabs,
+
+    // Claude runtime state
+    updateClaudeState,
+    ensureStalenessCheck,
 
     // History
     loadHistorySessions,

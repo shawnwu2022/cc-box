@@ -10,7 +10,7 @@
         title="Sessions"
       >
         <img src="@/assets/icons/sessions.svg" alt="Sessions" />
-        <span v-if="hasPendingTabs" class="icon-badge pending-badge"></span>
+        <span v-if="showPendingBadge" class="icon-badge pending-badge"></span>
       </button>
 
       <!-- Skills -->
@@ -85,11 +85,7 @@ import { computed } from 'vue'
 import type { SidebarPanelType } from '@/stores/sidebar'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useSessionStore } from '@/stores/session'
-import { useHookStore } from '@/stores/hook'
 import { ctrl } from '@/utils/platform'
-import type { ClaudeState } from '@/types/hook'
-
-const PENDING_STATES: ClaudeState[] = ['waiting_permission', 'waiting_input']
 
 defineProps<{
   activePanel: SidebarPanelType
@@ -103,15 +99,13 @@ defineEmits<{
 
 const sidebarStore = useSidebarStore()
 const sessionStore = useSessionStore()
-const hookStore = useHookStore()
 
-const hasPendingTabs = computed(() => {
-  const activeId = sessionStore.activeTabId
+const showPendingBadge = computed(() => {
+  if (sidebarStore.activePanel === 'sessions' && sidebarStore.panelVisible) return false
+  // 徽章只提醒非当前活跃的 tab
   for (const tab of sessionStore.tabs.values()) {
-    if (tab.tabId === activeId) continue
-    if (tab.status !== 'running' || !tab.ptyId) continue
-    const state = hookStore.getStateForPty(tab.ptyId)?.state
-    if (state && PENDING_STATES.includes(state)) return true
+    if (tab.tabId === sessionStore.activeTabId) continue
+    if (tab.pending) return true
   }
   return false
 })
