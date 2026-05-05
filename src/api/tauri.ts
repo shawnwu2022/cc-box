@@ -23,6 +23,7 @@ import type {
   DownloadProgress,
   HomeData,
   CheckResult,
+  HookEventPayload,
 } from '@/types';
 
 // 重新导出类型（保持兼容性）
@@ -87,6 +88,10 @@ export const onPtyOutput = (callback: (payload: PtyOutputPayload) => void): Prom
 
 export const onPtyExit = (callback: (payload: PtyExitPayload) => void): Promise<UnlistenFn> =>
   listen<PtyExitPayload>('pty-exit', (event) => callback(event.payload));
+
+// Hook 监控事件
+export const onHookEvent = (callback: (payload: HookEventPayload) => void): Promise<UnlistenFn> =>
+  listen<HookEventPayload>('hook-event', (event) => callback(event.payload));
 
 // Menu events
 export const onMenuSettings = (callback: () => void): Promise<UnlistenFn> =>

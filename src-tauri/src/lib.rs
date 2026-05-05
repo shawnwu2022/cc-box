@@ -5,6 +5,9 @@ mod checks;
 mod mcp;
 mod updater;
 mod logger;
+mod hook_events;
+mod hook_server;
+mod hook_config;
 
 use tauri::Manager;
 
@@ -64,13 +67,24 @@ pub fn run() {
             pty::init_pty_manager(app.handle().clone());
             log::info!("PTY manager initialized");
 
-            // Windows: 移除原生标题栏，使用 webview 内自定义标题栏
+            // Windows: 移除原生标题栏（UI 相关，尽早执行）
             #[cfg(target_os = "windows")]
             {
                 if let Some(win) = app.get_webview_window("main") {
                     let _ = win.set_decorations(false);
                 }
             }
+
+            // 异步执行非关键初始化（不阻塞 UI 显示）
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                // Plugin 文件部署（版本匹配时跳过）
+                if let Err(e) = hook_config::ensure_plugin_files() {
+                    log::warn!("Failed to create plugin files: {}. Hook monitoring may not work.", e);
+                }
+                // Hook HTTP 服务器
+                hook_server::init(handle).await;
+            });
 
             Ok(())
         })

@@ -5,7 +5,7 @@
     @click="handleClick"
   >
     <!-- 运行状态指示器 -->
-    <span class="status-dot" :class="{ running: isRunning, stopped: isStopped }"></span>
+    <span class="status-dot" :class="dotClass"></span>
 
     <!-- 会话名称 -->
     <div class="session-name-wrapper">
@@ -68,7 +68,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
+import type { ClaudeState } from '@/types/hook'
 
 const props = defineProps<{
   id: string
@@ -76,10 +77,46 @@ const props = defineProps<{
   isActive: boolean
   isRunning?: boolean
   isStopped?: boolean
+  claudeState?: ClaudeState
   lastActiveAt: number
   closable?: boolean
   snippet?: string
 }>()
+
+const WORKING_STATES: ClaudeState[] = ['thinking', 'tool_executing', 'subagent_running', 'compacting']
+const PENDING_STATES: ClaudeState[] = ['waiting_permission', 'waiting_input']
+
+// 非当前 tab 工作结束后，标记"有未读结果"
+const hasPending = ref(false)
+
+watch(() => props.claudeState, (newState, oldState) => {
+  const fromWorking = WORKING_STATES.includes(oldState as ClaudeState)
+  const toIdle = newState === 'idle'
+  console.log('[session-item]', props.name, `claudeState: ${oldState ?? '—'} → ${newState}`, `isActive: ${props.isActive}`, `fromWorking: ${fromWorking}`, `toIdle: ${toIdle}`)
+  if (fromWorking && toIdle && !props.isActive) {
+    hasPending.value = true
+    console.log('[session-item]', props.name, '→ hasPending = true')
+  }
+})
+
+watch(() => props.isActive, (active) => {
+  if (active && hasPending.value) {
+    console.log('[session-item]', props.name, '→ hasPending = false (became active)')
+  }
+  if (active) hasPending.value = false
+})
+
+const dotClass = computed(() => {
+  let result: string
+  if (props.isStopped && !props.isActive) result = 'closed'
+  else if (props.isStopped) result = 'stopped'
+  else if (hasPending.value && !props.isActive) result = 'pending'
+  else if (props.claudeState && WORKING_STATES.includes(props.claudeState)) result = 'working'
+  else if (props.claudeState && PENDING_STATES.includes(props.claudeState)) result = 'pending'
+  else if (props.isRunning) result = 'running'
+  else result = ''
+  return result
+})
 
 const emit = defineEmits<{
   switch: [id: string]
@@ -190,27 +227,49 @@ function cancelRename() {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
-  transition: all 0.2s ease;
+  transition: background 0.3s ease;
 }
 
+/* 默认（无状态数据） */
+.status-dot:not(.working):not(.pending):not(.running):not(.stopped):not(.closed) {
+  background: var(--text-tertiary);
+}
+
+/* 连接（idle — 绿色静止） */
 .status-dot.running {
-  background: #27ae60;
-  box-shadow: 0 0 4px rgba(39, 174, 96, 0.5);
-  animation: pulse 2s ease-in-out infinite;
+  background: var(--status-success);
 }
 
+/* 工作中（绿色脉冲） */
+.status-dot.working {
+  background: var(--status-success);
+  animation: status-pulse 2.5s ease-in-out infinite;
+}
+
+/* 待处理（waiting_permission/waiting_input） */
+.status-dot.pending {
+  background: var(--accent-gold);
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+/* 已停止（当前活跃 tab） */
 .status-dot.stopped {
-  border: 2px solid var(--text-tertiary);
+  background: var(--text-tertiary);
+  animation: none;
+}
+
+/* 已关闭（非当前活跃 tab） */
+.status-dot.closed {
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid var(--border-color);
   background: transparent;
+  animation: none;
 }
 
-.status-dot:not(.running):not(.stopped) {
-  background: var(--text-secondary);
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(0.9); }
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .session-name-wrapper {

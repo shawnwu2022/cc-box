@@ -72,6 +72,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useAppStore } from '@/stores/app'
+import { useHookStore } from '@/stores/hook'
 import { useSidebarStore } from '@/stores/sidebar'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-shell'
@@ -112,10 +113,8 @@ let unlistenRestart: (() => void) | null = null
 const shortcutUnlisteners: (() => void)[] = []
 
 onMounted(async () => {
-  // 环境检查（同步拉取 Rust 已缓存的结果）
   await appStore.runChecks()
   if (appStore.checkFailed) {
-    // 回填输入框：用检测结果中的 detectedPath
     for (const check of appStore.checkResults) {
       if (check.detectedPath) {
         checkInputs.value[check.name] = check.detectedPath
@@ -215,15 +214,16 @@ async function browseFor(name: string) {
 }
 
 function initAfterChecks() {
-  appStore.loadAppConfig()
-
-  shortcutUnlisteners.push(...setupShortcutListeners())
-
+  // 并行启动所有独立初始化任务
   appStore.loadCache().then(() => {
     if (appStore.cachedProjects.length > 0 && currentView.value === 'welcome') {
       currentView.value = 'projects'
     }
   })
+  appStore.loadAppConfig()
+  useHookStore().init()
+
+  shortcutUnlisteners.push(...setupShortcutListeners())
 
   onMenuSettings(() => {
     sidebarStore.openSettings()
@@ -243,10 +243,8 @@ function initAfterChecks() {
     }
   }).then(fn => { unlistenRestart = fn })
 
-  // Ctrl+Shift+H toggle home/projects
   window.addEventListener('app:toggleHome', handleToggleHome)
 
-  // 后台检查更新
   checkForUpdates().then(info => {
     sidebarStore.setUpdateInfo(info)
   }).catch(() => {})

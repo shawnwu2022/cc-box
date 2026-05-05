@@ -7,26 +7,37 @@
       </header>
 
       <div class="session-list">
-        <button
-          v-for="session in recentSessions"
-          :key="session.sessionId"
-          class="session-item"
-          @click="handleResumeSession(session)"
-        >
-          <svg class="session-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="4 17 10 11 4 5"/>
-            <line x1="12" y1="19" x2="20" y2="19"/>
-          </svg>
-          <div class="session-info">
-            <span class="session-name">{{ session.name }}</span>
-            <span class="session-project">{{ getProjectName(session.projectPath) }}</span>
+        <template v-if="!appStore.cacheLoaded">
+          <div v-for="i in 4" :key="i" class="skeleton-item">
+            <div class="skeleton-icon"></div>
+            <div class="skeleton-text-group">
+              <div class="skeleton-text skeleton-name"></div>
+              <div class="skeleton-text skeleton-sub"></div>
+            </div>
           </div>
-          <span class="session-time">{{ formatTimeAgo(session.lastActiveAt) }}</span>
-        </button>
+        </template>
+        <template v-else>
+          <button
+            v-for="session in recentSessions"
+            :key="session.sessionId"
+            class="session-item"
+            @click="handleResumeSession(session)"
+          >
+            <svg class="session-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="4 17 10 11 4 5"/>
+              <line x1="12" y1="19" x2="20" y2="19"/>
+            </svg>
+            <div class="session-info">
+              <span class="session-name">{{ session.name }}</span>
+              <span class="session-project">{{ getProjectName(session.projectPath) }}</span>
+            </div>
+            <span class="session-time">{{ formatTimeAgo(session.lastActiveAt) }}</span>
+          </button>
 
-        <div v-if="recentSessions.length === 0" class="empty-sessions">
-          <span>No recent sessions</span>
-        </div>
+          <div v-if="recentSessions.length === 0" class="empty-sessions">
+            <span>No recent sessions</span>
+          </div>
+        </template>
       </div>
 
       <!-- 底部：启动参数设置 -->
@@ -83,39 +94,50 @@
       </header>
 
       <div class="project-list" ref="projectListRef" @scroll="handleProjectScroll">
-        <button
-          v-for="project in filteredProjects"
-          :key="project.path"
-          class="project-item"
-          @click="$emit('selectProject', project.path)"
-        >
-          <svg class="folder-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-          <div class="project-info">
-            <span class="project-name">{{ project.name }}</span>
-            <span class="project-path">{{ project.path }}</span>
+        <template v-if="!appStore.cacheLoaded">
+          <div v-for="i in 6" :key="i" class="skeleton-item">
+            <div class="skeleton-folder"></div>
+            <div class="skeleton-text-group">
+              <div class="skeleton-text skeleton-name"></div>
+              <div class="skeleton-text skeleton-sub"></div>
+            </div>
           </div>
-        </button>
-
-        <div v-if="!searchQuery && appStore.hasMoreProjects && !appStore.isLoadingProjects" class="load-more-section">
-          <button class="load-more-btn" @click="handleLoadMore">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
+        </template>
+        <template v-else>
+          <button
+            v-for="project in filteredProjects"
+            :key="project.path"
+            class="project-item"
+            @click="$emit('selectProject', project.path)"
+          >
+            <svg class="folder-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
-            <span>Load More Projects</span>
+            <div class="project-info">
+              <span class="project-name">{{ project.name }}</span>
+              <span class="project-path">{{ project.path }}</span>
+            </div>
           </button>
-        </div>
 
-        <div v-if="appStore.isLoadingProjects" class="loading-more">
-          <span>Loading...</span>
-        </div>
+          <div v-if="!searchQuery && appStore.hasMoreProjects && !appStore.isLoadingProjects" class="load-more-section">
+            <button class="load-more-btn" @click="handleLoadMore">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              <span>Load More Projects</span>
+            </button>
+          </div>
 
-        <div v-if="filteredProjects.length === 0 && !appStore.isLoadingProjects" class="empty-list">
-          <span v-if="searchQuery">No matching projects</span>
-          <span v-else>No projects yet</span>
-        </div>
+          <div v-if="appStore.isLoadingProjects" class="loading-more">
+            <span>Loading...</span>
+          </div>
+
+          <div v-if="filteredProjects.length === 0 && !appStore.isLoadingProjects" class="empty-list">
+            <span v-if="searchQuery">No matching projects</span>
+            <span v-else>No projects yet</span>
+          </div>
+        </template>
       </div>
 
       <footer class="panel-footer">
@@ -132,7 +154,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useSidebarStore } from '@/stores/sidebar'
 import { ctrl } from '@/utils/platform'
@@ -208,10 +230,6 @@ function handleLoadMore() {
 watch(localOptions, (val) => {
   appStore.setClaudeOptions(val)
 }, { deep: true })
-
-onMounted(() => {
-  appStore.loadCache()
-})
 
 function getProjectName(projectPath: string): string {
   const parts = projectPath.replace(/\\/g, '/').split('/')
@@ -694,5 +712,56 @@ async function handleSaveDefault() {
 .session-list::-webkit-scrollbar-track,
 .project-list::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* 骨架屏 */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.skeleton-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.skeleton-icon,
+.skeleton-folder {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: var(--border-color);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.skeleton-folder {
+  width: 18px;
+  height: 18px;
+}
+
+.skeleton-text-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.skeleton-text {
+  border-radius: 3px;
+  background: var(--border-color);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-name {
+  width: 60%;
+  height: 13px;
+}
+
+.skeleton-sub {
+  width: 80%;
+  height: 11px;
 }
 </style>

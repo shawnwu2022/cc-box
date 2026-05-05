@@ -244,6 +244,10 @@ function handleResumeSession(sessionId: string) {
 
   const tabId = sessionStore.createTab(cwd, { sessionId, name })
   sessionStore.setActiveTab(tabId)
+
+  // 立即从历史列表移除，避免重复显示
+  sessionStore.historySessions = sessionStore.historySessions.filter(s => s.sessionId !== sessionId)
+
   terminalRef.value.startTab(tabId)
 }
 

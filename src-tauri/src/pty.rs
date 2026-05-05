@@ -247,6 +247,14 @@ impl PtyManager {
             }
         };
 
+        // 追加 --plugin-dir（hook 监控 plugin）
+        let plugin_dir = crate::hook_config::plugin_dir();
+        let claude_cmd = if plugin_dir.exists() {
+            format!("{} --plugin-dir \"{}\"", claude_cmd, plugin_dir.display())
+        } else {
+            claude_cmd
+        };
+
         // 构建命令：不同平台使用不同的 shell
         let mut cmd = if cfg!(target_os = "windows") {
             // Windows: 使用 Git Bash 或 PowerShell
@@ -285,6 +293,13 @@ impl PtyManager {
         // 添加终端环境变量
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+
+        // Hook 监控：传递 HTTP 服务器端口 + 当前 PTY 标识
+        if let Some(hook_port) = crate::hook_server::get_port() {
+            cmd.env("CC_BOX_HOOK_PORT", hook_port.to_string());
+            cmd.env("CC_BOX_SESSION_ID", &id);
+            log::debug!("Set CC_BOX_HOOK_PORT={}, CC_BOX_SESSION_ID={}", hook_port, id);
+        }
 
         // Windows 特定：Claude CLI 需要知道 Git Bash 的位置
         // 即使通过 bash 运行，非交互模式下 Claude 可能无法自动检测

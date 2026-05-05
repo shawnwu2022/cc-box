@@ -414,7 +414,7 @@ pub fn get_home_data(project_limit: usize, session_limit: usize) -> Result<HomeD
     });
 
     let has_more = projects.len() > project_limit;
-    let paginated_projects = projects.into_iter().take(project_limit).collect();
+    let paginated_projects: Vec<Project> = projects.into_iter().take(project_limit).collect();
 
     all_sessions.sort_by(|a, b| b.last_active_at.cmp(&a.last_active_at));
     all_sessions.truncate(session_limit);
@@ -561,6 +561,13 @@ fn extract_session_name(jsonl_path: &Path) -> String {
     "Unnamed session".to_string()
 }
 
+/// 轻量会话条目（仅文件元数据，不读内容）
+struct SessionEntry {
+    session_id: String,
+    path: PathBuf,
+    last_active_at: u64,
+}
+
 /// 获取会话列表
 pub fn get_sessions(project_path: &str, limit: usize, offset: usize) -> Result<Vec<SessionInfo>> {
     let project_dirs = get_project_dirs(project_path);
@@ -569,7 +576,8 @@ pub fn get_sessions(project_path: &str, limit: usize, offset: usize) -> Result<V
         return Ok(Vec::new());
     }
 
-    let mut sessions = Vec::new();
+    // 第一遍：只扫文件名和元数据（不读 JSONL 内容）
+    let mut entries: Vec<SessionEntry> = Vec::new();
 
     for project_dir in &project_dirs {
         if !project_dir.exists() {
@@ -592,8 +600,6 @@ pub fn get_sessions(project_path: &str, limit: usize, offset: usize) -> Result<V
                     .unwrap_or("")
                     .to_string();
 
-                let name = extract_session_name(&path);
-
                 let last_active_at = fs::metadata(&path)
                     .and_then(|m| m.modified())
                     .map(|t| {
@@ -603,10 +609,9 @@ pub fn get_sessions(project_path: &str, limit: usize, offset: usize) -> Result<V
                     })
                     .unwrap_or(0);
 
-                sessions.push(SessionInfo {
+                entries.push(SessionEntry {
                     session_id,
-                    name,
-                    project_path: project_path.to_string(),
+                    path,
                     last_active_at,
                 });
             }
@@ -614,13 +619,24 @@ pub fn get_sessions(project_path: &str, limit: usize, offset: usize) -> Result<V
     }
 
     // 按最后活跃时间排序
-    sessions.sort_by(|a, b| b.last_active_at.cmp(&a.last_active_at));
+    entries.sort_by(|a, b| b.last_active_at.cmp(&a.last_active_at));
 
     // 分页
-    let start = offset.min(sessions.len());
-    let end = (offset + limit).min(sessions.len());
+    let start = offset.min(entries.len());
+    let end = (offset + limit).min(entries.len());
 
-    Ok(sessions[start..end].to_vec())
+    // 第二遍：只读分页后的少量文件提取名称
+    let sessions: Vec<SessionInfo> = entries[start..end]
+        .iter()
+        .map(|e| SessionInfo {
+            session_id: e.session_id.clone(),
+            name: extract_session_name(&e.path),
+            project_path: project_path.to_string(),
+            last_active_at: e.last_active_at,
+        })
+        .collect();
+
+    Ok(sessions)
 }
 
 /// 获取所有项目的近期会话（跨项目，按 lastActiveAt 降序排列）

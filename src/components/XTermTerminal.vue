@@ -19,6 +19,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useAppStore } from '@/stores/app'
 import { useSessionStore } from '@/stores/session'
+import { useHookStore } from '@/stores/hook'
 import {
   ptySpawn,
   ptyInput,
@@ -43,6 +44,7 @@ const emit = defineEmits<{
 
 const appStore = useAppStore()
 const sessionStore = useSessionStore()
+const hookStore = useHookStore()
 const containerRef = ref<HTMLElement>()
 const isDragOver = ref(false)
 
@@ -264,6 +266,9 @@ async function setupEventListeners() {
         // 更新 store（Tab 保留，状态变 stopped）
         sessionStore.handlePtyExit(id)
 
+        // 清理 hook 状态（防止残留旧数据）
+        hookStore.clearSession(id)
+
         // 销毁 Terminal 实例（释放资源）
         instance.term.dispose()
         terminalInstances.delete(tabId)
@@ -430,6 +435,7 @@ async function restartTab(tabId: string) {
     // 如果有旧 PTY 在运行，先 kill
     if (tab.ptyId) {
       try { await ptyKill(tab.ptyId) } catch {}
+      hookStore.clearSession(tab.ptyId)
     }
 
     // 清理旧 Terminal 实例

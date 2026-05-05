@@ -45,7 +45,8 @@ export const useSessionStore = defineStore('session', () => {
   // ---- State ----
   const tabs = reactive(new Map<string, TerminalTab>())
   const activeTabId = ref<string | null>(null)
-  const historySessions = ref<HistorySession[]>([])
+  /** 完整历史会话缓存（不含 Tab 占用的，由 computed 过滤） */
+  const allHistoryCache = ref<HistorySession[]>([])
   const searchQuery = ref<string>('')
   const isLoading = ref<boolean>(false)
   const messageSearchResults = ref<SessionSearchResult[]>([])
@@ -80,12 +81,10 @@ export const useSessionStore = defineStore('session', () => {
     return ids
   })
 
-  /** 过滤后的历史会话 */
-  const filteredHistory = computed<HistorySession[]>(() => {
-    if (!searchQuery.value) return historySessions.value
-    return historySessions.value.filter(s =>
-      s.name.toLowerCase().includes(searchQuery.value.toLowerCase())
-    )
+  /** 未被 Tab 占用的历史会话（搜索过滤由组件处理） */
+  const historySessions = computed<HistorySession[]>(() => {
+    const claimed = claimedSessionIds.value
+    return allHistoryCache.value.filter(s => !claimed.has(s.sessionId))
   })
 
   // ---- Tab 生命周期 ----
@@ -144,7 +143,7 @@ export const useSessionStore = defineStore('session', () => {
 
   /**
    * 关闭 Tab（用户主动操作）
-   * 关闭后重新加载历史会话，让被释放的 sessionId 回到历史列表
+   * 不需要重新加载历史会话，computed 会自动显示释放的 sessionId
    */
   async function closeTab(tabId: string) {
     const tab = tabs.get(tabId)
@@ -155,15 +154,11 @@ export const useSessionStore = defineStore('session', () => {
       try { await ptyKill(tab.ptyId) } catch {}
     }
 
-    const projectPath = tab.projectPath
     tabs.delete(tabId)
 
     if (activeTabId.value === tabId) {
       activeTabId.value = null
     }
-
-    // 重新加载历史会话，让关闭的 tab 回到历史列表
-    await loadHistorySessions(projectPath)
   }
 
   /**
@@ -269,10 +264,7 @@ export const useSessionStore = defineStore('session', () => {
 
       if (match) {
         setTabSessionId(tabId, match.sessionId, match.name)
-        // 从历史会话中移除
-        historySessions.value = historySessions.value.filter(
-          s => s.sessionId !== match.sessionId
-        )
+        // computed 会自动过滤掉已占用的 sessionId
         return true
       }
     } catch (err) {
@@ -307,17 +299,15 @@ export const useSessionStore = defineStore('session', () => {
   // ---- 历史会话 ----
 
   /**
-   * 加载历史会话（排除已被 Tab 占用的）
+   * 加载历史会话（全量缓存，computed 会过滤 Tab 占用的）
    */
   async function loadHistorySessions(projectPath: string) {
     isLoading.value = true
     try {
       const count = await getSessionCount(projectPath)
       const allSessions = await getSessions(projectPath, count, 0)
-      const claimed = claimedSessionIds.value
 
-      historySessions.value = allSessions
-        .filter(s => !claimed.has(s.sessionId))
+      allHistoryCache.value = allSessions
         .map(s => ({
           sessionId: s.sessionId,
           name: s.name,
@@ -371,7 +361,7 @@ export const useSessionStore = defineStore('session', () => {
       try { await ptyKill(id) } catch {}
     }
     tabs.clear()
-    historySessions.value = []
+    allHistoryCache.value = []
   }
 
   function getProjectTabs(projectPath: string): TerminalTab[] {
@@ -393,7 +383,6 @@ export const useSessionStore = defineStore('session', () => {
     projectTabs,
     runningTabIds,
     claimedSessionIds,
-    filteredHistory,
 
     // Tab lifecycle
     createTab,

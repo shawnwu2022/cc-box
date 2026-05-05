@@ -47,6 +47,9 @@ cc-box/
 │   │   ├── commands.rs         # Tauri IPC 命令
 │   │   ├── store.rs            # Claude Code 原生数据读取
 │   │   ├── mcp.rs              # MCP 协议客户端（HTTP/SSE + stdio）
+│   │   ├── hook_events.rs      # Hook 事件数据结构与提取（信息提取定义中心）
+│   │   ├── hook_server.rs      # Hook HTTP 服务器（接收 Claude 运行时事件）
+│   │   ├── hook_config.rs      # Hook Plugin 文件管理
 │   │   └── checks.rs           # 环境检查
 │   ├── capabilities/           # Tauri 权限配置
 │   ├── Cargo.toml
@@ -63,8 +66,8 @@ cc-box/
 │   │   ├── settings/           # 设置子组件
 │   │   ├── WelcomeView.vue     # 欢迎页
 │   │   └── ProjectSelectView.vue
-│   ├── stores/                 # Pinia（app、session、sidebar、config）
-│   ├── types/                  # TypeScript 类型定义
+│   ├── stores/                 # Pinia（app、session、sidebar、config、hook）
+│   ├── types/                  # TypeScript 类型定义（含 hook 事件类型）
 │   ├── composables/            # 组合式函数
 │   └── styles/global.css       # CSS 变量与全局样式
 │
@@ -81,6 +84,17 @@ xterm.js ←→ Tauri invoke/listen ←→ pty.rs (Rust) ←→ portable-pty ←
 
 - 用户输入 → `onData` → `invoke('pty_input')` → PTY writer → Claude CLI
 - CLI 输出 → PTY reader → `emit('pty-output')` → `term.write()` → xterm.js
+
+### Hook 监控数据流
+
+```
+Claude CLI hook 触发 → report-hook.sh → curl POST → hook_server.rs (axum) → emit('hook-event') → stores/hook.ts
+```
+
+- Plugin 通过 `--plugin-dir` 按 session 加载，注入 11 个 hook 事件
+- 每个 PTY 注入 `CC_BOX_HOOK_PORT`（服务器端口）和 `CC_BOX_SESSION_ID`（终端标识）
+- hook_events.rs 推导运行状态 + 提取模型，前端按状态呈现指示灯（工作中/待处理/已关闭）
+- 详细架构 → [docs/hook-monitor.md](docs/hook-monitor.md)
 
 详细架构 → [docs/terminal-integration.md](docs/terminal-integration.md)
 
@@ -152,7 +166,7 @@ EOF
 )"
 ```
 
-**重要**：每次发布 release 必须编写 release notes（`--notes`），说明本次版本的变更内容，按 Bug Fixes / Features 等分类。
+**重要**：每次发布 release 必须编写 release notes（`--notes`），说明本次版本相较latest版本的变更内容，按 Bug Fixes / Features 等分类。
 详细流程 → [docs/release-process.md](docs/release-process.md)
 
 ## 详细文档
@@ -160,6 +174,7 @@ EOF
 | 文档 | 内容 |
 |------|------|
 | [docs/terminal-integration.md](docs/terminal-integration.md) | 终端集成架构、PTY 生命周期、IPC 命令与事件对照 |
+| [docs/hook-monitor.md](docs/hook-monitor.md) | **Hook 监控系统**：Plugin 注入、事件采集、状态机、多终端区分 |
 | [docs/layout-design.md](docs/layout-design.md) | 布局设计、窗口结构、色彩系统、排版规范 |
 | [docs/components.md](docs/components.md) | 组件树、各组件职责与 props/events、Store 结构 |
 | [docs/interaction.md](docs/interaction.md) | **快捷键处理架构**、三场景输入处理、DOM 捕获期监听、窗口焦点恢复 |
