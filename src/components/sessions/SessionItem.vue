@@ -25,12 +25,13 @@
     </div>
 
     <!-- 操作按钮 -->
-    <!-- 重启按钮（已停止的 Tab） -->
+    <!-- 重启按钮（已停止的 Tab，无 sessionId 时禁用） -->
     <button
       v-if="isStopped"
       class="action-btn restart-btn"
-      @click.stop="$emit('restart', id)"
-      title="Restart"
+      :disabled="!canResume"
+      @click.stop="canResume && $emit('restart', id)"
+      :title="canResume ? 'Restart' : 'Waiting for session ID...'"
     >
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="23 4 23 10 17 10"/>
@@ -69,7 +70,6 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
-import type { ClaudeState } from '@/types/hook'
 
 const props = defineProps<{
   id: string
@@ -77,21 +77,18 @@ const props = defineProps<{
   isActive: boolean
   isRunning?: boolean
   isStopped?: boolean
-  claudeState?: ClaudeState
+  canResume?: boolean
+  working?: boolean
   pending?: boolean
   lastActiveAt: number
   closable?: boolean
   snippet?: string
 }>()
 
-const WORKING_STATES: ClaudeState[] = ['thinking', 'tool_executing', 'subagent_running', 'compacting']
-const PENDING_STATES: ClaudeState[] = ['waiting_permission', 'waiting_input']
-
 const dotClass = computed(() => {
   if (props.isStopped && !props.isActive) return 'closed'
   if (props.isStopped) return 'stopped'
-  if (props.claudeState && WORKING_STATES.includes(props.claudeState)) return 'working'
-  if (props.claudeState && PENDING_STATES.includes(props.claudeState)) return 'pending'
+  if (props.working) return 'working'
   if (props.pending && !props.isActive) return 'pending'
   if (props.isRunning) return 'running'
   return ''
@@ -315,6 +312,11 @@ function cancelRename() {
 .action-btn:hover {
   background: var(--hover-bg);
   color: var(--text-primary);
+}
+
+.action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 
 .time-info {

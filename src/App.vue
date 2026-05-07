@@ -73,7 +73,6 @@
 import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useHookStore } from '@/stores/hook'
-import { useSessionStore } from '@/stores/session'
 import { useSidebarStore } from '@/stores/sidebar'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-shell'
@@ -223,7 +222,6 @@ function initAfterChecks() {
   })
   appStore.loadAppConfig()
   useHookStore().init()
-  useSessionStore().ensureStalenessCheck()
 
   shortcutUnlisteners.push(...setupShortcutListeners())
 

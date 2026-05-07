@@ -33,7 +33,6 @@ const filteredGroups = computed(() => [
       { key: `${ctrl}+,`, desc: 'Toggle settings' },
       { key: `${ctrl}+Plus / −`, desc: 'Increase / decrease font size' },
       { key: `${ctrl}+0`, desc: 'Reset font size' },
-      { key: 'Escape', desc: 'Close settings / panels' },
     ]
   },
   {

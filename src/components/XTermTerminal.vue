@@ -209,12 +209,12 @@ function createTerminal(tabId: string): Terminal {
       return false
     }
 
-    // Shift+Enter => 插入换行
+    // Shift+Enter => 插入换行（模拟 \ + Enter）
     if (event.shiftKey && event.key === 'Enter') {
       event.preventDefault()
       const instance = terminalInstances.get(tabId)
       if (instance) {
-        ptyInput(instance.ptyId, '\n')
+        ptyInput(instance.ptyId, '\\\r')
       }
       return false
     }
@@ -254,13 +254,11 @@ async function setupEventListeners() {
     }
   })
 
-  // PTY 输出 → 写入对应 Tab 的 Terminal + 触发会话匹配
+  // PTY 输出 → 写入对应 Tab 的 Terminal
   unlistenPtyOutput = await onPtyOutput(({ id, data }) => {
-    for (const [tabId, instance] of terminalInstances) {
+    for (const [_tabId, instance] of terminalInstances) {
       if (instance.ptyId === id) {
         instance.term.write(data)
-        // PTY 有输出 → 触发即时匹配（仅对未关联 sessionId 的 Tab）
-        sessionStore.triggerOutputDrivenMatch(tabId)
         break
       }
     }
@@ -270,9 +268,6 @@ async function setupEventListeners() {
   unlistenPtyExit = await onPtyExit(({ id }) => {
     for (const [tabId, instance] of terminalInstances) {
       if (instance.ptyId === id) {
-        // 停止匹配轮询
-        sessionStore.stopMatchPolling(tabId)
-
         // 更新 store（Tab 保留，状态变 stopped）
         sessionStore.handlePtyExit(id)
 
@@ -418,11 +413,6 @@ async function startTab(tabId: string) {
       }
 
       emit('ptyStarted', tabId, info.id)
-
-      // 如果 Tab 没有 sessionId，启动轮询匹配
-      if (!tab.sessionId) {
-        sessionStore.startMatchPolling(tabId)
-      }
     }
   } catch (err) {
     console.error('[XTerm] startTab ERROR:', err)
@@ -484,11 +474,6 @@ async function restartTab(tabId: string) {
       }
 
       emit('ptyStarted', tabId, info.id)
-
-      // 如果仍无 sessionId，启动轮询匹配
-      if (!tab.sessionId) {
-        sessionStore.startMatchPolling(tabId)
-      }
     }
 
     appStore.resetClaudeOptions()

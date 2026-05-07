@@ -7,12 +7,6 @@ import {
   searchSessionMessages
 } from '@/api/tauri'
 import type { SessionSearchResult } from '@/types'
-import type { ClaudeState } from '@/types/hook'
-
-const WORKING_STATES: ClaudeState[] = ['thinking', 'tool_executing', 'subagent_running', 'compacting']
-const PENDING_STATES: ClaudeState[] = ['waiting_permission', 'waiting_input']
-const ACTIVE_STATES: ClaudeState[] = [...WORKING_STATES, ...PENDING_STATES]
-const STALENESS_THRESHOLD_MS = 120_000
 
 // ==================== Tab-Centric 数据模型 ====================
 
@@ -25,18 +19,17 @@ const STALENESS_THRESHOLD_MS = 120_000
  * - 无 sessionId 的 stopped Tab 重启时作为新会话
  */
 export interface TerminalTab {
-  tabId: string              // 稳定 ID，创建时生成
-  projectPath: string        // 工作目录
-  ptyId: string | null       // PTY 进程 ID（停止时 null）
-  sessionId: string | null   // Claude 真实 session ID（匹配后赋值）
-  name: string               // 显示名称
+  tabId: string
+  projectPath: string
+  ptyId: string | null
+  sessionId: string | null
+  name: string
   status: 'starting' | 'running' | 'stopped'
   createdAt: number
   lastActiveAt: number
-  claudeState: ClaudeState   // Claude 运行时状态
-  model?: string             // 模型名
-  lastStateUpdateAt: number  // 上次状态更新时间（用于过期检测）
-  pending: boolean           // 是否需要用户关注
+  working: boolean           // 正在工作中（用户发送消息后、响应返回前）
+  model?: string
+  pending: boolean           // 需要用户关注
 }
 
 /**
@@ -119,8 +112,7 @@ export const useSessionStore = defineStore('session', () => {
       status: 'stopped',
       createdAt: now,
       lastActiveAt: now,
-      claudeState: 'unknown',
-      lastStateUpdateAt: now,
+      working: false,
       pending: false,
     })
 
@@ -148,7 +140,7 @@ export const useSessionStore = defineStore('session', () => {
       if (tab.ptyId === ptyId) {
         tab.ptyId = null
         tab.status = 'stopped'
-        tab.claudeState = 'unknown'
+        tab.working = false
         tab.lastActiveAt = Date.now()
         break
       }
@@ -204,98 +196,6 @@ export const useSessionStore = defineStore('session', () => {
     tab.lastActiveAt = Date.now()
   }
 
-  // ---- 会话匹配 ----
-
-  // 匹配轮询定时器
-  const matchTimers = new Map<string, ReturnType<typeof setInterval>>()
-
-  /**
-   * 启动自动匹配轮询
-   * 每 3 秒尝试匹配，最多持续 60 秒，匹配成功后自动停止
-   */
-  function startMatchPolling(tabId: string) {
-    if (matchTimers.has(tabId)) return // 已在轮询
-
-    const tab = tabs.get(tabId)
-    if (!tab || tab.sessionId) return
-
-    const startedAt = Date.now()
-    const MAX_DURATION = 60_000
-    const INTERVAL = 3_000
-
-    const timer = setInterval(async () => {
-      const tab = tabs.get(tabId)
-      // 停止条件：已匹配 / Tab 不存在 / 已停止 / 超时
-      if (!tab || tab.sessionId || tab.status !== 'running' || Date.now() - startedAt > MAX_DURATION) {
-        stopMatchPolling(tabId)
-        return
-      }
-
-      await matchSessionForTab(tabId)
-    }, INTERVAL)
-
-    matchTimers.set(tabId, timer)
-  }
-
-  function stopMatchPolling(tabId: string) {
-    const timer = matchTimers.get(tabId)
-    if (timer) {
-      clearInterval(timer)
-      matchTimers.delete(tabId)
-    }
-  }
-
-  /**
-   * PTY 输出驱动的即时匹配（debounce）
-   * 由 XTermTerminal 在收到 PTY 输出时调用
-   */
-  const matchDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
-
-  function triggerOutputDrivenMatch(tabId: string) {
-    const tab = tabs.get(tabId)
-    if (!tab || tab.sessionId) return
-
-    // debounce：上次触发后 1.5 秒才真正执行，避免频繁调用
-    if (matchDebounceTimers.has(tabId)) return
-
-    matchDebounceTimers.set(tabId, setTimeout(async () => {
-      matchDebounceTimers.delete(tabId)
-      const success = await matchSessionForTab(tabId)
-      if (success) stopMatchPolling(tabId)
-    }, 1500))
-  }
-
-  /**
-   * 为 Tab 匹配真实的 Claude session ID
-   */
-  async function matchSessionForTab(tabId: string): Promise<boolean> {
-    const tab = tabs.get(tabId)
-    if (!tab || tab.sessionId) return false // 已有 sessionId
-
-    try {
-      const sessions = await getSessions(tab.projectPath, 50, 0)
-      const claimed = claimedSessionIds.value
-
-      // 找到比 tab.createdAt 更新、且未被其他 Tab 占用的最新 session
-      const match = sessions
-        .filter(s =>
-          s.lastActiveAt >= tab.createdAt &&
-          !claimed.has(s.sessionId)
-        )
-        .sort((a, b) => b.lastActiveAt - a.lastActiveAt)[0]
-
-      if (match) {
-        setTabSessionId(tabId, match.sessionId, match.name)
-        // computed 会自动过滤掉已占用的 sessionId
-        return true
-      }
-    } catch (err) {
-      console.error('[SessionStore] matchSessionForTab failed:', err)
-    }
-
-    return false
-  }
-
   // ---- 活跃 Tab 管理 ----
 
   function setActiveTab(tabId: string | null) {
@@ -322,27 +222,18 @@ export const useSessionStore = defineStore('session', () => {
     return null
   }
 
-  // ---- Claude 运行时状态 ----
+  // ---- Session ID 直接分配（由 hook 事件驱动） ----
 
-  function updateClaudeState(ptyId: string, state: ClaudeState, model?: string) {
-    const tab = getTabByPtyId(ptyId)
-    if (!tab || tab.status !== 'running') return
-
-    const prevState = tab.claudeState
-    const wasActive = tab.tabId === activeTabId.value
-
-    tab.claudeState = state
-    tab.lastStateUpdateAt = Date.now()
-    if (model) tab.model = model
-
-    // Working → Pending：需要用户操作
-    if (WORKING_STATES.includes(prevState) && PENDING_STATES.includes(state)) {
-      tab.pending = true
+  function assignSessionIdByPtyId(ptyId: string, sessionId: string, model?: string) {
+    for (const tab of tabs.values()) {
+      if (tab.ptyId === ptyId) {
+        tab.sessionId = sessionId
+        if (model) tab.model = model
+        tab.lastActiveAt = Date.now()
+        return true
+      }
     }
-    // Working → Idle：工作完成
-    if (WORKING_STATES.includes(prevState) && state === 'idle') {
-      tab.pending = true
-    }
+    return false
   }
 
   const hasPendingTabs = computed(() => {
@@ -351,27 +242,6 @@ export const useSessionStore = defineStore('session', () => {
     }
     return false
   })
-
-  // ---- 过期检测 ----
-
-  let stalenessTimer: ReturnType<typeof setInterval> | null = null
-  let stalenessStarted = false
-
-  function ensureStalenessCheck() {
-    if (stalenessStarted) return
-    stalenessStarted = true
-    stalenessTimer = setInterval(() => {
-      const now = Date.now()
-      for (const tab of tabs.values()) {
-        if (tab.status !== 'running' || !tab.ptyId) continue
-        if (ACTIVE_STATES.includes(tab.claudeState) &&
-            now - tab.lastStateUpdateAt > STALENESS_THRESHOLD_MS) {
-          tab.claudeState = 'idle'
-          tab.lastStateUpdateAt = now
-        }
-      }
-    }, 30_000)
-  }
 
   // ---- 历史会话 ----
 
@@ -424,16 +294,6 @@ export const useSessionStore = defineStore('session', () => {
   // ---- 清理 ----
 
   async function cleanupAll() {
-    // 清理所有匹配定时器
-    for (const timer of matchTimers.values()) clearInterval(timer)
-    matchTimers.clear()
-    for (const timer of matchDebounceTimers.values()) clearTimeout(timer)
-    matchDebounceTimers.clear()
-    if (stalenessTimer) {
-      clearInterval(stalenessTimer)
-      stalenessTimer = null
-    }
-
     const ids = [...tabs.values()]
       .filter(t => t.ptyId)
       .map(t => t.ptyId!)
@@ -473,10 +333,6 @@ export const useSessionStore = defineStore('session', () => {
     closeTab,
     updateTabName,
     setTabSessionId,
-    matchSessionForTab,
-    startMatchPolling,
-    stopMatchPolling,
-    triggerOutputDrivenMatch,
 
     // Active tab
     setActiveTab,
@@ -484,9 +340,8 @@ export const useSessionStore = defineStore('session', () => {
     getTabByPtyId,
     getProjectTabs,
 
-    // Claude runtime state
-    updateClaudeState,
-    ensureStalenessCheck,
+    // Session ID assignment
+    assignSessionIdByPtyId,
 
     // History
     loadHistorySessions,

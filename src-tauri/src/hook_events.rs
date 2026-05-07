@@ -36,6 +36,9 @@ pub enum HookEventDetail {
 #[serde(rename_all = "camelCase")]
 pub struct SessionStartData {
     pub model: Option<String>,
+    pub cwd: Option<String>,
+    pub transcript_path: Option<String>,
+    pub source: Option<String>,
 }
 
 // ---- 提取逻辑 ----
@@ -71,6 +74,9 @@ fn extract_detail(event_name: &str, event: &Value) -> HookEventDetail {
     match event_name {
         "SessionStart" => HookEventDetail::SessionStart(SessionStartData {
             model: str_field(event, "model"),
+            cwd: str_field(event, "cwd"),
+            transcript_path: str_field(event, "transcript_path"),
+            source: str_field(event, "source"),
         }),
         "SessionEnd" => HookEventDetail::SessionEnd,
         "UserPromptSubmit" => HookEventDetail::UserPromptSubmit,

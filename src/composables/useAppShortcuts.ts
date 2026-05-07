@@ -164,22 +164,6 @@ export function useAppShortcuts() {
       return
     }
 
-    // Escape => close overlays (settings, panels)
-    if (e.key === 'Escape') {
-      if (sidebarStore.showSettings || sidebarStore.panelVisible) {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        if (sidebarStore.showSettings) {
-          sidebarStore.closeSettings()
-        }
-        if (sidebarStore.panelVisible) {
-          sidebarStore.closePanel()
-        }
-        return
-      }
-      // No overlay open: let Escape pass through to xterm/CLI
-    }
-
     // --- 会话与标签管理（全局生效） ---
 
     // Alt+N => new session

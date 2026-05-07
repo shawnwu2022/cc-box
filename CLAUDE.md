@@ -79,7 +79,7 @@ cc-box/
 │   │   └── settings/           # 设置（SettingsOverlay > SettingsView + sections/）
 │   ├── stores/                 # Pinia：app、session、sidebar、config、hook
 │   ├── types/                  # TypeScript 类型定义（pty、session、project、config、app、hook）
-│   ├── composables/            # useAppShortcuts、useTerminalCommand
+│   ├── composables/            # useAppShortcuts、useTerminalCommand、useStatusMonitor、useWindowAttention
 │   ├── utils/                  # platform 工具
 │   └── styles/global.css       # CSS 变量与全局样式
 │
@@ -100,12 +100,13 @@ xterm.js ←→ Tauri invoke/listen ←→ pty.rs (Rust) ←→ portable-pty ←
 ### Hook 监控数据流
 
 ```
-Claude CLI hook 触发 → report-hook.sh → curl POST → hook_server.rs (axum) → emit('hook-event') → stores/hook.ts
+Claude CLI hook 触发 → report-hook.sh → curl POST → hook_server.rs (axum) → emit('hook-event') → stores/hook.ts (事件总线) → useStatusMonitor (状态监控)
 ```
 
 - Plugin 通过 `--plugin-dir` 按 session 加载，注入 11 个 hook 事件
 - 每个 PTY 注入 `CC_BOX_HOOK_PORT`（服务器端口）和 `CC_BOX_SESSION_ID`（终端标识）
-- hook_events.rs 推导运行状态 + 提取模型，前端按状态呈现指示灯（工作中/待处理/已关闭）
+- `stores/hook.ts`：纯事件总线，模块通过 `subscribe(eventTypes[], handler)` 注册消费
+- `useStatusMonitor`：hook 事件 → Tab 的 `working`/`pending` 状态 + 任务栏跳动
 - 详细架构 → [docs/hook-monitor.md](docs/hook-monitor.md)
 
 详细架构 → [docs/terminal-integration.md](docs/terminal-integration.md)

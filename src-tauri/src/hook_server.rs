@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use tower::ServiceBuilder;
 
 use crate::hook_events::HookPayload;
+use crate::store::invalidate_project_path_mapping;
 
 /// session_id → pty_id 映射
 type SessionMap = Mutex<std::collections::HashMap<String, String>>;
@@ -94,7 +95,11 @@ async fn handle_hook(
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
 
-    let event_name = event.get("hook_event_name").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let event_name = event
+        .get("hook_event_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
     log::info!("[hook-server] received: {} pty={}", event_name, pty_id.as_deref().unwrap_or("?"));
 
     // 建立 session_id ↔ pty_id 映射
@@ -107,6 +112,13 @@ async fn handle_hook(
 
     // 统一提取结构化数据并发送
     let payload = HookPayload::from_raw(pty_id, event);
+
+    // SessionStart 时 invalidate 项目路径缓存（确保新项目会话可见）
+    if event_name == "SessionStart" {
+        invalidate_project_path_mapping();
+        log::info!("[hook-server] SessionStart received, invalidated project path cache");
+    }
+
     let _ = app_handle.emit("hook-event", &payload);
 
     Json(json!({}))

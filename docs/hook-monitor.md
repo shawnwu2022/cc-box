@@ -6,9 +6,9 @@
 
 Hook 系统只采集**对 GUI 有意义**的信息：
 
-1. **运行状态** — 推导 Claude 当前在做什么（思考/执行工具/等待用户/错误等），用于 SessionItem 指示灯
+1. **session_id** — 关联手动创建的 Claude 会话
 2. **模型** — 从 SessionStart 提取，保留供未来使用
-3. **session_id** — 关联手动创建的 Claude 会话
+3. **工作状态** — 用户发消息后进入 working，响应完成后退出 working
 
 其他事件详情不在后端提取。原始 JSON 仍完整传输，架构保持可扩展。
 
@@ -49,14 +49,18 @@ Hook 系统只采集**对 GUI 有意义**的信息：
 └──────────────────────────────────────────────────────────────┘
 
 ┌─ Vue 前端 ───────────────────────────────────────────────────┐
-│  stores/hook.ts                                               │
-│  ├─ 监听 "hook-event"                                         │
-│  ├─ 按 ptyId 路由到对应终端 tab                                │
-│  ├─ 更新运行状态（state）                                      │
-│  ├─ 记录模型（SessionStart 时）                                │
-│  └─ 2 分钟陈旧检测：活跃状态超时自动降级为 idle                 │
+│  stores/hook.ts — 事件总线（pub/sub）                          │
+│  ├─ init(): 监听 "hook-event"，按事件类型 dispatch            │
+│  └─ subscribe(eventTypes[], handler): 模块注册，返回 unsubscribe│
 │                                                               │
-│  SessionItem.vue ← 从 hookStore 获取 claudeState → 指示灯样式  │
+│  composables/useStatusMonitor.ts — 状态监控模块                │
+│  ├─ 订阅 sessionStart → 分配 session_id                      │
+│  ├─ 订阅 userPromptSubmit → tab.working = true                │
+│  ├─ 订阅 stop/stopFailure/notification → working=false        │
+│  │   └─ 根据窗口聚焦/Tab 激活决定 pending 和任务栏跳动         │
+│  └─ watch 聚焦+Tab 切换 → 清除 active tab 的 pending          │
+│                                                               │
+│  SessionItem.vue ← tab.working → 指示灯样式                   │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -89,11 +93,50 @@ src-tauri/plugin/                       运行时目标 ~/.cc-box/claude-plugin/
 
 所有事件提取定义集中在 `src-tauri/src/hook_events.rs`，前端类型在 `src/types/hook.ts`，一一对应。
 
+### SessionStart 事件
+
+SessionStart 是最重要的 hook 事件，包含完整的会话元数据：
+
+```json
+{
+  "session_id": "abc123",
+  "transcript_path": "/Users/.../.claude/projects/.../abc123.jsonl",
+  "cwd": "/Users/.../project",
+  "hook_event_name": "SessionStart",
+  "source": "startup",
+  "model": "claude-sonnet-4-6"
+}
+```
+
+**提取字段**：
+| 字段 | 用途 |
+|------|------|
+| `session_id` | payload 顶层字段，用于给新建 Tab 分配 sessionId |
+| `cwd` | 真实项目路径 |
+| `transcript_path` | JSONL 文件路径，可解析出 Claude 项目目录 |
+| `model` | 模型标识符 |
+| `source` | 启动来源：startup/resume/clear/compact |
+
+**前端处理**（useStatusMonitor.ts）：
+```typescript
+if (payload.detail.type === 'sessionStart') {
+  const sessionId = payload.sessionId  // 从 payload 顶层获取
+  if (sessionId) {
+    const data = payload.detail.data    // SessionStartData
+    sessionStore.assignSessionIdByPtyId(ptyId, sessionId, data.model)
+  }
+}
+```
+
+**后端处理**（hook_server.rs）：
+- 收到 SessionStart 时自动 `invalidate_project_path_mapping()`
+- 建立 `session_id ↔ pty_id` 映射（用于反向查询）
+
 ### 已注册的 11 个事件
 
 | 事件 | 提取数据 | 推导状态 |
 |------|----------|----------|
-| `SessionStart` | model | → idle |
+| `SessionStart` | session_id(顶层), cwd, transcript_path, model, source | → idle |
 | `SessionEnd` | — | → idle |
 | `UserPromptSubmit` | — | → thinking |
 | `PreToolUse` | — | → tool_executing |
@@ -104,8 +147,6 @@ src-tauri/plugin/                       运行时目标 ~/.cc-box/claude-plugin/
 | `Notification` | — | → waiting_permission / waiting_input |
 | `SubagentStart` | — | → subagent_running |
 | `SubagentStop` | — | → thinking |
-
-仅 `SessionStart` 提取 `model` 字段。`derive_state` 还处理未注册但预留的 `PreCompact`/`PostCompact` 事件。
 
 ### 状态机
 
@@ -123,20 +164,20 @@ any ──[StopFailure]──→ error
 
 ### 状态指示灯 UI
 
-| 状态 | 颜色 | CSS 变量 | 动画 | 含义 |
+| 条件 | 颜色 | CSS 变量 | 动画 | 含义 |
 |------|------|----------|------|------|
-| thinking, tool_executing, subagent_running | 墨蓝 | `--status-info` | 温和脉冲 | Claude 正在处理 |
-| waiting_permission, waiting_input | 琥珀金 | `--accent-gold` | 温和脉冲 | 等待用户操作 |
-| idle, unknown | 墨绿 | `--status-success` | 温和脉冲 | 默认运行态 |
-| error | 赭红 | `--status-error` | 温和脉冲 | 出错 |
-| PTY 退出（当前活跃） | 浅灰 | `--text-tertiary` | 无 | 已停止 |
+| `working = true` | 墨蓝 | `--status-info` | 温和脉冲 | Claude 正在处理 |
+| `pending = true`（非活跃 Tab） | 琥珀金 | `--accent-gold` | 温和脉冲 | 等待用户关注 |
+| `status = 'running'`（默认） | 墨绿 | `--status-success` | 温和脉冲 | 空闲运行态 |
+| `status = 'stopped'`（活跃） | 浅灰 | `--text-tertiary` | 无 | 已停止 |
+| `status = 'stopped'`（非活跃） | 灰 | `--text-tertiary` | 无 | 已关闭 |
 
 ### 新增/修改事件的步骤
 
 1. 在 `src-tauri/plugin/hooks/hooks.json` 注册新事件
 2. 在 `src-tauri/src/hook_events.rs` 的 `extract_detail` + `derive_state` 添加分支
 3. 在 `src/types/hook.ts` 添加对应类型
-4. 如需影响 UI 指示灯，更新 `SessionItem.vue` 的 `dotClass` computed
+4. 如需消费新事件，在对应 composable 中调用 `hookStore.subscribe([type], handler)`
 
 ## 前端数据结构
 
@@ -153,15 +194,15 @@ interface HookEventPayload {
 }
 ```
 
-### SessionHookState（Pinia store 按会话聚合）
+### TerminalTab 状态字段（session.ts）
 
 ```typescript
-interface SessionHookState {
-  ptyId: string
-  sessionId?: string
-  state: ClaudeState
-  model?: string
-  lastUpdatedAt: number
+interface TerminalTab {
+  // ...
+  working: boolean    // 正在工作中（用户发消息后、响应返回前）
+  pending: boolean    // 需要用户关注（响应完成但用户未看到）
+  model?: string      // 模型名（从 SessionStart 提取）
+  // ...
 }
 ```
 
@@ -174,8 +215,35 @@ interface SessionHookState {
 | **脚本** | 始终 `exit 0`；curl 不可用时跳过；`--max-time 3` 限超时；hook `timeout: 5` |
 | **HTTP 服务器** | 启动失败仅日志告警；handler 内 catch 所有错误；独立 tokio task |
 | **PTY** | `--plugin-dir` 路径不存在时 Claude 忽略正常启动 |
-| **前端** | 无 hook 事件时状态为 "unknown"，指示灯降级为默认样式 |
-| **陈旧检测** | 2 分钟无更新的活跃状态自动降级为 idle（30 秒检测周期） |
+| **前端** | 无 hook 事件时 `working = false`，指示灯降级为默认样式 |
+
+## 前端 Hook 事件总线
+
+`stores/hook.ts` 作为纯事件总线，不包含业务逻辑：
+
+```typescript
+// 初始化：监听 Rust 后端 emit 的 hook-event
+hookStore.init()
+
+// 模块注册：订阅指定事件类型，返回 unsubscribe 函数
+const unsubscribe = hookStore.subscribe(
+  ['sessionStart', 'userPromptSubmit', 'stop'],
+  (payload) => { /* 处理逻辑 */ }
+)
+```
+
+### 状态监控模块 (useStatusMonitor)
+
+挂载在 `TerminalView.vue`，负责将 hook 事件转化为 Tab 状态：
+
+```
+pending 信号到达（stop/stopFailure/notification，且 working=true）
+  ├─ 应用失焦 → 任务栏跳动 + tab.pending = true
+  ├─ 应用聚焦 + Tab 非激活 → tab.pending = true
+  └─ 应用聚焦 + Tab 激活 → 无操作
+
+应用从失焦 → 聚焦 → 清除 active tab 的 pending
+```
 
 ## 文件清单
 
@@ -186,5 +254,7 @@ interface SessionHookState {
 | `src-tauri/src/hook_config.rs` | Plugin 文件管理 |
 | `src-tauri/plugin/` | Plugin 源文件（plugin.json + hooks.json + report-hook.sh） |
 | `src/types/hook.ts` | 前端类型定义 |
-| `src/stores/hook.ts` | Pinia store：监听事件、聚合状态、陈旧检测 |
+| `src/stores/hook.ts` | 事件总线：subscribe / dispatch |
+| `src/composables/useStatusMonitor.ts` | 状态监控：hook 事件 → working/pending |
+| `src/composables/useWindowAttention.ts` | 窗口聚焦状态 + 取消任务栏跳动 |
 | `src/components/sessions/SessionItem.vue` | 状态指示灯 UI |

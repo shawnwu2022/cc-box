@@ -15,6 +15,9 @@ export type ClaudeState =
 /** SessionStart 事件提取的数据 */
 export interface SessionStartData {
   model?: string
+  cwd?: string
+  transcriptPath?: string
+  source?: string
 }
 
 // ---- 带标签的事件详情 ----

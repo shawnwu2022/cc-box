@@ -1,37 +1,51 @@
 import { defineStore } from 'pinia'
-import type { HookEventPayload } from '@/types/hook'
+import type { HookEventPayload, HookEventDetail } from '@/types/hook'
 import { onHookEvent } from '@/api/tauri'
-import { useSessionStore } from '@/stores/session'
+
+export type HookEventType = HookEventDetail['type']
+export type HookEventHandler = (payload: HookEventPayload) => void
 
 export const useHookStore = defineStore('hook', () => {
   let initialized = false
+  const subscribers = new Map<HookEventType, Set<HookEventHandler>>()
 
-  function handleHookEvent(payload: HookEventPayload) {
-    const ptyId = payload.ptyId
-    if (!ptyId) return
+  function subscribe(eventTypes: HookEventType[], handler: HookEventHandler): () => void {
+    for (const type of eventTypes) {
+      if (!subscribers.has(type)) {
+        subscribers.set(type, new Set())
+      }
+      subscribers.get(type)!.add(handler)
+    }
+    return () => {
+      for (const type of eventTypes) {
+        subscribers.get(type)?.delete(handler)
+      }
+    }
+  }
 
-    const sessionStore = useSessionStore()
-    const model = payload.detail.type === 'sessionStart'
-      ? (payload.detail.data as { model?: string }).model
-      : undefined
+  function dispatch(payload: HookEventPayload) {
+    if (!payload.ptyId) return
 
-    sessionStore.updateClaudeState(ptyId, payload.state, model)
+    const handlers = subscribers.get(payload.detail.type)
+    if (handlers) {
+      for (const handler of handlers) {
+        handler(payload)
+      }
+    }
   }
 
   function clearSession(_key: string) {
-    // 不再维护 sessions map，sessionStore 处理清理
+    // placeholder，保持 XTermTerminal 调用兼容
   }
 
   async function init() {
     if (initialized) return
     initialized = true
-    onHookEvent((payload) => {
-      handleHookEvent(payload)
-    })
+    onHookEvent(dispatch)
   }
 
   return {
-    handleHookEvent,
+    subscribe,
     clearSession,
     init,
   }

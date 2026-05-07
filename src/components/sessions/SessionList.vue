@@ -8,9 +8,10 @@
       :is-active="item.id === activeId"
       :is-running="item.isRunning"
       :is-stopped="item.isStopped"
-      :claude-state="item.claudeState"
+      :working="item.working"
       :pending="item.pending"
       :last-active-at="item.lastActiveAt"
+      :can-resume="item.canResume"
       :closable="closable && item.isTab"
       :snippet="item.snippet"
       @switch="(id) => $emit('switch', id)"
@@ -25,7 +26,6 @@
 import { computed } from 'vue'
 import SessionItem from './SessionItem.vue'
 import type { TerminalTab, HistorySession } from '@/stores/session'
-import type { ClaudeState } from '@/types/hook'
 
 const props = defineProps<{
   tabs?: TerminalTab[]
@@ -50,8 +50,9 @@ interface ListItem {
   isStopped: boolean
   isTab: boolean
   lastActiveAt: number
+  canResume?: boolean
   snippet?: string
-  claudeState?: ClaudeState
+  working?: boolean
   pending?: boolean
 }
 
@@ -65,7 +66,8 @@ const items = computed<ListItem[]>(() => {
     isStopped: tab.status === 'stopped',
     isTab: true,
     lastActiveAt: tab.lastActiveAt,
-    claudeState: tab.status === 'running' ? tab.claudeState : undefined,
+    canResume: tab.status === 'stopped' ? !!tab.sessionId : undefined,
+    working: tab.status === 'running' ? tab.working : undefined,
     pending: tab.status === 'running' ? tab.pending : undefined,
   }))
 
