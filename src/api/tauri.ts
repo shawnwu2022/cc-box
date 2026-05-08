@@ -225,6 +225,12 @@ export const spawnNewInstance = (): Promise<void> =>
 export const logMessage = (level: 'error' | 'warn' | 'info' | 'debug', message: string): Promise<void> =>
   invoke<void>('log_message', { level, message });
 
+export const syncClaudeEnv = (fullScreenRender: boolean, userEnv: Record<string, string>): Promise<void> =>
+  invoke<void>('sync_claude_env', { fullScreenRender, userEnv });
+
+export const getClaudeSettingsEnv = (): Promise<Record<string, string>> =>
+  invoke<Record<string, string>>('get_claude_settings_env');
+
 // ============================================
 // Dialog (Tauri dialog plugin)
 // ============================================

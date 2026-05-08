@@ -172,6 +172,74 @@ term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
 })
 ```
 
+## 终端缩放与布局刷新
+
+### 三层架构
+
+```
+容器尺寸变化（flexbox / 窗口缩放）
+  → ResizeObserver 检测 .xterm-container 尺寸变化
+    → fitCurrentTerminal()（debounce 50ms，仅 trailing）
+      → requestAnimationFrame → FitAddon.fit()
+        → xterm.js 计算新的 cols/rows
+          → term.onResize → ptyResize(ptyId, cols, rows)
+```
+
+### 核心：fitCurrentTerminal（debounce）
+
+```typescript
+const fitCurrentTerminal = debounce(() => {
+  if (isMinimized || !currentDisplayTabId.value) return
+  const instance = terminalInstances.get(currentDisplayTabId.value)
+  if (instance) {
+    requestAnimationFrame(() => instance.fitAddon.fit())
+  }
+}, 50) // 仅 trailing，频繁调用时只有最后一次生效
+```
+
+- **防抖**：侧边栏 CSS transition（250ms）期间连续触发只生效一次
+- **最小化守卫**：`isMinimized` 为 true 时跳过，避免无意义 fit
+- **仅当前 tab**：`fitCurrentTerminal` 只处理活跃 tab
+
+### 10 个触发源
+
+| # | 触发源 | fit 路径 | rAF | 范围 |
+|---|--------|---------|-----|------|
+| 1 | **ResizeObserver** | `fitCurrentTerminal()` (debounced) | 是 | 仅当前 tab |
+| 2 | **侧边栏开关** | 经由 ResizeObserver（flex 布局重算） | 是 | 仅当前 tab |
+| 3 | **Tab 切换** | 直接 `fitAddon.fit()` | 是 | 目标 tab |
+| 4 | **字体大小改变** | watcher 直接 `fitAddon.fit()` | 否（同步） | **所有实例** |
+| 5 | **视图可见性恢复** | `fitCurrentTerminal()` via nextTick | 是 | 仅当前 tab |
+| 6 | **窗口缩放/最大化/半屏** | 经由 ResizeObserver | 是 | 仅当前 tab |
+| 7 | **新建 Tab** | `fitAddon.fit()` after `term.open()` | 是 | 新 tab |
+| 8 | **重启 Tab** | `fitAddon.fit()` after `term.open()` | 是 | 新 tab |
+| 9 | **Vue ref 回调** | `fitAddon.fit()` | 是 | 对应 tab |
+| 10 | **同 tab 重选** | `fitCurrentTerminal()` | 是 | 当前 tab |
+
+### 最小化/恢复处理
+
+```typescript
+win.onResized(async () => {
+  const minimized = await win.isMinimized()
+  if (isMinimized && !minimized) {
+    // 从最小化恢复
+    isMinimized = false
+    await nextTick()
+    instance.fitAddon.fit()
+    instance.term.refresh(0, instance.term.rows - 1) // 刷新渲染
+    instance.term.scrollToBottom()                     // 滚动到底部
+  } else {
+    isMinimized = minimized
+  }
+})
+```
+
+恢复时三步操作保证布局无变化：`fit()` 重算尺寸 → `refresh()` 刷新脏区域 → `scrollToBottom()` 保持滚动位置。
+
+### PTY 初始尺寸
+
+`startTab` / `restartTab` 以 `cols: 80, rows: 24` 创建 PTY，随后 `fitAddon.fit()` 修正为实际容器尺寸。存在短暂窗口，PTY 可能在 resize 到达前输出内容。
+
 ## 快捷键处理机制
 
 **应用级快捷键由 `useAppShortcuts.ts` 通过 DOM `keydown` capturing phase 统一处理；终端快捷键由 xterm.js + PTY 原生处理。**

@@ -123,6 +123,8 @@ pub fn run() {
             commands::get_app_path,
             commands::spawn_new_instance,
             commands::log_message,
+            commands::sync_claude_env,
+            commands::get_claude_settings_env,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

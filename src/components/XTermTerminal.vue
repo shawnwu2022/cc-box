@@ -16,6 +16,7 @@
 import { ref, reactive, watch, onMounted, onUnmounted, nextTick, type ComponentPublicInstance } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { debounce } from 'lodash-es'
 import '@xterm/xterm/css/xterm.css'
 import { useAppStore } from '@/stores/app'
 import { useSessionStore } from '@/stores/session'
@@ -88,9 +89,13 @@ const isPtyStarting = ref<boolean>(false)
 let unlistenPtyOutput: (() => void) | null = null
 let unlistenPtyExit: (() => void) | null = null
 let unlistenDragDrop: (() => void) | null = null
+let unlistenWindowResized: (() => void) | null = null
 
 // ResizeObserver
 let resizeObserver: ResizeObserver | null = null
+
+// 窗口最小化状态（最小化期间跳过 fit，恢复后主动刷新）
+let isMinimized = false
 
 // 浅色终端主题
 const lightTheme = {
@@ -132,14 +137,14 @@ function setTerminalEl(tabId: string, el: HTMLElement | null) {
   }
 }
 
-// Fit 当前显示的终端
-function fitCurrentTerminal() {
-  if (!currentDisplayTabId.value) return
+// Fit 当前显示的终端（防抖，频繁调用时只有最后一次生效，最小化期间跳过）
+const fitCurrentTerminal = debounce(() => {
+  if (isMinimized || !currentDisplayTabId.value) return
   const instance = terminalInstances.get(currentDisplayTabId.value)
   if (instance) {
     requestAnimationFrame(() => instance.fitAddon.fit())
   }
-}
+}, 50)
 
 // 创建新的 Terminal 实例
 function createTerminal(tabId: string): Terminal {
@@ -232,6 +237,28 @@ onMounted(async () => {
     resizeObserver = new ResizeObserver(() => fitCurrentTerminal())
     resizeObserver.observe(containerRef.value)
   }
+
+  // 监听窗口 resize → 追踪最小化状态，恢复时主动刷新
+  const win = getCurrentWindow()
+  unlistenWindowResized = await win.onResized(async () => {
+    const minimized = await win.isMinimized()
+    if (isMinimized && !minimized) {
+      // 从最小化恢复 → fit + 刷新渲染 + 滚动到底部
+      isMinimized = false
+      const tabId = currentDisplayTabId.value
+      if (tabId) {
+        const instance = terminalInstances.get(tabId)
+        if (instance) {
+          await nextTick()
+          instance.fitAddon.fit()
+          instance.term.refresh(0, instance.term.rows - 1)
+          instance.term.scrollToBottom()
+        }
+      }
+    } else {
+      isMinimized = minimized
+    }
+  })
 
   registerTerminalCommand(sendText)
 })
@@ -577,10 +604,12 @@ async function restartCurrentPty() {
 }
 
 onUnmounted(() => {
+  fitCurrentTerminal.cancel()
   resizeObserver?.disconnect()
   unlistenPtyOutput?.()
   unlistenPtyExit?.()
   unlistenDragDrop?.()
+  unlistenWindowResized?.()
   for (const instance of terminalInstances.values()) {
     instance.term.dispose()
   }

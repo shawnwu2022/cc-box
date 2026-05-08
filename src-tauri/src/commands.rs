@@ -262,6 +262,21 @@ pub async fn open_in_file_manager(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// 同步环境变量到 ~/.claude/settings.json
+#[tauri::command]
+pub async fn sync_claude_env(
+    full_screen_render: bool,
+    user_env: std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    crate::store::sync_claude_env(full_screen_render, user_env).map_err(|e| e.to_string())
+}
+
+/// 读取 ~/.claude/settings.json 中的 env
+#[tauri::command]
+pub async fn get_claude_settings_env() -> Result<std::collections::HashMap<String, String>, String> {
+    crate::store::get_claude_settings_env().map_err(|e| e.to_string())
+}
+
 /// 测试命令（验证通信）
 #[tauri::command]
 pub async fn test_communication(message: String) -> Result<String, String> {

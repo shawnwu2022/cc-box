@@ -8,12 +8,32 @@ import {
   getHomeData,
   getProjects,
   getCheckResults,
-  runChecks
+  runChecks,
+  syncClaudeEnv,
+  getClaudeSettingsEnv
 } from '@/api/tauri'
 
 import type { ClaudeOptions, DefaultClaudeOptions, CheckResult, Project, SessionInfo } from '@/types'
 
 const PAGE_SIZE = 12
+
+/** 默认管理的环境变量 key 列表（首次加载时填充） */
+const DEFAULT_CLAUDE_ENV_VAR_KEYS = [
+  'LANG',
+  'LC_ALL',
+  'PYTHONUTF8',
+  'CLAUDE_CODE_SCROLL_SPEED',
+  'PYTHONIOENCODING',
+]
+
+/** 默认环境变量值（首次同步时写入） */
+const DEFAULT_CLAUDE_ENV_VALUES: Record<string, string> = {
+  LANG: 'en_US.UTF-8',
+  LC_ALL: 'en_US.UTF-8',
+  PYTHONUTF8: '1',
+  CLAUDE_CODE_SCROLL_SPEED: '5',
+  PYTHONIOENCODING: 'utf-8',
+}
 
 export interface PendingResume {
   sessionId: string
@@ -24,6 +44,9 @@ export const useAppStore = defineStore('app', () => {
   const cwd = ref<string>('')
   const theme = ref<string>('light')
   const fontSize = ref<number>(12)
+  const fullScreenRender = ref<boolean>(true)
+  // cc-box 管理的环境变量 key 列表（值从 ~/.claude/settings.json 实时读取）
+  const claudeEnvVarKeys = ref<string[]>([])
 
   // 启动控制
   const pendingResume = ref<PendingResume | null>(null)
@@ -68,6 +91,15 @@ export const useAppStore = defineStore('app', () => {
       const config = await getAppConfig()
       theme.value = config.theme || 'light'
       fontSize.value = config.fontSize || 12
+      fullScreenRender.value = config.fullScreenRender ?? true
+
+      // 加载用户管理的环境变量 key 列表（首次使用默认值）
+      claudeEnvVarKeys.value = (config.claudeEnvVarKeys ?? []).length > 0
+        ? config.claudeEnvVarKeys!
+        : [...DEFAULT_CLAUDE_ENV_VAR_KEYS]
+
+      // 启动时：读取 Claude settings 当前 env，为缺失的 key 补上默认值
+      await syncEnvFromSettings()
 
       defaultClaudeOptions.value = {
         skipPermissions: config.defaultSkipPermissions ?? false,
@@ -142,6 +174,50 @@ export const useAppStore = defineStore('app', () => {
     updateAppConfig({ fontSize: size })
   }
 
+  async function setFullScreenRender(val: boolean) {
+    fullScreenRender.value = val
+    updateAppConfig({ fullScreenRender: val })
+    await doSyncEnv()
+  }
+
+  /** 从 Claude settings 读取当前 env，为管理的 key 补默认值后写入 */
+  async function syncEnvFromSettings() {
+    try {
+      const currentEnv = await getClaudeSettingsEnv()
+      const envToSync: Record<string, string> = {}
+      for (const key of claudeEnvVarKeys.value) {
+        envToSync[key] = currentEnv[key] ?? DEFAULT_CLAUDE_ENV_VALUES[key] ?? ''
+      }
+      await syncClaudeEnv(fullScreenRender.value, envToSync)
+    } catch (err) {
+      console.error('Failed to sync env from settings:', err)
+    }
+  }
+
+  /** 根据当前 key 列表 + Claude settings 中的值，执行写入 */
+  async function doSyncEnv() {
+    const currentEnv = await getClaudeSettingsEnv()
+    const envToSync: Record<string, string> = {}
+    for (const key of claudeEnvVarKeys.value) {
+      envToSync[key] = currentEnv[key] ?? DEFAULT_CLAUDE_ENV_VALUES[key] ?? ''
+    }
+    await syncClaudeEnv(fullScreenRender.value, envToSync)
+  }
+
+  /** 更新用户管理的 key 列表并同步 */
+  async function setClaudeEnvVarKeys(keys: string[], changedEnv?: Record<string, string>) {
+    claudeEnvVarKeys.value = keys
+    updateAppConfig({ claudeEnvVarKeys: keys })
+    const envToSync = changedEnv ?? {}
+    if (!changedEnv) {
+      const currentEnv = await getClaudeSettingsEnv()
+      for (const key of keys) {
+        envToSync[key] = currentEnv[key] ?? DEFAULT_CLAUDE_ENV_VALUES[key] ?? ''
+      }
+    }
+    await syncClaudeEnv(fullScreenRender.value, envToSync)
+  }
+
   function setClaudeOptions(options: Partial<ClaudeOptions>) {
     claudeOptions.value = { ...claudeOptions.value, ...options }
   }
@@ -209,6 +285,8 @@ export const useAppStore = defineStore('app', () => {
     cwd,
     theme,
     fontSize,
+    fullScreenRender,
+    claudeEnvVarKeys,
     defaultClaudeOptions,
     claudeOptions,
     currentProject,
@@ -231,6 +309,9 @@ export const useAppStore = defineStore('app', () => {
     setCwd,
     setTheme,
     setFontSize,
+    setFullScreenRender,
+    setClaudeEnvVarKeys,
+    getClaudeSettingsEnv,
     setClaudeOptions,
     setDefaultClaudeOptions,
     resetClaudeOptions,

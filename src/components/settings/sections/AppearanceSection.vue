@@ -19,6 +19,19 @@
     <div class="setting-group">
       <div class="setting-row">
         <div class="setting-info">
+          <span class="setting-label">Full Screen Rendering</span>
+          <span class="setting-desc">Reduce flicker with full-page rendering (CLAUDE_CODE_NO_FLICKER)</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" :checked="fullScreenRender" @change="handleToggle" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <div class="setting-row">
+        <div class="setting-info">
           <span class="setting-label">Theme</span>
           <span class="setting-desc">Application color scheme</span>
         </div>
@@ -58,11 +71,15 @@ import { useAppStore } from '@/stores/app'
 const appStore = useAppStore()
 const fontSize = computed(() => appStore.fontSize)
 const theme = ref(appStore.theme)
+const fullScreenRender = computed(() => appStore.fullScreenRender)
 
 watch(theme, (val) => { appStore.setTheme(val) })
 
 function increaseFontSize() { appStore.setFontSize(fontSize.value + 1) }
 function decreaseFontSize() { appStore.setFontSize(fontSize.value - 1) }
+function handleToggle(e: Event) {
+  appStore.setFullScreenRender((e.target as HTMLInputElement).checked)
+}
 </script>
 
 <style scoped>
@@ -236,5 +253,47 @@ function decreaseFontSize() { appStore.setFontSize(fontSize.value - 1) }
 
 .preview-line.short {
   width: 60%;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border-color);
+  border-radius: 12px;
+  transition: background 0.2s ease;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--accent-color);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px);
 }
 </style>

@@ -193,6 +193,7 @@ EOF
 | [docs/interaction.md](docs/interaction.md) | **快捷键处理架构**、三场景输入处理、DOM 捕获期监听 |
 | [docs/capabilities.md](docs/capabilities.md) | **Tauri 权限管理**、查询/确认/添加 capabilities 权限的方法 |
 | [docs/data-persistence.md](docs/data-persistence.md) | 数据存储架构、文件路径、JSON 结构 |
+| [docs/env-injection.md](docs/env-injection.md) | **环境变量注入**：Claude settings env 管理、启动同步、优先级、扩展方式 |
 | [docs/startup-checks.md](docs/startup-checks.md) | 启动先决条件检查、路径检测与自动保存 |
 | [docs/roadmap.md](docs/roadmap.md) | 开发路线图、进度跟踪、待办事项 |
 | [docs/logging.md](docs/logging.md) | 日志文件路径、级别策略、轮转与清理机制 |

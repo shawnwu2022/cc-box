@@ -25,6 +25,8 @@ export interface AppConfig {
   hiddenProjects?: string[]
   lastOpenedProject?: string
   windowSize?: { width: number; height: number }
+  fullScreenRender?: boolean
+  claudeEnvVarKeys?: string[]
 }
 
 export interface DefaultClaudeOptions {
