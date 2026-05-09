@@ -85,6 +85,20 @@ const currentDisplayTabId = ref<string | null>(null)
 // 是否正在启动 PTY（防止并发）
 const isPtyStarting = ref<boolean>(false)
 
+// macOS 原生 Copy 事件：Tauri MenuBuilder 注册了 Copy 菜单项后，
+// Cmd+C 会派发 copy 事件到 WebView，此处将 xterm 选中文本写入剪贴板
+function handleNativeCopy(e: ClipboardEvent) {
+  const tabId = currentDisplayTabId.value
+  if (!tabId) return
+  const instance = terminalInstances.get(tabId)
+  if (!instance) return
+  const selection = instance.term.getSelection()
+  if (selection) {
+    e.preventDefault()
+    writeText(selection).catch(() => {})
+  }
+}
+
 // Unlisten functions
 let unlistenPtyOutput: (() => void) | null = null
 let unlistenPtyExit: (() => void) | null = null
@@ -248,6 +262,7 @@ function createTerminal(tabId: string): Terminal {
 
 onMounted(async () => {
   await setupEventListeners()
+  window.addEventListener('copy', handleNativeCopy)
 
   if (containerRef.value) {
     resizeObserver = new ResizeObserver(() => fitCurrentTerminal())
@@ -622,6 +637,7 @@ async function restartCurrentPty() {
 onUnmounted(() => {
   fitCurrentTerminal.cancel()
   resizeObserver?.disconnect()
+  window.removeEventListener('copy', handleNativeCopy)
   unlistenPtyOutput?.()
   unlistenPtyExit?.()
   unlistenDragDrop?.()
