@@ -29,8 +29,13 @@
       </div>
     </div>
 
-    <h2 class="section-heading" style="margin-top: 32px">Environment Variables</h2>
-    <p class="section-desc">Injected into <code class="path-hint">~/.claude/settings.json</code> at startup and on change.</p>
+    <div class="env-header">
+      <div>
+        <h2 class="section-heading" style="margin-bottom: 4px">Environment Variables</h2>
+        <p class="section-desc" style="margin-bottom: 0">Written to <code class="path-hint">~/.claude/settings.json</code> on change and at startup.</p>
+      </div>
+      <button class="reset-btn" @click="handleReset">Reset to defaults</button>
+    </div>
 
     <div class="env-list">
       <div v-for="(value, key) in envVars" :key="key" class="env-row">
@@ -81,15 +86,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted } from 'vue'
-import { useAppStore } from '@/stores/app'
+import { ref, reactive, watch } from 'vue'
+import { useAppStore, DEFAULT_CLAUDE_ENV_VARS } from '@/stores/app'
 
 const appStore = useAppStore()
 const skipPermissions = ref(appStore.defaultClaudeOptions.skipPermissions)
 const customArgs = ref(appStore.defaultClaudeOptions.customArgs)
-
-// 环境变量：key 列表来自 cc-box 配置，值从 Claude settings 实时读取
-const envVars = reactive<Record<string, string>>({})
+const envVars = reactive<Record<string, string>>({ ...appStore.claudeEnvVars })
 const newKey = ref('')
 const newValue = ref('')
 
@@ -100,53 +103,42 @@ watch([skipPermissions, customArgs], () => {
   })
 })
 
-/** 从 Claude settings 实时读取，合并 cc-box 管理的 key 列表 */
-async function loadEnvFromSettings() {
-  try {
-    const currentEnv = await appStore.getClaudeSettingsEnv()
-    // 只显示 cc-box 管理的 key
-    const keys = appStore.claudeEnvVarKeys
-    Object.keys(envVars).forEach(k => delete envVars[k])
-    for (const key of keys) {
-      envVars[key] = currentEnv[key] ?? ''
-    }
-  } catch {
-    // 读取失败时保留空状态
-  }
+function syncEnv() {
+  appStore.setClaudeEnvVars({ ...envVars })
 }
 
-onMounted(loadEnvFromSettings)
-
-async function syncEnv(changedEnv: Record<string, string>) {
-  await appStore.setClaudeEnvVarKeys(Object.keys(envVars), changedEnv)
-}
-
-async function handleKeyChange(oldKey: string, newKeyVal: string) {
+function handleKeyChange(oldKey: string, newKeyVal: string) {
   const trimmed = newKeyVal.trim()
   if (!trimmed || trimmed === oldKey) return
   const value = envVars[oldKey]
   delete envVars[oldKey]
   envVars[trimmed] = value
-  await syncEnv({ [trimmed]: value })
+  syncEnv()
 }
 
-async function handleValueChange(key: string, val: string) {
+function handleValueChange(key: string, val: string) {
   envVars[key] = val
-  await syncEnv({ [key]: val })
+  syncEnv()
 }
 
-async function handleRemove(key: string) {
+function handleRemove(key: string) {
   delete envVars[key]
-  await appStore.setClaudeEnvVarKeys(Object.keys(envVars))
+  syncEnv()
 }
 
-async function handleAdd() {
+function handleAdd() {
   const key = newKey.value.trim()
   if (!key) return
   envVars[key] = newValue.value
   newKey.value = ''
   newValue.value = ''
-  await syncEnv({ [key]: envVars[key] })
+  syncEnv()
+}
+
+function handleReset() {
+  Object.keys(envVars).forEach(k => delete envVars[k])
+  Object.assign(envVars, DEFAULT_CLAUDE_ENV_VARS)
+  syncEnv()
 }
 </script>
 
@@ -263,6 +255,31 @@ async function handleAdd() {
 
 .text-input::placeholder {
   color: var(--text-tertiary);
+}
+
+.env-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  margin-top: 32px;
+}
+
+.reset-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.reset-btn:hover {
+  border-color: var(--accent-color);
+  color: var(--text-primary);
 }
 
 .path-hint {

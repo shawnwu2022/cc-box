@@ -73,8 +73,8 @@ pub struct AppConfig {
     pub claude_path: Option<String>,
     #[serde(rename = "gitBashPath")]
     pub git_bash_path: Option<String>,
-    #[serde(rename = "claudeEnvVarKeys")]
-    pub claude_env_var_keys: Option<Vec<String>>,
+    #[serde(rename = "claudeEnvVars")]
+    pub claude_env_vars: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,17 +203,12 @@ fn get_gui_config_path() -> Result<PathBuf> {
 
 // ==================== Claude 环境变量注入 ====================
 
-/// 同步环境变量到 ~/.claude/settings.json
-/// full_screen_render → CLAUDE_CODE_NO_FLICKER="1"/"0"（用户 env 中同名 key 优先）
-/// user_env → 用户自定义环境变量，覆盖默认值
-pub fn sync_claude_env(
-    full_screen_render: bool,
-    user_env: std::collections::HashMap<String, String>,
-) -> Result<()> {
+/// 将 cc-box 管理的环境变量合并写入 ~/.claude/settings.json
+/// 只更新 user_env 中的 key，不影响 Claude settings 中其他已有的 env
+pub fn sync_claude_env(user_env: std::collections::HashMap<String, String>) -> Result<()> {
     let home = dirs::home_dir().context("Home directory not found")?;
     let settings_path = home.join(".claude").join("settings.json");
 
-    // 读取现有配置（不存在则创建空对象）
     let mut settings: serde_json::Value = if settings_path.exists() {
         let content = fs::read_to_string(&settings_path)?;
         serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
@@ -224,7 +219,6 @@ pub fn sync_claude_env(
         serde_json::json!({})
     };
 
-    // 确保 settings 是 Object，获取或创建 env 对象
     if settings.is_null() || !settings.is_object() {
         settings = serde_json::json!({});
     }
@@ -240,57 +234,14 @@ pub fn sync_claude_env(
         .and_then(|v| v.as_object_mut())
         .context("settings.json env is not an object")?;
 
-    // 1) 先写入用户自定义环境变量（最高优先级）
     for (key, value) in &user_env {
-        env_obj.insert(
-            key.clone(),
-            serde_json::Value::String(value.clone()),
-        );
+        env_obj.insert(key.clone(), serde_json::Value::String(value.clone()));
     }
 
-    // 2) 再写入 toggle 控制的变量（仅当用户未显式设置时生效）
-    if !user_env.contains_key("CLAUDE_CODE_NO_FLICKER") {
-        env_obj.insert(
-            "CLAUDE_CODE_NO_FLICKER".to_string(),
-            serde_json::Value::String(if full_screen_render {
-                "1".into()
-            } else {
-                "0".into()
-            }),
-        );
-    }
-
-    // 写回文件
     let content = serde_json::to_string_pretty(&settings)?;
     fs::write(&settings_path, content)?;
 
     Ok(())
-}
-
-/// 读取 ~/.claude/settings.json 中的 env 对象
-pub fn get_claude_settings_env() -> Result<std::collections::HashMap<String, String>> {
-    let home = dirs::home_dir().context("Home directory not found")?;
-    let settings_path = home.join(".claude").join("settings.json");
-
-    if !settings_path.exists() {
-        return Ok(std::collections::HashMap::new());
-    }
-
-    let content = fs::read_to_string(&settings_path)?;
-    let settings: serde_json::Value =
-        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}));
-
-    let env = settings
-        .get("env")
-        .and_then(|v| v.as_object())
-        .map(|obj| {
-            obj.iter()
-                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                .collect::<std::collections::HashMap<String, String>>()
-        })
-        .unwrap_or_default();
-
-    Ok(env)
 }
 
 /// 扫描 ~/.claude/projects/ 构建真实路径到项目目录的映射
