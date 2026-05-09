@@ -1,5 +1,5 @@
 <template>
-  <header class="title-bar" data-tauri-drag-region @dblclick="handleDblClick">
+  <header class="title-bar" data-tauri-drag-region @dblclick="!isMac && handleDblClick()">
     <!-- macOS 红绿灯占位（系统原生绘制，此处仅预留空间） -->
     <div v-if="isMac" class="traffic-light-spacer"></div>
 
