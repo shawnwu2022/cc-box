@@ -150,36 +150,41 @@ npm run tauri:build        # 生产构建
 
 - **Gitee API Token**：已存储在 `git config --local gitee.token`，用于通过 API 创建 Gitee Release
 
-### 版本发布（快速参考）
+### 版本发布（自动化脚本）
+
 ```bash
-# 1. 更新版本号（手动编辑）
-vim src-tauri/Cargo.toml package.json src-tauri/tauri.conf.json
+# 设置代理（GitHub 操作需要）
+export HTTP_PROXY=http://127.0.0.1:33210
+export HTTPS_PROXY=http://127.0.0.1:33210
 
-# 2. 提交并打标签
-git add -A && git commit -m "Release v1.2.3"
-git push origin main
-git tag -a v1.2.3 -m "Release v1.2.3"
-git push origin v1.2.3
+# 执行发布脚本（自动更新版本号、CHANGELOG、提交、推送、监控CI、发布、上传OSS）
+npm run release -- --bump patch --notes "### Fixed\n- Fix terminal copy issue"
 
-# 3. 监控 CI 构建进度（需要代理）
-set HTTP_PROXY=http://127.0.0.1:33210
-set HTTPS_PROXY=http://127.0.0.1:33210
-gh run watch <run-id> --exit-status
-
-# 4. 构建完成后发布（必须附带 release notes）
-gh release edit v1.2.3 --draft=false --notes "$(cat <<'EOF'
-## What's Changed
-
-### Bug Fixes
-- ...
-
-### Features
-- ...
-EOF
-)"
+# 版本类型：major（主版本） / minor（次版本） / patch（补丁）
+# ReleaseNotes：必填，用 \n 表示换行
 ```
 
-**重要**：每次发布 release 必须编写 release notes（`--notes`），说明本次版本相较latest版本的变更内容，按 Bug Fixes / Features 等分类。
+#### 发布脚本参数
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `--bump <type>` | ✓ | 版本更新类型：`major` / `minor` / `patch` |
+| `--notes "<text>"` | ✓ | Release notes，用 `\n` 表示换行 |
+| `--skip-ci` |  | 跳过 CI 监控（用于已构建的标签） |
+| `--oss-only <ver>` |  | 仅下载指定版本并上传到 OSS（如 `--oss-only v0.5.1`） |
+
+#### OSS 配置
+
+配置文件：`scripts/oss-config.json`（已加入 `.gitignore`）
+
+```json
+{
+  "bucketName": "cc-box",
+  "region": "oss-cn-beijing",
+  "accessKeyId": "YOUR_KEY",
+  "accessKeySecret": "YOUR_SECRET"
+}
+```
 详细流程 → [docs/release-process.md](docs/release-process.md)
 
 ## 详细文档

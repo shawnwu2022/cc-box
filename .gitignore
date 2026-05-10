@@ -22,6 +22,12 @@ Desktop.ini
 .env.local
 .env.*.local
 
+# OSS config (contains secrets)
+scripts/oss-config.json
+
+# OSS tool (downloaded on demand)
+ossutil64.exe
+
 # Logs
 *.log
 npm-debug.log*
@@ -31,3 +37,6 @@ npm-debug.log*
 *.tsbuildinfo
 /docs/promo/
 .claude/worktrees
+
+# Release artifacts (downloaded from GitHub, local backup)
+releases/

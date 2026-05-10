@@ -1,6 +1,6 @@
 {
   "name": "cc-box",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Claude Code Desktop GUI (Tauri) - Multi-terminal manager for Claude Code power users",
   "license": "MIT",
   "author": {
@@ -33,7 +33,9 @@
     "tauri:build": "tauri build",
     "build:win": "tauri build --target x86_64-pc-windows-gnu",
     "build:mac": "tauri build --target x86_64-apple-darwin",
-    "build:linux": "tauri build --target x86_64-unknown-linux-gnu"
+    "build:linux": "tauri build --target x86_64-unknown-linux-gnu",
+    "release": "node scripts/release.js",
+    "release:oss": "node scripts/release.js --oss-only"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

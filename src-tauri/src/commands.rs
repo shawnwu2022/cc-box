@@ -405,3 +405,9 @@ pub async fn download_update(
 pub async fn install_update(file_path: String, app_handle: AppHandle) -> Result<(), String> {
     crate::updater::install_update(file_path, app_handle).await
 }
+
+/// 取消下载
+#[tauri::command]
+pub fn cancel_download() {
+    crate::updater::cancel_download()
+}

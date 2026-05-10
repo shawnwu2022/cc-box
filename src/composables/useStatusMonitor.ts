@@ -35,9 +35,16 @@ export function useStatusMonitor(options: { isFocused: Ref<boolean> }) {
       return
     }
 
-    // userPromptSubmit → 进入 working
+    // userPromptSubmit → 进入 working + 设置标题
     if (payload.detail.type === 'userPromptSubmit') {
       tab.working = true
+      // 无自定义标题时，用首条用户消息作为标题
+      if (tab.name === 'New Session' || tab.name === tab.sessionId?.slice(0, 8)) {
+        const prompt = payload.detail.data.prompt?.trim()
+        if (prompt) {
+          sessionStore.updateTabName(tab.tabId, prompt.length > 50 ? prompt.slice(0, 50) + '…' : prompt)
+        }
+      }
       return
     }
 

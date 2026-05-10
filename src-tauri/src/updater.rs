@@ -1,12 +1,31 @@
 //! Updater 模块
-//! 通过 GitHub Releases API 检查更新，支持下载和安装
-//! 使用 ETag 缓存避免 GitHub API 速率限制
+//! 从阿里云 OSS 检查更新、下载和安装
+//! 国内用户使用 OSS 加速下载，文件保存在 downloads 目录
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
 
-const GITHUB_REPO: &str = "orczh-hj/cc-box";
+const OSS_LATEST_URL: &str = "https://cc-box.oss-cn-beijing.aliyuncs.com/cc-box/latest.json";
+
+/// 下载中断标志
+static DOWNLOAD_CANCEL_FLAG: AtomicBool = AtomicBool::new(false);
+
+/// 取消当前下载
+pub fn cancel_download() {
+    DOWNLOAD_CANCEL_FLAG.store(true, Ordering::SeqCst);
+}
+
+/// 重置下载标志（新下载开始时调用）
+fn reset_download_flag() {
+    DOWNLOAD_CANCEL_FLAG.store(false, Ordering::SeqCst);
+}
+
+/// 检查是否被取消
+fn is_download_cancelled() -> bool {
+    DOWNLOAD_CANCEL_FLAG.load(Ordering::SeqCst)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,34 +54,35 @@ pub struct DownloadProgress {
     pub percent: f64,
 }
 
+/// OSS latest.json 响应结构
 #[derive(Debug, Deserialize)]
-struct GitHubAsset {
-    name: String,
-    browser_download_url: String,
+struct OssLatestInfo {
+    version: String,
+    #[serde(rename = "release_date")]
+    release_date: String,
+    release_notes: String,
+    #[serde(rename = "release_notes_url")]
+    release_notes_url: String,
+    assets: OssAssets,
+}
+
+#[derive(Debug, Deserialize)]
+struct OssAssets {
+    windows: OssAssetInfo,
+    macos: OssAssetInfo,
+    linux: OssAssetInfo,
+}
+
+#[derive(Debug, Deserialize)]
+struct OssAssetInfo {
+    url: String,
     size: u64,
 }
 
-#[derive(Debug, Deserialize)]
-struct GitHubRelease {
-    tag_name: String,
-    body: Option<String>,
-    html_url: String,
-    assets: Vec<GitHubAsset>,
-}
-
-/// ETag 缓存，避免重复请求 GitHub API
-#[derive(Serialize, Deserialize)]
-struct CachedResponse {
-    etag: Option<String>,
-    remote_version: String,
-    release_notes: String,
-    download_url: String,
-    platform_asset: Option<PlatformAsset>,
-}
-
-/// 从 Cargo.toml 版本获取当前版本号
-fn get_current_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
+/// 从编译时注入的环境变量获取版本号（源自 package.json）
+/// 这是版本号的唯一来源，确保前后端版本一致
+fn get_current_version(_app_handle: &AppHandle) -> String {
+    env!("APP_VERSION").to_string()
 }
 
 /// 比较语义化版本号，返回 true 如果 remote_version > current_version
@@ -90,166 +110,90 @@ fn is_newer_version(current: &str, remote: &str) -> bool {
     false
 }
 
-/// 根据当前平台匹配对应的安装包
-fn find_platform_asset(assets: &[GitHubAsset]) -> Option<PlatformAsset> {
-    let (preferred, fallback): (&[&str], &[&str]) = if cfg!(target_os = "windows") {
-        (&["-setup.exe"], &[".exe"])
-    } else if cfg!(target_os = "macos") {
-        (&[".dmg"], &[])
-    } else {
-        (&[".appimage"], &[])
-    };
-
-    let name_lower = |a: &GitHubAsset| a.name.to_lowercase();
-
-    for pattern in preferred {
-        if let Some(a) = assets.iter().find(|a| name_lower(a).ends_with(pattern)) {
-            return Some(PlatformAsset {
-                name: a.name.clone(),
-                url: a.browser_download_url.clone(),
-                size: a.size,
-            });
-        }
-    }
-
-    for pattern in fallback {
-        if let Some(a) = assets.iter().find(|a| name_lower(a).ends_with(pattern)) {
-            return Some(PlatformAsset {
-                name: a.name.clone(),
-                url: a.browser_download_url.clone(),
-                size: a.size,
-            });
-        }
-    }
-
-    None
+/// 从 URL 提取文件名
+fn extract_filename(url: &str) -> String {
+    url.rsplit('/').next().unwrap_or("unknown").to_string()
 }
 
-fn get_cache_path(app_handle: &AppHandle) -> Result<std::path::PathBuf> {
-    let dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| anyhow::anyhow!("Failed to get app data dir: {}", e))?;
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir.join("update-cache.json"))
-}
-
-fn read_cache(app_handle: &AppHandle) -> Option<CachedResponse> {
-    let path = get_cache_path(app_handle).ok()?;
-    let data = std::fs::read_to_string(&path).ok()?;
-    serde_json::from_str(&data).ok()
-}
-
-fn write_cache(app_handle: &AppHandle, cache: &CachedResponse) -> Result<()> {
-    let path = get_cache_path(app_handle)?;
-    let data = serde_json::to_string(cache)?;
-    std::fs::write(&path, data)?;
-    Ok(())
-}
-
-/// 检查 GitHub Releases 是否有新版本，使用 ETag 缓存减少 API 调用
-pub async fn check_for_updates(app_handle: AppHandle) -> Result<UpdateInfo> {
-    let current = get_current_version();
-    let url = format!(
-        "https://api.github.com/repos/{}/releases/latest",
-        GITHUB_REPO
-    );
-
-    let cache = read_cache(&app_handle);
-
+/// 从 OSS 检查更新
+async fn check_oss_updates() -> Result<(String, String, String, PlatformAsset)> {
     let client = reqwest::Client::builder()
         .user_agent("CC-Box-Updater")
+        .timeout(std::time::Duration::from_secs(10))
         .build()?;
 
-    let mut request = client.get(&url);
-
-    // 附加 If-None-Match 头，命中 304 时不计入速率限制
-    if let Some(ref cached) = cache {
-        if let Some(ref etag) = cached.etag {
-            request = request.header("If-None-Match", etag);
-        }
-    }
-
-    let response = request.send().await?;
-
-    // 304 Not Modified — 使用缓存数据，重新比较版本号（应用可能已更新）
-    if response.status() == reqwest::StatusCode::NOT_MODIFIED {
-        if let Some(cached) = cache {
-            let has_update = is_newer_version(&current, &cached.remote_version);
-            return Ok(UpdateInfo {
-                version: cached.remote_version,
-                current_version: current,
-                has_update,
-                release_notes: cached.release_notes,
-                download_url: cached.download_url,
-                platform_asset: cached.platform_asset,
-            });
-        }
-    }
-
+    let response = client.get(OSS_LATEST_URL).send().await?;
     if !response.status().is_success() {
-        return Ok(UpdateInfo {
-            version: current.clone(),
-            current_version: current,
-            has_update: false,
-            release_notes: String::new(),
-            download_url: String::new(),
-            platform_asset: None,
-        });
+        return Err(anyhow::anyhow!("OSS request failed: {}", response.status()));
     }
 
-    let etag = response
-        .headers()
-        .get("etag")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
+    let info: OssLatestInfo = response.json().await?;
 
-    let release: GitHubRelease = response.json().await?;
-    let remote_version = release.tag_name.trim_start_matches('v').to_string();
-    let has_update = is_newer_version(&current, &remote_version);
-    let platform_asset = find_platform_asset(&release.assets);
-
-    let result = UpdateInfo {
-        version: remote_version.clone(),
-        current_version: current,
-        has_update,
-        release_notes: release.body.unwrap_or_default(),
-        download_url: release.html_url.clone(),
-        platform_asset: platform_asset.clone(),
+    let (asset_info, name) = if cfg!(target_os = "windows") {
+        (&info.assets.windows, extract_filename(&info.assets.windows.url))
+    } else if cfg!(target_os = "macos") {
+        (&info.assets.macos, extract_filename(&info.assets.macos.url))
+    } else {
+        (&info.assets.linux, extract_filename(&info.assets.linux.url))
     };
 
-    // 缓存响应供后续 ETag 请求使用
-    let cached = CachedResponse {
-        etag,
-        remote_version,
-        release_notes: result.release_notes.clone(),
-        download_url: release.html_url,
-        platform_asset,
-    };
-    let _ = write_cache(&app_handle, &cached);
-
-    Ok(result)
+    Ok((
+        info.version,
+        info.release_notes,
+        info.release_notes_url,
+        PlatformAsset {
+            name,
+            url: asset_info.url.clone(),
+            size: asset_info.size,
+        },
+    ))
 }
 
-/// 下载更新文件到临时目录，发送进度事件
-/// expected_size 用于校验已有缓存文件的完整性
+/// 检查更新：仅从 OSS 获取
+pub async fn check_for_updates(app_handle: AppHandle) -> Result<UpdateInfo> {
+    let current = get_current_version(&app_handle);
+
+    // 从 OSS 检查更新
+    let (version, release_notes, release_url, asset) = check_oss_updates().await?;
+
+    let has_update = is_newer_version(&current, &version);
+    Ok(UpdateInfo {
+        version,
+        current_version: current,
+        has_update,
+        release_notes,
+        download_url: release_url,
+        platform_asset: if has_update { Some(asset) } else { None },
+    })
+}
+
+/// 下载更新文件到 downloads 目录，发送进度事件
+/// expected_size 用于校验已有文件的完整性
 pub async fn download_update(
     url: String,
     file_name: String,
     expected_size: u64,
     app_handle: AppHandle,
 ) -> Result<String, String> {
-    let temp_dir = std::env::temp_dir().join("cc-box-update");
-    std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
-    let file_path = temp_dir.join(&file_name);
+    // 重置中断标志
+    reset_download_flag();
 
-    // 校验已有缓存：大小必须与预期完全匹配，否则删除重新下载
+    // 使用 downloads 目录保存下载文件（用户缓存）
+    let downloads_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("downloads");
+    std::fs::create_dir_all(&downloads_dir).map_err(|e| e.to_string())?;
+    let file_path = downloads_dir.join(&file_name);
+
+    // 校验已有文件：大小必须与预期完全匹配，否则重新下载
     if file_path.exists() {
         if let Ok(meta) = std::fs::metadata(&file_path) {
             if expected_size > 0 && meta.len() == expected_size {
                 return Ok(file_path.to_string_lossy().to_string());
             }
-            // 大小不匹配（下载中断或版本变更），删除旧文件
+            // 大小不匹配（下载中断或版本变更），删除旧文件重新下载
             let _ = std::fs::remove_file(&file_path);
         }
     }
@@ -268,6 +212,12 @@ pub async fn download_update(
 
     use std::io::Write;
     while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        // 检查是否被取消
+        if is_download_cancelled() {
+            // 保留部分下载的文件，下次可续传
+            return Err("Download cancelled".to_string());
+        }
+
         file.write_all(&chunk).map_err(|e| e.to_string())?;
         downloaded += chunk.len() as u64;
 
@@ -285,6 +235,11 @@ pub async fn download_update(
                 );
             }
         }
+    }
+
+    // 最终检查（防止在最后时刻被取消）
+    if is_download_cancelled() {
+        return Err("Download cancelled".to_string());
     }
 
     let _ = app_handle.emit(

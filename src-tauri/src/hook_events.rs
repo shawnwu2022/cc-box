@@ -19,7 +19,7 @@ pub struct HookPayload {
 pub enum HookEventDetail {
     SessionStart(SessionStartData),
     SessionEnd,
-    UserPromptSubmit,
+    UserPromptSubmit(UserPromptSubmitData),
     PreToolUse,
     PostToolUse,
     PostToolUseFailure,
@@ -30,6 +30,12 @@ pub enum HookEventDetail {
     SubagentStop,
     /// 未识别事件，保留原始 JSON
     Unknown(Value),
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserPromptSubmitData {
+    pub prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -79,7 +85,9 @@ fn extract_detail(event_name: &str, event: &Value) -> HookEventDetail {
             source: str_field(event, "source"),
         }),
         "SessionEnd" => HookEventDetail::SessionEnd,
-        "UserPromptSubmit" => HookEventDetail::UserPromptSubmit,
+        "UserPromptSubmit" => HookEventDetail::UserPromptSubmit(UserPromptSubmitData {
+            prompt: str_field(event, "prompt"),
+        }),
         "PreToolUse" => HookEventDetail::PreToolUse,
         "PostToolUse" => HookEventDetail::PostToolUse,
         "PostToolUseFailure" => HookEventDetail::PostToolUseFailure,

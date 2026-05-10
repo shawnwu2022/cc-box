@@ -205,6 +205,9 @@ export const downloadUpdate = (url: string, fileName: string, expectedSize: numb
 export const installUpdate = (filePath: string): Promise<void> =>
   invoke<void>('install_update', { filePath });
 
+export const cancelDownload = (): Promise<void> =>
+  invoke<void>('cancel_download');
+
 export const onUpdateDownloadProgress = (callback: (progress: DownloadProgress) => void): Promise<UnlistenFn> =>
   listen<DownloadProgress>('update:download-progress', (event) => callback(event.payload));
 

@@ -20,12 +20,17 @@ export interface SessionStartData {
   source?: string
 }
 
+/** UserPromptSubmit 事件提取的数据 */
+export interface UserPromptSubmitData {
+  prompt?: string
+}
+
 // ---- 带标签的事件详情 ----
 
 export type HookEventDetail =
   | { type: 'sessionStart'; data: SessionStartData }
   | { type: 'sessionEnd'; data: null }
-  | { type: 'userPromptSubmit'; data: null }
+  | { type: 'userPromptSubmit'; data: UserPromptSubmitData }
   | { type: 'preToolUse'; data: null }
   | { type: 'postToolUse'; data: null }
   | { type: 'postToolUseFailure'; data: null }

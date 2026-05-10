@@ -1,6 +1,6 @@
 [package]
 name = "cc-box"
-version = "0.5.1"
+version = "0.5.2"
 description = "Claude Code Desktop GUI (Tauri) - Multi-terminal manager for Claude Code power users"
 authors = ["orczh <orczh_hj@163.com>"]
 license = "MIT"
@@ -9,6 +9,7 @@ edition = "2021"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+serde_json = "1"
 
 [dependencies]
 tauri = { version = "2", features = ["unstable"] }

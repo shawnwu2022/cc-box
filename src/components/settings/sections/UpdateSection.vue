@@ -22,21 +22,21 @@
         <span>Failed to check for updates. Please try again later.</span>
       </div>
 
-      <div v-if="updateInfo && !updateInfo.hasUpdate" class="update-message success">
+      <div v-if="updateStore.updateInfo && !updateStore.updateInfo.hasUpdate" class="update-message success">
         <span>You're up to date!</span>
       </div>
 
-      <template v-if="updateInfo && updateInfo.hasUpdate">
+      <template v-if="updateStore.updateInfo && updateStore.updateInfo.hasUpdate">
         <div class="update-available">
           <div class="update-banner">
             <span class="update-icon">🆕</span>
             <div>
-              <span class="update-version">v{{ updateInfo.version }} is available</span>
-              <span class="update-hint">Your version: v{{ updateInfo.currentVersion }}</span>
+              <span class="update-version">v{{ updateStore.updateInfo.version }} is available</span>
+              <span class="update-hint">Your version: v{{ updateStore.updateInfo.currentVersion }}</span>
             </div>
           </div>
 
-          <div v-if="updateInfo.releaseNotes" class="release-notes">
+          <div v-if="updateStore.updateInfo.releaseNotes" class="release-notes">
             <h4>What's New</h4>
             <div class="notes-content" v-html="renderedNotes"></div>
           </div>
@@ -44,53 +44,59 @@
           <!-- 下载/安装状态 -->
           <div class="update-actions">
             <!-- 初始状态：显示下载按钮 -->
-            <template v-if="downloadState === 'idle'">
-              <button
-                v-if="updateInfo.platformAsset"
-                class="action-btn primary"
-                @click="handleDownload"
-              >
-                Download & Install
-              </button>
-              <a
-                class="action-btn secondary"
-                :href="updateInfo.downloadUrl"
-                target="_blank"
-                rel="noopener"
-                @click.prevent="openExternal(updateInfo.downloadUrl)"
-              >
-                {{ updateInfo.platformAsset ? 'Download on GitHub' : 'Download on GitHub' }}
-              </a>
-              <span v-if="updateInfo.platformAsset" class="file-size">
-                {{ formatSize(updateInfo.platformAsset.size) }}
+            <template v-if="updateStore.downloadState === 'idle'">
+              <div class="action-row">
+                <button
+                  v-if="updateStore.updateInfo.platformAsset"
+                  class="action-btn primary"
+                  @click="handleDownload"
+                >
+                  Download & Install
+                </button>
+                <a
+                  class="action-btn secondary"
+                  @click.prevent="openExternal(updateStore.updateInfo.downloadUrl)"
+                >
+                  Manual Download
+                </a>
+              </div>
+              <span v-if="updateStore.updateInfo.platformAsset" class="file-size">
+                {{ formatSize(updateStore.updateInfo.platformAsset.size) }}
               </span>
             </template>
 
             <!-- 下载中 -->
-            <template v-if="downloadState === 'downloading'">
+            <template v-if="updateStore.downloadState === 'downloading'">
               <div class="progress-section">
+                <div class="progress-header">
+                  <span>Downloading...</span>
+                  <button class="cancel-btn" @click="handleCancel">Cancel</button>
+                </div>
                 <div class="progress-bar">
-                  <div class="progress-fill" :style="{ width: downloadProgress.percent + '%' }"></div>
+                  <div class="progress-fill" :style="{ width: updateStore.downloadProgress.percent + '%' }"></div>
                 </div>
                 <div class="progress-info">
-                  <span>{{ downloadProgress.percent.toFixed(0) }}%</span>
+                  <span>{{ updateStore.downloadProgress.percent.toFixed(0) }}%</span>
                   <span class="progress-size">
-                    {{ formatSize(downloadProgress.downloaded) }} / {{ formatSize(downloadProgress.total) }}
+                    {{ formatSize(updateStore.downloadProgress.downloaded) }} / {{ formatSize(updateStore.downloadProgress.total) }}
                   </span>
                 </div>
               </div>
             </template>
 
             <!-- 下载完成 -->
-            <template v-if="downloadState === 'downloaded'">
+            <template v-if="updateStore.downloadState === 'downloaded'">
+              <div class="downloaded-info">
+                <span class="downloaded-icon">✓</span>
+                <span>Download complete</span>
+              </div>
               <button class="action-btn primary" @click="handleInstall">
                 Install & Restart
               </button>
-              <span class="file-size">Ready to install</span>
             </template>
 
             <!-- 安装中 -->
-            <template v-if="downloadState === 'installing'">
+            <template v-if="updateStore.downloadState === 'installing'">
               <div class="installing-message">
                 <span class="spinning-text">Installing update...</span>
                 <span class="installing-hint">The application will restart automatically.</span>
@@ -98,9 +104,14 @@
             </template>
 
             <!-- 错误 -->
-            <div v-if="downloadError" class="update-message error">
-              <span>{{ downloadError }}</span>
-              <button class="retry-link" @click="downloadState = 'idle'; downloadError = ''">Retry</button>
+            <div v-if="updateStore.downloadState === 'error'" class="update-message error">
+              <span>{{ updateStore.downloadError }}</span>
+              <div class="error-actions">
+                <button class="retry-link" @click="handleRetry">Retry</button>
+                <a class="manual-link" @click.prevent="openExternal(updateStore.updateInfo.downloadUrl)">
+                  Manual Download
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -112,29 +123,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { open } from '@tauri-apps/plugin-shell'
-import { checkForUpdates, downloadUpdate, installUpdate, onUpdateDownloadProgress } from '@/api/tauri'
+import { checkForUpdates, downloadUpdate, installUpdate, cancelDownload, onUpdateDownloadProgress } from '@/api/tauri'
 import { useSidebarStore } from '@/stores/sidebar'
-import type { UpdateInfo, DownloadProgress } from '@/types'
+import { useUpdateStore } from '@/stores/update'
 
 const sidebarStore = useSidebarStore()
+const updateStore = useUpdateStore()
 const currentVersion = __APP_VERSION__
 const checking = ref(false)
 const error = ref(false)
-const updateInfo = ref<UpdateInfo | null>(sidebarStore.updateInfo)
-
-type DownloadState = 'idle' | 'downloading' | 'downloaded' | 'installing'
-const downloadState = ref<DownloadState>('idle')
-const downloadProgress = ref<DownloadProgress>({ downloaded: 0, total: 0, percent: 0 })
-const downloadError = ref('')
-const downloadedFilePath = ref('')
 
 let unlistenProgress: (() => void) | null = null
 
 onMounted(async () => {
+  // 监听下载进度事件
   unlistenProgress = await onUpdateDownloadProgress((progress) => {
-    downloadProgress.value = progress
+    updateStore.setDownloadProgress(progress)
     if (progress.percent >= 100) {
-      downloadState.value = 'downloaded'
+      updateStore.setDownloadState('downloaded')
     }
   })
 })
@@ -144,8 +150,8 @@ onUnmounted(() => {
 })
 
 const renderedNotes = computed(() => {
-  if (!updateInfo.value?.releaseNotes) return ''
-  return updateInfo.value.releaseNotes
+  if (!updateStore.updateInfo?.releaseNotes) return ''
+  return updateStore.updateInfo.releaseNotes
     .replace(/\n/g, '<br>')
     .replace(/#{1,3}\s(.+)/g, '<strong>$1</strong>')
 })
@@ -166,7 +172,7 @@ async function handleCheckUpdate() {
   error.value = false
   try {
     const info = await checkForUpdates()
-    updateInfo.value = info
+    updateStore.setUpdateInfo(info)
     sidebarStore.setUpdateInfo(info)
   } catch {
     error.value = true
@@ -176,31 +182,42 @@ async function handleCheckUpdate() {
 }
 
 async function handleDownload() {
-  if (!updateInfo.value?.platformAsset) return
+  if (!updateStore.updateInfo?.platformAsset) return
 
-  downloadState.value = 'downloading'
-  downloadError.value = ''
-  downloadProgress.value = { downloaded: 0, total: 0, percent: 0 }
+  updateStore.setDownloadState('downloading')
+  updateStore.clearError()
+  updateStore.setDownloadProgress({ downloaded: 0, total: 0, percent: 0 })
 
   try {
-    const asset = updateInfo.value.platformAsset
-    downloadedFilePath.value = await downloadUpdate(asset.url, asset.name, asset.size)
-    downloadState.value = 'downloaded'
+    const asset = updateStore.updateInfo.platformAsset
+    const filePath = await downloadUpdate(asset.url, asset.name, asset.size)
+    updateStore.setDownloadedFilePath(filePath)
+    updateStore.setDownloadState('downloaded')
   } catch (err) {
-    downloadError.value = `Download failed: ${err}`
-    downloadState.value = 'idle'
+    updateStore.setDownloadError(`Download failed: ${err}`)
+    updateStore.setDownloadState('error')
   }
 }
 
-async function handleInstall() {
-  if (!downloadedFilePath.value) return
+async function handleCancel() {
+  cancelDownload()
+  updateStore.resetDownload()
+}
 
-  downloadState.value = 'installing'
+async function handleRetry() {
+  updateStore.resetDownload()
+  await handleDownload()
+}
+
+async function handleInstall() {
+  if (!updateStore.downloadedFilePath) return
+
+  updateStore.setDownloadState('installing')
   try {
-    await installUpdate(downloadedFilePath.value)
+    await installUpdate(updateStore.downloadedFilePath)
   } catch (err) {
-    downloadError.value = `Install failed: ${err}`
-    downloadState.value = 'downloaded'
+    updateStore.setDownloadError(`Install failed: ${err}`)
+    updateStore.setDownloadState('downloaded')
   }
 }
 </script>
@@ -362,6 +379,12 @@ async function handleInstall() {
   gap: 10px;
 }
 
+.action-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
 .action-btn {
   display: inline-flex;
   align-items: center;
@@ -407,6 +430,30 @@ async function handleInstall() {
   gap: 8px;
 }
 
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.cancel-btn {
+  padding: 4px 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cancel-btn:hover {
+  border-color: var(--error-color);
+  color: var(--error-color);
+}
+
 .progress-bar {
   height: 8px;
   background: var(--bg-primary);
@@ -431,6 +478,19 @@ async function handleInstall() {
 
 .progress-size {
   color: var(--text-tertiary);
+}
+
+.downloaded-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--success-color);
+  margin-bottom: 8px;
+}
+
+.downloaded-icon {
+  font-size: 16px;
 }
 
 .installing-message {
@@ -460,7 +520,14 @@ async function handleInstall() {
   50% { opacity: 0.5; }
 }
 
-.retry-link {
+.error-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.retry-link,
+.manual-link {
   background: none;
   border: none;
   color: var(--accent-color);
@@ -468,6 +535,9 @@ async function handleInstall() {
   font-size: 13px;
   text-decoration: underline;
   padding: 0;
-  margin-left: 8px;
+}
+
+.manual-link {
+  color: var(--text-secondary);
 }
 </style>
