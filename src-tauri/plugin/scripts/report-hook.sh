@@ -13,20 +13,20 @@
 # - curl 不可用时跳过
 # - 所有错误重定向到 /dev/null
 # - 超时 3 秒，hook timeout 5 秒作为二次保险
+#
+# UTF-8 修复（v1.0.2）：
+# - 使用 curl -d @- 直接从 stdin 读取数据
+# - 绕过 bash 变量处理，避免多字节 UTF-8 序列被截断
 
 [ -z "$CC_BOX_HOOK_PORT" ] && exit 0
 
 command -v curl >/dev/null 2>&1 || exit 0
 
-INPUT=$(cat)
-
-# CC_BOX_SESSION_ID 由 CC-Box 按 PTY 注入，用于区分多终端
-# 放在 header 中不影响 hook 事件数据
+# 直接从 stdin 读取数据发送，不经过 bash 变量处理
+# 这避免了 Windows Git Bash 对 UTF-8 多字节序列的截断问题
 curl -s --max-time 3 -X POST "http://127.0.0.1:$CC_BOX_HOOK_PORT/hook" \
   -H "Content-Type: application/json" \
   -H "X-CC-Box-Session: ${CC_BOX_SESSION_ID:-}" \
-  -d "$INPUT" >/dev/null 2>&1
-
-exit 0
+  -d @- >/dev/null 2>&1
 
 exit 0
