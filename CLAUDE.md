@@ -154,7 +154,7 @@ npm run tauri:build        # 生产构建
 
 **一句话发布**：
 ```bash
-npm run release -- --bump minor --notes "### Features\n- Add feature"
+npm run release -- --bump patch --notes "### Features\n- Add feature"
 ```
 
 脚本自动完成：更新版本号 → 更新 CHANGELOG → 提交推送 → 创建标签 → 监控 CI → 发布 Release → 上传 OSS。
@@ -162,21 +162,25 @@ npm run release -- --bump minor --notes "### Features\n- Add feature"
 **参数说明**：
 | 参数 | 说明 |
 |------|------|
-| `--bump <type>` | 版本类型：`major` / `minor` / `patch`（必填） |
-| `--notes "<text>"` | Release notes，`\n` 表示换行（必填） |
+| `--bump <type>` | 版本类型：`major` / `minor` / `patch`（与 `--exact` 二选一） |
+| `--exact` | 使用当前版本发布，不 bump 版本号（适用于重新发布） |
+| `--notes "<text>"` | Release notes，`\n` 表示换行（必填），必须用英文写 |
 | `--skip-ci` | 跳过 CI 监控（标签已构建时用） |
 | `--oss-only <ver>` | 仅上传 OSS（如 `--oss-only v0.5.1`） |
 
-**OSS 配置**：`scripts/oss-config.json`（已加入 `.gitignore`）
+**常用示例**：
+```bash
+# 新版本发布
+npm run release -- --bump patch --notes "### Fixed\n- Fix copy issue"
+npm run release -- --bump minor --notes "### Features\n- Add feature"
 
-```json
-{
-  "bucketName": "cc-box",
-  "region": "oss-cn-beijing",
-  "accessKeyId": "YOUR_KEY",
-  "accessKeySecret": "YOUR_SECRET"
-}
+# 重新发布当前版本（CI 已构建）
+npm run release -- --exact --notes "### Fixed\n- Fix issue" --skip-ci
+
+# 仅上传 OSS（补传某个版本）
+npm run release -- --oss-only v0.5.1
 ```
+
 详细流程 → [docs/release-process.md](docs/release-process.md)
 
 ## 详细文档

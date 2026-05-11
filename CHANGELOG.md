@@ -1,16 +1,17 @@
 # Changelog
 
-## [0.6.0] - 2026-05-11
+## [0.6.1] - 2026-05-11
 
 ### Features
-- Add auto-install system for Claude CLI and Git portable from OSS
-- Add dependency download script for OSS distribution
-- Add install progress UI with cancel support
-- Unified dependency management for better first-run experience
+- Show running status dot for active sessions in Recent Sessions
+- Show running session count on projects
+- Merge active tabs into Recent Sessions list
 
-### Changed
-- Improve startup checks with install detection
-- Add installer module to handle downloads and PATH setup
+### Fixed
+- Fix resume session not opening when returning to same project
+- Fix clicking already-running session creating duplicate PTY
+- Fix historySessions duplicate keys Vue warning
+- Fix readonly computed assignment error in TerminalView
 
 ## [0.6.0] - 2026-05-11
 
