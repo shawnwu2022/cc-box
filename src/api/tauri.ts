@@ -246,3 +246,54 @@ export const selectDirectory = async (): Promise<{ path: string } | null> => {
   }
   return null;
 };
+
+// ============================================
+// Dependency Installation
+// ============================================
+
+export interface ClaudeLatestInfo {
+  version: string
+  releaseDate: string
+  platforms: Record<string, PlatformInfo>
+}
+
+export interface PlatformInfo {
+  url: string
+  checksum: string
+  size: number
+}
+
+export interface GitLatestInfo {
+  version: string
+  releaseDate: string
+  file: string
+  url: string
+  size: number
+}
+
+export interface LatestVersions {
+  claude: ClaudeLatestInfo
+  git?: GitLatestInfo
+}
+
+export interface InstallProgress {
+  item: string        // "claude" | "git"
+  stage: string       // "fetching" | "downloading" | "extracting" | "placing" | "done" | "error"
+  progress: number    // 0-100
+  message: string
+}
+
+export const getLatestVersions = (): Promise<LatestVersions> =>
+  invoke<LatestVersions>('get_latest_versions');
+
+export const checkInstalledVersions = (): Promise<Record<string, boolean>> =>
+  invoke<Record<string, boolean>>('check_installed_versions');
+
+export const downloadAndInstallClaude = (): Promise<void> =>
+  invoke<void>('download_and_install_claude');
+
+export const downloadAndInstallGit = (): Promise<void> =>
+  invoke<void>('download_and_install_git');
+
+export const onInstallProgress = (callback: (progress: InstallProgress) => void): Promise<UnlistenFn> =>
+  listen<InstallProgress>('download-progress', (event) => callback(event.payload));

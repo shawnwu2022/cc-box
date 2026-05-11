@@ -210,8 +210,8 @@ async function watchCIBuild() {
     logSuccess('CI 构建成功')
   } catch {
     logError('CI 构建失败，请检查：https://github.com/orczh-hj/cc-box/actions')
-    const cont = await askConfirm('是否继续发布？(y/n) ')
-    if (!cont) process.exit(1)
+    // 全自动模式继续执行，不中断流程
+    logInfo('继续执行发布流程...')
   }
 }
 
@@ -379,7 +379,7 @@ function ossUploadOnly(version) {
 
 function parseArgs() {
   const args = process.argv.slice(2)
-  const parsed = { bumpType: null, releaseNotes: null, skipCI: false, ossOnly: null }
+  const parsed = { bumpType: null, releaseNotes: null, skipCI: false, ossOnly: null, yes: true, exact: false }
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -395,24 +395,38 @@ function parseArgs() {
       case '--oss-only':
         parsed.ossOnly = args[++i]
         break
+      case '--yes':
+        parsed.yes = true
+        break
+      case '--no':
+        parsed.yes = false
+        break
+      case '--exact':
+        parsed.exact = true
+        break
       case '--help':
       case '-h':
         console.log(`
-CC-Box 自动化发布脚本
+CC-Box 自动化发布脚本（全自动，无需交互）
 
 用法:
-  node scripts/release.js --bump <type> --notes "<notes>"    完整发布流程
-  node scripts/release.js --oss-only <version>               仅上传到 OSS
+  npm run release -- --bump <type> --notes "<notes>"    发布新版本
+  npm run release -- --exact --notes "<notes>"          发布当前版本（不 bump）
+  npm run release -- --oss-only <version>               仅上传 OSS
 
 参数:
-  --bump <type>      版本类型: major / minor / patch
-  --notes "<notes>"  Release notes（用 \\n 表示换行）
-  --skip-ci          跳过 CI 监控
-  --oss-only <ver>   仅下载指定版本并上传到 OSS（如 --oss-only v0.5.1）
+  --bump <type>      版本类型: major / minor / patch（与 --exact 二选一）
+  --exact            使用当前版本发布，不 bump 版本号
+  --notes "<notes>"  Release notes，用 \\n 表示换行（必填）
+  --skip-ci          跳过 CI 监控（标签已构建时使用）
+  --oss-only <ver>   仅下载指定版本并上传 OSS（如 --oss-only v0.5.1）
+  --yes              自动确认（默认，Claude 自动化时使用）
+  --no               显示确认提示（人工执行时使用）
 
 示例:
-  node scripts/release.js --bump patch --notes "### Fixed\\n- Fix copy issue"
-  node scripts/release.js --oss-only v0.5.1
+  npm run release -- --bump patch --notes "### Fixed\\n- Fix copy issue"
+  npm run release -- --exact --notes "### Features\\n- Add feature"
+  npm run release -- --oss-only v0.5.1
 `)
         process.exit(0)
     }
@@ -433,15 +447,21 @@ async function main() {
     return
   }
 
-  // 完整发布流程
-  if (!args.bumpType || !args.releaseNotes) {
-    logError('缺少必填参数 --bump 和 --notes')
+  // 参数检查：--bump 或 --exact 二选一
+  if (!args.exact && !args.bumpType) {
+    logError('需要指定 --bump <type> 或 --exact')
     logInfo('使用 --help 查看帮助')
     process.exit(1)
   }
 
-  if (!['major', 'minor', 'patch'].includes(args.bumpType)) {
+  if (args.bumpType && !['major', 'minor', 'patch'].includes(args.bumpType)) {
     logError(`无效的 bump 类型: ${args.bumpType}`)
+    process.exit(1)
+  }
+
+  if (!args.releaseNotes) {
+    logError('缺少必填参数 --notes')
+    logInfo('使用 --help 查看帮助')
     process.exit(1)
   }
 
@@ -450,10 +470,14 @@ async function main() {
   console.log('======================================\x1b[0m')
 
   const currentVersion = getCurrentVersion()
-  const newVersion = bumpVersion(currentVersion, args.bumpType)
+  const newVersion = args.exact ? currentVersion : bumpVersion(currentVersion, args.bumpType)
 
-  console.log(`\n\x1b[33m版本更新: v${currentVersion} -> v${newVersion}\x1b[0m`)
-  console.log(`\x1b[33m更新类型: ${args.bumpType}\x1b[0m`)
+  if (args.exact) {
+    console.log(`\n\x1b[33m发布当前版本: v${newVersion}\x1b[0m`)
+  } else {
+    console.log(`\n\x1b[33m版本更新: v${currentVersion} -> v${newVersion}\x1b[0m`)
+    console.log(`\x1b[33m更新类型: ${args.bumpType}\x1b[0m`)
+  }
 
   console.log('\n即将执行以下操作：')
   console.log('  1. 更新版本号文件')
@@ -467,14 +491,19 @@ async function main() {
   console.log('\nRelease Notes 预览：')
   console.log(args.releaseNotes)
 
-  const confirmed = await askConfirm('\n是否继续？(y/n) ')
-  if (!confirmed) {
-    logInfo('已取消发布')
-    process.exit(0)
+  // 全自动模式无需确认
+  if (!args.yes) {
+    const confirmed = await askConfirm('\n是否继续？(y/n) ')
+    if (!confirmed) {
+      logInfo('已取消发布')
+      process.exit(0)
+    }
   }
 
   // 执行发布流程
-  updateVersionFiles(newVersion)
+  if (!args.exact) {
+    updateVersionFiles(newVersion)
+  }
   updateChangelog(newVersion, args.releaseNotes)
   gitCommit(newVersion)
   gitPush(newVersion)

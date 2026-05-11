@@ -150,32 +150,24 @@ npm run tauri:build        # 生产构建
 
 - **Gitee API Token**：已存储在 `git config --local gitee.token`，用于通过 API 创建 Gitee Release
 
-### 版本发布（自动化脚本）
+### 版本发布（全自动）
 
+**一句话发布**：
 ```bash
-# 设置代理（GitHub 操作需要）
-export HTTP_PROXY=http://127.0.0.1:33210
-export HTTPS_PROXY=http://127.0.0.1:33210
-
-# 执行发布脚本（自动更新版本号、CHANGELOG、提交、推送、监控CI、发布、上传OSS）
-npm run release -- --bump patch --notes "### Fixed\n- Fix terminal copy issue"
-
-# 版本类型：major（主版本） / minor（次版本） / patch（补丁）
-# ReleaseNotes：必填，用 \n 表示换行
+npm run release -- --bump minor --notes "### Features\n- Add feature"
 ```
 
-#### 发布脚本参数
+脚本自动完成：更新版本号 → 更新 CHANGELOG → 提交推送 → 创建标签 → 监控 CI → 发布 Release → 上传 OSS。
 
-| 参数 | 必填 | 说明 |
-|------|------|------|
-| `--bump <type>` | ✓ | 版本更新类型：`major` / `minor` / `patch` |
-| `--notes "<text>"` | ✓ | Release notes，用 `\n` 表示换行 |
-| `--skip-ci` |  | 跳过 CI 监控（用于已构建的标签） |
-| `--oss-only <ver>` |  | 仅下载指定版本并上传到 OSS（如 `--oss-only v0.5.1`） |
+**参数说明**：
+| 参数 | 说明 |
+|------|------|
+| `--bump <type>` | 版本类型：`major` / `minor` / `patch`（必填） |
+| `--notes "<text>"` | Release notes，`\n` 表示换行（必填） |
+| `--skip-ci` | 跳过 CI 监控（标签已构建时用） |
+| `--oss-only <ver>` | 仅上传 OSS（如 `--oss-only v0.5.1`） |
 
-#### OSS 配置
-
-配置文件：`scripts/oss-config.json`（已加入 `.gitignore`）
+**OSS 配置**：`scripts/oss-config.json`（已加入 `.gitignore`）
 
 ```json
 {

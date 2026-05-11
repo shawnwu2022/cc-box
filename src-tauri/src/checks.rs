@@ -76,9 +76,7 @@ pub fn run_checks() -> ChecksResult {
     // Rust std::process::Command 有时不能正确继承父进程环境变量，
     // 重新 set_var 一次可强制子进程使用正确值。
     #[cfg(target_os = "windows")]
-    if let Ok(path) = std::env::var("PATH") {
-        std::env::set_var("PATH", &path);
-    }
+    refresh_path_windows();
     #[cfg(unix)]
     refresh_path();
 
@@ -135,6 +133,43 @@ fn read_config_paths() -> (Option<String>, Option<String>) {
         Ok(config) => (config.claude_path, config.git_bash_path),
         Err(_) => (None, None),
     }
+}
+
+/// Windows PATH 刷新：添加便携版安装目录
+///
+/// 检测并添加：
+/// - %LOCALAPPDATA%\Claude (Claude CLI)
+/// - %LOCALAPPDATA%\PortableGit\bin (Git 便携版)
+#[cfg(target_os = "windows")]
+fn refresh_path_windows() {
+    let mut path = std::env::var("PATH").unwrap_or_default();
+    let local_app_data = std::env::var("LOCALAPPDATA")
+        .unwrap_or_else(|_| format!("{}\\AppData\\Local", std::env::var("USERPROFILE").unwrap_or_default()));
+
+    // Claude: %LOCALAPPDATA%\Claude
+    let claude_dir = format!("{}\\Claude", local_app_data);
+    if Path::new(&claude_dir).exists() {
+        let claude_dir_lower = claude_dir.to_lowercase();
+        let path_lower = path.to_lowercase();
+        if !path_lower.contains(&claude_dir_lower) {
+            path = format!("{};{}", claude_dir, path);
+            log::info!("[Check] Added Claude to PATH: {}", claude_dir);
+        }
+    }
+
+    // Git 便携版: %LOCALAPPDATA%\PortableGit\bin
+    let git_bin = format!("{}\\PortableGit\\bin", local_app_data);
+    if Path::new(&git_bin).exists() {
+        let git_bin_lower = git_bin.to_lowercase();
+        let path_lower = path.to_lowercase();
+        if !path_lower.contains(&git_bin_lower) {
+            path = format!("{};{}", git_bin, path);
+            log::info!("[Check] Added PortableGit to PATH: {}", git_bin);
+        }
+    }
+
+    std::env::set_var("PATH", &path);
+    log::debug!("[Check] Windows PATH refreshed");
 }
 
 /// 从登录 shell 获取完整 PATH（Unix）
@@ -267,19 +302,13 @@ fn run_locate(name: &str) -> Option<std::process::Output> {
 /// PTY 通过 shell 执行，shell 自动处理 npm 安装或原生可执行文件。
 fn check_claude_cli(config_path: &Option<String>) -> CheckResult {
     // 1. 配置的自定义路径（优先）
-    // 如果配置了路径但不存在，返回失败并带上失败的路径
+    // 如果配置了路径且存在，直接通过
     if let Some(ref path) = config_path {
         if Path::new(path).exists() {
             return CheckResult::pass_with_path("Claude CLI", &format!("Found: {}", path), path);
         }
-        // 配置路径不存在，返回失败（带上失败的路径供用户修改）
-        return CheckResult::fail_with_path(
-            "Claude CLI",
-            format!("Configured path not found: {}", path),
-            Some(path.clone()),
-            "View installation guide",
-            "https://code.claude.com/docs",
-        );
+        // 配置路径不存在，记录警告，继续尝试 where 查找
+        log::warn!("[Check] Configured Claude path not found: {}, trying where...", path);
     }
 
     // 2. 自动检测（where/which）
@@ -305,7 +334,7 @@ fn check_claude_cli(config_path: &Option<String>) -> CheckResult {
 #[cfg(target_os = "windows")]
 fn check_git_bash(config_path: &Option<String>) -> CheckResult {
     // 1. 配置中保存的路径（优先）
-    // 如果配置了路径但不存在，返回失败并带上失败的路径
+    // 如果配置了路径且存在，直接通过
     if let Some(ref path) = config_path {
         if Path::new(path).exists() {
             return CheckResult::pass_with_path(
@@ -314,14 +343,8 @@ fn check_git_bash(config_path: &Option<String>) -> CheckResult {
                 path,
             );
         }
-        // 配置路径不存在，返回失败（带上失败的路径供用户修改）
-        return CheckResult::fail_with_path(
-            "Git Bash",
-            format!("Configured path not found: {}", path),
-            Some(path.clone()),
-            "Install Git for Windows",
-            "https://git-scm.com/download/win",
-        );
+        // 配置路径不存在，记录警告，继续尝试其他方式查找
+        log::warn!("[Check] Configured Git Bash path not found: {}, trying other methods...", path);
     }
 
     // 2. 环境变量

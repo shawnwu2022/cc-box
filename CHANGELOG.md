@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.6.0] - 2026-05-11
+
+### Features
+- Add auto-install system for Claude CLI and Git portable from OSS
+- Add dependency download script for OSS distribution
+- Add install progress UI with cancel support
+- Unified dependency management for better first-run experience
+
+### Changed
+- Improve startup checks with install detection
+- Add installer module to handle downloads and PATH setup
+
+## [0.6.0] - 2026-05-11
+
+### Features
+- Add auto-install system for Claude CLI and Git portable from OSS
+- Add dependency download script for OSS distribution
+- Add install progress UI with cancel support
+- Unified dependency management for better first-run experience
+
+### Changed
+- Improve startup checks with install detection
+- Add installer module to handle downloads and PATH setup
+
 ## [0.5.2] - 2026-05-10
 
 ### Features

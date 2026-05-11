@@ -8,6 +8,7 @@ mod logger;
 mod hook_events;
 mod hook_server;
 mod hook_config;
+mod installer;
 
 use tauri::Manager;
 use tauri::menu::MenuBuilder;
@@ -158,6 +159,11 @@ pub fn run() {
             commands::spawn_new_instance,
             commands::log_message,
             commands::sync_claude_env,
+            installer::get_latest_versions,
+            installer::check_installed_versions,
+            installer::download_and_install_claude,
+            #[cfg(target_os = "windows")]
+            installer::download_and_install_git,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
