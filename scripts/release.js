@@ -77,6 +77,60 @@ function exec(cmd, options = {}) {
   }
 }
 
+// 代理自动重试：先代理，失败后非代理，都失败则中止
+function execWithProxyRetry(cmd, options = {}) {
+  const PROXY = 'http://127.0.0.1:33210'
+
+  // 第一次尝试：使用代理
+  logInfo('尝试使用代理...')
+  const envWithProxy = { ...process.env, HTTP_PROXY: PROXY, HTTPS_PROXY: PROXY }
+  try {
+    return execSync(cmd, {
+      encoding: 'utf-8',
+      stdio: options.silent ? 'pipe' : 'inherit',
+      env: envWithProxy,
+      ...options,
+    })
+  } catch (e1) {
+    logInfo('代理失败，尝试直连...')
+    // 第二次尝试：不使用代理
+    const envNoProxy = { ...process.env }
+    delete envNoProxy.HTTP_PROXY
+    delete envNoProxy.HTTPS_PROXY
+    delete envNoProxy.http_proxy
+    delete envNoProxy.https_proxy
+    try {
+      return execSync(cmd, {
+        encoding: 'utf-8',
+        stdio: options.silent ? 'pipe' : 'inherit',
+        env: envNoProxy,
+        ...options,
+      })
+    } catch (e2) {
+      logError(`命令执行失败（代理和直连都失败）: ${cmd}`)
+      if (!options.allowFail) process.exit(1)
+      return null
+    }
+  }
+}
+
+// 清理所有代理配置
+function clearAllProxyConfig() {
+  const configs = [
+    ['--global', 'http.proxy'],
+    ['--global', 'https.proxy'],
+    ['--system', 'http.proxy'],
+    ['--system', 'https.proxy'],
+    ['--local', 'http.proxy'],
+    ['--local', 'https.proxy'],
+  ]
+  for (const [level, key] of configs) {
+    try {
+      execSync(`git config ${level} --unset ${key}`, { stdio: 'pipe' })
+    } catch {}
+  }
+}
+
 function execQuiet(cmd) {
   return exec(cmd, { silent: true, allowFail: true })
 }
@@ -171,11 +225,12 @@ function gitCommit(version) {
 
 function gitPush(version) {
   logStep('推送到远程仓库...')
-  exec(`git push ${REMOTE_NAME} ${MAIN_BRANCH}`)
+  clearAllProxyConfig() // 先清理残留代理配置
+  execWithProxyRetry(`git push ${REMOTE_NAME} ${MAIN_BRANCH}`)
   logSuccess('main 分支已推送')
 
-  exec(`git tag -a v${version} -m "Release v${version}"`)
-  exec(`git push ${REMOTE_NAME} v${version}`)
+  execWithProxyRetry(`git tag -a v${version} -m "Release v${version}"`)
+  execWithProxyRetry(`git push ${REMOTE_NAME} v${version}`)
   logSuccess(`标签 v${version} 已推送`)
 }
 
@@ -190,7 +245,7 @@ async function watchCIBuild() {
   // 等待 10 秒让 workflow 启动
   await new Promise(r => setTimeout(r, 10000))
 
-  const runsJson = execQuiet('gh run list --limit 5 --json databaseId,displayTitle,conclusion,status')
+  const runsJson = execWithProxyRetry('gh run list --limit 5 --json databaseId,displayTitle,conclusion,status', { silent: true })
   if (!runsJson) {
     logError('无法获取 GitHub Actions 状态，请手动检查：https://github.com/orczh-hj/cc-box/actions')
     return
@@ -206,7 +261,7 @@ async function watchCIBuild() {
   logInfo(`找到 workflow run: ${run.displayTitle} (ID: ${run.databaseId})`)
 
   try {
-    exec(`gh run watch ${run.databaseId} --exit-status`)
+    execWithProxyRetry(`gh run watch ${run.databaseId} --exit-status`)
     logSuccess('CI 构建成功')
   } catch {
     logError('CI 构建失败，请检查：https://github.com/orczh-hj/cc-box/actions')
@@ -220,7 +275,7 @@ async function watchCIBuild() {
 // ============================================
 
 function publishRelease(version, releaseNotes) {
-  logStep('发布 Release...')
+  logStep('发布 GitHub Release...')
 
   const fullNotes = `## What's Changed\n\n${releaseNotes}`
   // 用临时文件传递多行 notes，避免 shell 转义问题
@@ -228,15 +283,75 @@ function publishRelease(version, releaseNotes) {
   fs.writeFileSync(notesFile, fullNotes)
 
   try {
-    exec(`gh release edit v${version} --draft=false --notes-file "${notesFile}"`)
-    logSuccess(`Release v${version} 已发布！`)
-    logInfo(`\n查看: https://github.com/orczh-hj/cc-box/releases/tag/v${version}`)
+    execWithProxyRetry(`gh release edit v${version} --draft=false --notes-file "${notesFile}"`)
+    logSuccess(`GitHub Release v${version} 已发布！`)
+    logInfo(`查看: https://github.com/orczh-hj/cc-box/releases/tag/v${version}`)
   } catch {
-    logError('发布失败，请手动发布：https://github.com/orczh-hj/cc-box/releases')
+    logError('GitHub Release 发布失败，请手动发布：https://github.com/orczh-hj/cc-box/releases')
     process.exit(1)
   } finally {
     try { fs.unlinkSync(notesFile) } catch {}
   }
+}
+
+// ============================================
+// Gitee Release
+// ============================================
+
+function publishGiteeRelease(version, releaseNotes) {
+  logStep('发布 Gitee Release...')
+
+  // 获取 Gitee token
+  let giteeToken = process.env.GITEE_TOKEN
+  if (!giteeToken) {
+    try {
+      giteeToken = execSync('git config --local gitee.token', { encoding: 'utf-8', stdio: 'pipe' }).trim()
+    } catch {}
+  }
+
+  if (!giteeToken) {
+    logError('未找到 Gitee token，跳过 Gitee Release')
+    logInfo('请设置: git config --local gitee.token <your-token>')
+    return
+  }
+
+  const https = require('https')
+  const tagName = `v${version}`
+  const body = JSON.stringify({
+    access_token: giteeToken,
+    tag_name: tagName,
+    name: tagName,
+    target_commitish: 'main',
+    body: releaseNotes
+  })
+
+  const options = {
+    hostname: 'gitee.com',
+    path: '/api/v5/repos/orczh/cc-box/releases',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  }
+
+  const req = https.request(options, res => {
+    let data = ''
+    res.on('data', chunk => data += chunk)
+    res.on('end', () => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        logSuccess(`Gitee Release ${tagName} 已发布！`)
+        logInfo(`查看: https://gitee.com/orczh/cc-box/releases/${tagName}`)
+      } else {
+        logError(`Gitee Release 发布失败: HTTP ${res.statusCode}`)
+        logInfo('请手动发布: https://gitee.com/orczh/cc-box/releases')
+      }
+    })
+  })
+
+  req.on('error', e => {
+    logError(`Gitee Release 发布失败: ${e.message}`)
+  })
+
+  req.write(body)
+  req.end()
 }
 
 // ============================================
@@ -274,7 +389,7 @@ function downloadGitHubRelease(version) {
 
   fs.mkdirSync(versionDir, { recursive: true })
 
-  exec(`gh release download ${version} --dir "${versionDir}" --pattern "*.exe" --pattern "*.dmg" --pattern "*.AppImage" --clobber`)
+  execWithProxyRetry(`gh release download ${version} --dir "${versionDir}" --pattern "*.exe" --pattern "*.dmg" --pattern "*.AppImage" --clobber`)
   logSuccess(`产物下载完成: ${versionDir}`)
 
   return { versionDir }
@@ -366,8 +481,8 @@ function uploadToOSS(version, versionDir, releaseNotes) {
 function ossUploadOnly(version) {
   const { versionDir } = downloadGitHubRelease(version)
 
-  // 从 GitHub API 获取 release notes
-  const releaseNotes = execSync(`gh release view ${version} --json body --jq .body`, { encoding: 'utf-8' }).trim()
+  // 从 GitHub API 获取 release notes（需要代理）
+  const releaseNotes = execWithProxyRetry(`gh release view ${version} --json body --jq .body`, { silent: true, encoding: 'utf-8' }).trim()
 
   uploadToOSS(version, versionDir, releaseNotes)
   logSuccess(`OSS 上传完成: ${version}`)
@@ -485,8 +600,9 @@ async function main() {
   console.log('  3. Git 提交并推送')
   console.log(`  4. 创建并推送标签 v${newVersion}`)
   if (!args.skipCI) console.log('  5. 监控 CI 构建')
-  console.log('  6. 发布 Release')
-  console.log('  7. 上传到阿里云 OSS（国内更新渠道）')
+  console.log('  6. 发布 GitHub Release')
+  console.log('  7. 发布 Gitee Release')
+  console.log('  8. 上传到阿里云 OSS（国内更新渠道）')
 
   console.log('\nRelease Notes 预览：')
   console.log(args.releaseNotes)
@@ -513,10 +629,14 @@ async function main() {
   }
 
   publishRelease(newVersion, args.releaseNotes)
+  publishGiteeRelease(newVersion, args.releaseNotes)
 
   // 下载并上传到 OSS
   const { versionDir } = downloadGitHubRelease(`v${newVersion}`)
   uploadToOSS(`v${newVersion}`, versionDir, args.releaseNotes)
+
+  // 清理代理配置
+  clearAllProxyConfig()
 
   console.log(`\n\x1b[32m======================================`)
   console.log(`     发布完成！v${newVersion}`)
