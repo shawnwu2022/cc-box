@@ -5,6 +5,10 @@ export interface SessionInfo {
   name: string
   projectPath: string
   lastActiveAt: number
+  /** 来自运行中 tab 的工作状态 */
+  working?: boolean
+  /** 来自运行中 tab 的待处理状态 */
+  pending?: boolean
 }
 
 export interface SessionDetails {

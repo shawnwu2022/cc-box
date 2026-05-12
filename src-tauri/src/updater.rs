@@ -154,7 +154,10 @@ pub async fn check_for_updates(app_handle: AppHandle) -> Result<UpdateInfo> {
     let current = get_current_version(&app_handle);
 
     // 从 OSS 检查更新
-    let (version, release_notes, release_url, asset) = check_oss_updates().await?;
+    let (version, release_notes, release_url, asset) = check_oss_updates().await.map_err(|e| {
+        eprintln!("[Updater] check_oss_updates failed: {:?}", e);
+        e
+    })?;
 
     let has_update = is_newer_version(&current, &version);
     Ok(UpdateInfo {

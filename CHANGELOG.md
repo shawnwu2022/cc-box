@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.2] - 2026-05-12
+
+### Fixed
+- Fix pending status not showing on home page Recent Sessions
+- Fix pending incorrectly cleared when user is on home page
+- Fix pending badge showing for all projects instead of current project only
+- Show working/pending status indicators on home page session list
+- Improve update check error display with specific message
+
 ## [0.6.1] - 2026-05-11
 
 ### Features

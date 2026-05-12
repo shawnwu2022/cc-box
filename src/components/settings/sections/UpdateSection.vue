@@ -19,7 +19,7 @@
       </div>
 
       <div v-if="error" class="update-message error">
-        <span>Failed to check for updates. Please try again later.</span>
+        <span>Check failed: {{ errorMessage }}</span>
       </div>
 
       <div v-if="updateStore.updateInfo && !updateStore.updateInfo.hasUpdate" class="update-message success">
@@ -132,6 +132,7 @@ const updateStore = useUpdateStore()
 const currentVersion = __APP_VERSION__
 const checking = ref(false)
 const error = ref(false)
+const errorMessage = ref('')
 
 let unlistenProgress: (() => void) | null = null
 
@@ -170,12 +171,14 @@ function formatSize(bytes: number): string {
 async function handleCheckUpdate() {
   checking.value = true
   error.value = false
+  errorMessage.value = ''
   try {
     const info = await checkForUpdates()
     updateStore.setUpdateInfo(info)
     sidebarStore.setUpdateInfo(info)
-  } catch {
+  } catch (err) {
     error.value = true
+    errorMessage.value = String(err)
   } finally {
     checking.value = false
   }

@@ -31,7 +31,7 @@
               <span class="session-name">{{ session.name }}</span>
               <span class="session-project">{{ getProjectName(session.projectPath) }}</span>
             </div>
-            <span v-if="isSessionRunning(session.sessionId)" class="status-dot running"></span>
+            <span v-if="isSessionRunning(session.sessionId)" class="status-dot" :class="sessionDotClass(session)"></span>
             <span v-else class="session-time">{{ formatTimeAgo(session.lastActiveAt) }}</span>
           </button>
 
@@ -201,7 +201,9 @@ const recentSessions = computed(() => {
         sessionId: tab.sessionId,
         name: tab.name,
         projectPath: tab.projectPath,
-        lastActiveAt: tab.lastActiveAt
+        lastActiveAt: tab.lastActiveAt,
+        working: tab.working,
+        pending: tab.pending,
       })
     }
   }
@@ -243,6 +245,13 @@ const projectRunningCounts = computed<Map<string, number>>(() => {
 /** 检查会话是否运行中 */
 function isSessionRunning(sessionId: string): boolean {
   return runningSessionIds.value.has(sessionId)
+}
+
+/** 运行中会话的状态圆点 class */
+function sessionDotClass(session: SessionInfo): string {
+  if (session.working) return 'working'
+  if (session.pending) return 'pending'
+  return 'running'
 }
 
 /** 获取项目的运行会话数 */
@@ -430,6 +439,21 @@ async function handleSaveDefault() {
 
 .status-dot.running {
   background: var(--status-success);
+}
+
+.status-dot.working {
+  background: var(--status-success);
+  animation: status-pulse 2.5s ease-in-out infinite;
+}
+
+.status-dot.pending {
+  background: var(--accent-gold);
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .empty-sessions {

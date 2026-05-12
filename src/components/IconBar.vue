@@ -85,6 +85,7 @@ import { computed } from 'vue'
 import type { SidebarPanelType } from '@/stores/sidebar'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useSessionStore } from '@/stores/session'
+import { useAppStore } from '@/stores/app'
 import { ctrl } from '@/utils/platform'
 
 defineProps<{
@@ -99,11 +100,13 @@ defineEmits<{
 
 const sidebarStore = useSidebarStore()
 const sessionStore = useSessionStore()
+const appStore = useAppStore()
 
 const showPendingBadge = computed(() => {
   if (sidebarStore.activePanel === 'sessions' && sidebarStore.panelVisible) return false
-  // 徽章只提醒非当前活跃的 tab
-  for (const tab of sessionStore.tabs.values()) {
+  const cwd = appStore.cwd
+  if (!cwd) return false
+  for (const tab of sessionStore.getProjectTabs(cwd)) {
     if (tab.tabId === sessionStore.activeTabId) continue
     if (tab.pending) return true
   }

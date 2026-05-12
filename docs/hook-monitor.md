@@ -164,13 +164,34 @@ any ──[StopFailure]──→ error
 
 ### 状态指示灯 UI
 
-| 条件 | 颜色 | CSS 变量 | 动画 | 含义 |
+**判断优先级**（SessionItem.vue 的 dotClass）：
+
+```
+1. stopped + 非激活 → hollow ring（空心圆，已关闭）
+2. stopped + 激活 → gray dot（灰色，已停止但当前选中）
+3. working → green pulsing（绿色脉冲，正在工作）
+4. pending + 非激活 → gold pulsing（金色脉冲，需要关注）
+5. running → green solid（绿色静止，空闲运行）
+6. 默认 → gray dot（灰色，无状态数据）
+```
+
+| 状态 | 颜色 | CSS 变量 | 动画 | 含义 |
 |------|------|----------|------|------|
-| `working = true` | 墨蓝 | `--status-info` | 温和脉冲 | Claude 正在处理 |
-| `pending = true`（非活跃 Tab） | 琥珀金 | `--accent-gold` | 温和脉冲 | 等待用户关注 |
-| `status = 'running'`（默认） | 墨绿 | `--status-success` | 温和脉冲 | 空闲运行态 |
-| `status = 'stopped'`（活跃） | 浅灰 | `--text-tertiary` | 无 | 已停止 |
-| `status = 'stopped'`（非活跃） | 灰 | `--text-tertiary` | 无 | 已关闭 |
+| `working` | 墨蓝 | `--status-info` | 温和脉冲 | Claude 正在处理 |
+| `pending`（非激活 Tab） | 琥珀金 | `--accent-gold` | 温和脉冲 | 等待用户关注 |
+| `running`（idle） | 墨绿 | `--status-success` | 无动画 | 空闲运行态 |
+| `stopped`（激活） | 浅灰 | `--text-tertiary` | 无 | 已停止 |
+| `stopped`（非激活） | 空心灰 | `--border-color` | 无 | 已关闭 |
+
+### 首页 Recent Sessions 状态展示
+
+`ProjectSelectView.vue` 的 Recent Sessions 列表同样展示 working/pending 状态：
+
+- 从 `sessionStore.tabs` 读取运行中 session 的 `working`/`pending` 字段
+- 通过 `sessionDotClass()` 返回 `working`/`pending`/`running`
+- 样式与 SessionItem 一致（绿色脉冲、金色脉冲、绿色静止）
+
+**IconBar session 角标**：仅显示当前项目内非激活 tab 的 pending 数量，通过 `sessionStore.getProjectTabs(cwd)` 过滤。
 
 ### 新增/修改事件的步骤
 
@@ -236,14 +257,44 @@ const unsubscribe = hookStore.subscribe(
 
 挂载在 `TerminalView.vue`，负责将 hook 事件转化为 Tab 状态：
 
-```
-pending 信号到达（stop/stopFailure/notification，且 working=true）
-  ├─ 应用失焦 → 任务栏跳动 + tab.pending = true
-  ├─ 应用聚焦 + Tab 非激活 → tab.pending = true
-  └─ 应用聚焦 + Tab 激活 → 无操作
+#### working 状态
 
-应用从失焦 → 聚焦 → 清除 active tab 的 pending
+| 事件 | 操作 |
+|------|------|
+| `userPromptSubmit` | `tab.working = true` |
+| `stop` / `stopFailure` / `notification` | `tab.working = false`（仅在 working=true 时处理） |
+| `sessionEnd` | `tab.working = false`（不触发 pending） |
+| PTY 退出 | `tab.working = false` |
+
+#### pending 状态（用户注意力管理）
+
+**设置 pending 的时机**：stop/stopFailure/notification 事件到达，且 working=true 时：
+
 ```
+事件到达（stop/stopFailure/notification）
+  ├─ tab.working = false
+  ├─ tab.pending = true（默认设置）
+  ├─ 检查三条件：聚焦 + 终端可见 + tab激活
+  │   ├─ 全满足 → tab.pending = false（用户正在看，不需要提醒）
+  │   └─ 不满足 → 保持 pending
+  └─ 应用失焦时 → 触发任务栏跳动（requestUserAttention）
+```
+
+**清除 pending 的时机**：watcher 监听三条件变化：
+
+```
+watch([isFocused, isTerminalVisible, activeTabId])
+  ├─ 三条件全满足 → 清除当前 activeTab 的 pending
+  └─ 其他情况 → 不清除（保留其他 tab 的 pending）
+```
+
+**设计要点**：
+- 用户在首页时（`isTerminalVisible=false`），所有完成的对话都设 pending
+- 用户在终端但窗口失焦时，完成的对话设 pending + 任务栏跳动
+- 用户切换 tab 后，旧 tab 的 pending 保留（切换回来能看到需要关注的 session）
+- 只有"用户真正看到"（三条件全满足）才清除 pending
+
+**设计理念**：pending 代表"需要用户注意力"，只有用户真正看到才消失，确保不错过任何需要关注的对话完成。
 
 ## 文件清单
 
@@ -254,7 +305,10 @@ pending 信号到达（stop/stopFailure/notification，且 working=true）
 | `src-tauri/src/hook_config.rs` | Plugin 文件管理 |
 | `src-tauri/plugin/` | Plugin 源文件（plugin.json + hooks.json + report-hook.sh） |
 | `src/types/hook.ts` | 前端类型定义 |
+| `src/types/session.ts` | SessionInfo 类型（含 working/pending 字段） |
 | `src/stores/hook.ts` | 事件总线：subscribe / dispatch |
 | `src/composables/useStatusMonitor.ts` | 状态监控：hook 事件 → working/pending |
 | `src/composables/useWindowAttention.ts` | 窗口聚焦状态 + 取消任务栏跳动 |
-| `src/components/sessions/SessionItem.vue` | 状态指示灯 UI |
+| `src/components/sessions/SessionItem.vue` | Tab 状态指示灯 UI |
+| `src/components/ProjectSelectView.vue` | 首页 Recent Sessions 状态展示 |
+| `src/components/IconBar.vue` | Session 角标（按项目过滤 pending） |

@@ -13,7 +13,7 @@ const STATUS_EVENTS: HookEventType[] = [
   'sessionEnd',
 ]
 
-export function useStatusMonitor(options: { isFocused: Ref<boolean> }) {
+export function useStatusMonitor(options: { isFocused: Ref<boolean>; isTerminalVisible: Ref<boolean> }) {
   const hookStore = useHookStore()
   const sessionStore = useSessionStore()
   const win = getCurrentWindow()
@@ -56,26 +56,26 @@ export function useStatusMonitor(options: { isFocused: Ref<boolean> }) {
     // sessionEnd 不需要 pending/attention 提示
     if (payload.detail.type === 'sessionEnd') return
 
-    // 第一层：应用失焦 → 任务栏跳动 + pending
-    if (!options.isFocused.value) {
-      win.requestUserAttention(UserAttentionType.Critical).catch(() => {})
-      tab.pending = true
+    // 先设置 pending，再根据条件判断是否需要清除
+    tab.pending = true
+
+    // 如果用户正在看这个 tab（聚焦 + 终端可见 + tab 激活），则不需要 pending
+    if (options.isFocused.value && options.isTerminalVisible.value && tab.tabId === sessionStore.activeTabId) {
+      tab.pending = false
       return
     }
 
-    // 第二层：应用聚焦 + Tab 未激活 → pending
-    if (tab.tabId !== sessionStore.activeTabId) {
-      tab.pending = true
+    // 应用失焦时才触发任务栏跳动
+    if (!options.isFocused.value) {
+      win.requestUserAttention(UserAttentionType.Critical).catch(() => {})
     }
-
-    // 第三层（隐式兜底）：应用聚焦 + Tab 激活 → 无操作
   }
 
-  // 聚焦 + tab 可见 → 清除 pending
+  // 聚焦 + 终端可见 + tab 激活 → 清除 pending
   watch(
-    [() => options.isFocused.value, () => sessionStore.activeTabId],
-    ([focused, activeTabId]) => {
-      if (focused && activeTabId) {
+    [() => options.isFocused.value, () => options.isTerminalVisible.value, () => sessionStore.activeTabId],
+    ([focused, visible, activeTabId]) => {
+      if (focused && visible && activeTabId) {
         const tab = sessionStore.tabs.get(activeTabId)
         if (tab) tab.pending = false
       }

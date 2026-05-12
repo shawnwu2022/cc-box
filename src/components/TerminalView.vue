@@ -79,7 +79,8 @@ const configStore = useConfigStore()
 const terminalRef = ref()
 
 const { isFocused } = useWindowAttention()
-useStatusMonitor({ isFocused })
+const isTerminalVisible = computed(() => props.visible ?? false)
+useStatusMonitor({ isFocused, isTerminalVisible })
 
 // 标记是否已启动 PTY
 let hasStartedPty = false
@@ -273,9 +274,9 @@ function handleCloseTab(tabId: string) {
 
 // PTY 启动回调
 function handlePtyStarted(_tabId: string, _ptyId: string) {
-  // 刷新历史会话（匹配后可能需要更新）
   const cwd = appStore.cwd
   if (cwd) {
+    appStore.ensureProjectInList(cwd)
     sessionStore.loadHistorySessions(cwd)
   }
 }

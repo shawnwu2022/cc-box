@@ -144,6 +144,24 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  async function refreshCache() {
+    cacheLoaded.value = false
+    await loadCache()
+  }
+
+  function ensureProjectInList(projectPath: string) {
+    const normalize = (p: string) => p.replace(/\\/g, '/').toLowerCase()
+    const normalized = normalize(projectPath)
+    if (cachedProjects.value.some(p => normalize(p.path) === normalized)) return
+
+    const parts = projectPath.replace(/\\/g, '/').split('/')
+    cachedProjects.value.unshift({
+      path: projectPath,
+      name: parts[parts.length - 1] || projectPath,
+      lastDuration: Date.now(),
+    })
+  }
+
   function refreshRecentSessions(sessions: SessionInfo[]) {
     cachedRecentSessions.value = sessions
   }
@@ -272,6 +290,8 @@ export const useAppStore = defineStore('app', () => {
     runChecks: doChecks,
     loadCache,
     loadMoreProjects,
+    refreshCache,
+    ensureProjectInList,
     refreshRecentSessions,
     setCwd,
     setTheme,
