@@ -34,3 +34,19 @@ npm run release -- --bump <level> --notes "<notes>"
 ```
 
 英文，`\n` 换行，动词开头。
+
+## 验收标准
+
+发布完成后，验证以下项：
+
+| 项目 | 检查方式 | 预期 |
+|------|----------|------|
+| GitHub Release | `gh release view v<x.y.z>` | 存在，非 draft，有 3 个资产 |
+| Gitee Release | curl API 检查 | 存在，body 不为空 |
+| OSS latest.json | curl `https://<bucket>/cc-box/latest.json` | version 字段正确 |
+| OSS 安装包 | curl HEAD 检查 | 3 个文件均返回 200 |
+| 本地版本号 | `git describe --tags` | 与发布版本一致 |
+
+全部通过 → 发布成功。
+
+任一失败 → 排查并手动修复。
