@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.3] - 2026-05-12
+
+### Fixed
+- Fix update info sync between sidebar and update store on startup
+- Settings panel now shows update info immediately without re-check
+
 ## [0.6.2] - 2026-05-12
 
 ### Fixed
