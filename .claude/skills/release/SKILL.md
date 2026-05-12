@@ -1,38 +1,80 @@
 ---
 name: cc-box-release
-description: CC-Box 版本发布。当用户说"发布"、"release"、"版本更新"、"patch/minor/major"时使用此 skill。
+description: CC-Box 版本发布。当用户说"发布"、"release"、"版本更新"、"准备发布"时使用此 skill。自动分析代码变更，决定版本级别，撰写 release notes，执行发布。
 ---
 
 # CC-Box Release
 
-执行 `npm run release`，自动从 git diff 生成 release notes。
+自动分析变更 → 决定版本级别 → 撰写 notes → 执行发布。
 
-## 基本命令
+## 流程
+
+### 1. 分析变更
 
 ```bash
-npm run release -- --bump <type>
+# 获取上一发布版本的 tag
+git describe --tags --abbrev=0
+
+# 对比上一版本到当前 HEAD 的差异
+git diff <prev-tag>..HEAD --stat
+git log <prev-tag>..HEAD --oneline
 ```
 
-## 参数
+### 2. 决定版本级别
 
-| 参数 | 说明 |
-|------|------|
-| `--bump patch/minor/major` | 版本类型 |
-| `--exact` | 发布当前版本（不 bump） |
-| `--skip-ci` | CI 已构建时使用 |
-| `--oss-only v0.6.2` | 仅上传 OSS |
+| 变更类型 | 级别 |
+|---------|------|
+| Bug fix、小改进 | `patch` |
+| 新功能、向后兼容的改动 | `minor` |
+| 破坏性变更、重大重构 | `major` |
 
-**Release Notes 自动生成**：对比上一版本标签的 git diff，提取 commit 分类。
+判断规则：
+- 只有 `fix`、小改动 → patch
+- 有 `feat`、`add`、新组件/功能 → minor
+- 有 `breaking`、删除功能、重大架构变更 → major
+
+### 3. 撰写 Release Notes
+
+根据 diff 内容生成英文 notes：
+
+```markdown
+### Fixed
+- Fix <具体问题>
+
+### Features
+- Add <具体功能>
+
+### Improvements
+- Improve <具体改进>
+```
+
+格式要点：
+- 每条以动词开头：Fix/Add/Improve/Update/Remove
+- 具体描述改动内容，不写抽象概括
+- 英文
+
+### 4. 执行发布
+
+```bash
+npm run release -- --bump <level> --notes "<notes>"
+```
 
 ## 示例
 
-```bash
-# 发布 patch（自动生成 notes）
-npm run release -- --bump patch
+用户说：`发布`
 
-# 发布 minor（手动指定 notes）
-npm run release -- --bump minor --notes "### Features\n- Add feature"
+执行步骤：
+1. `git describe --tags --abbrev=0` → v0.6.2
+2. `git diff v0.6.2..HEAD --stat` → 分析变更文件
+3. `git log v0.6.2..HEAD --oneline` → 分析 commit 信息
+4. 根据分析结果决定：`--bump patch`
+5. 撰写 notes：`--notes "### Fixed\n- Fix hook event handling"`
+6. 执行：`npm run release -- --bump patch --notes "..."`
 
-# 重新发布当前版本
-npm run release -- --exact --skip-ci
-```
+## 特殊情况
+
+| 场景 | 处理 |
+|------|------|
+| 没有变更 | 提示用户"没有待发布的变更" |
+| 用户指定级别 | 使用用户指定的级别，跳过自动判断 |
+| 用户提供 notes | 使用用户提供的 notes，跳过自动撰写 |
