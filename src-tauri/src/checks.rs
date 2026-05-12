@@ -138,16 +138,20 @@ fn read_config_paths() -> (Option<String>, Option<String>) {
 /// Windows PATH 刷新：添加便携版安装目录
 ///
 /// 检测并添加：
-/// - %LOCALAPPDATA%\Claude (Claude CLI)
+/// - %USERPROFILE%\.local\bin (Claude CLI)
 /// - %LOCALAPPDATA%\PortableGit\bin (Git 便携版)
 #[cfg(target_os = "windows")]
 fn refresh_path_windows() {
     let mut path = std::env::var("PATH").unwrap_or_default();
-    let local_app_data = std::env::var("LOCALAPPDATA")
-        .unwrap_or_else(|_| format!("{}\\AppData\\Local", std::env::var("USERPROFILE").unwrap_or_default()));
 
-    // Claude: %LOCALAPPDATA%\Claude
-    let claude_dir = format!("{}\\Claude", local_app_data);
+    let user_profile = std::env::var("USERPROFILE")
+        .unwrap_or_else(|_| format!("C:\\Users\\{}", std::env::var("USERNAME").unwrap_or_default()));
+
+    let local_app_data = std::env::var("LOCALAPPDATA")
+        .unwrap_or_else(|_| format!("{}\\AppData\\Local", user_profile));
+
+    // Claude: %USERPROFILE%\.local\bin
+    let claude_dir = format!("{}\\.local\\bin", user_profile);
     if Path::new(&claude_dir).exists() {
         let claude_dir_lower = claude_dir.to_lowercase();
         let path_lower = path.to_lowercase();

@@ -169,10 +169,10 @@ async function handleSelectProject() {
       handleOpenProject(result.path)
     } else {
       appStore.setCwd(result.path)
+      // 保留用户的启动参数设置，只清除 resume（新项目不需要恢复会话）
       appStore.setClaudeOptions({
         resume: '',
-        skipPermissions: false,
-        customArgs: ''
+        // 保留 skipPermissions 和 customArgs
       })
       currentView.value = 'terminal'
       sidebarStore.loadAllSidebarData(result.path)

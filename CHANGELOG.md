@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.4] - 2026-05-12
+
+### Fixed
+- Preserve user startup options (skipPermissions, customArgs) when switching projects
+
+### Changed
+- Change Claude CLI auto-install path to standard .local/bin directory
+
 ## [0.6.3] - 2026-05-12
 
 ### Fixed

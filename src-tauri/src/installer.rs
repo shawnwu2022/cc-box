@@ -3,7 +3,7 @@
 //! 从 OSS 下载 Claude CLI 和 Git 便携版，放置到用户目录并添加到 PATH。
 //!
 //! 安装路径：
-//! - Claude: %LOCALAPPDATA%\Claude\claude.exe
+//! - Claude: %USERPROFILE%\.local\bin\claude.exe (Windows) / ~/.local/bin/claude (Unix)
 //! - Git: %LOCALAPPDATA%\PortableGit\bin\bash.exe
 
 use serde::{Deserialize, Serialize};
@@ -20,9 +20,12 @@ const OSS_BASE_URL: &str = "https://cc-box.oss-cn-beijing.aliyuncs.com";
 /// 安装路径
 #[cfg(target_os = "windows")]
 fn get_install_dirs() -> (PathBuf, PathBuf) {
+    let user_profile = std::env::var("USERPROFILE")
+        .unwrap_or_else(|_| format!("C:\\Users\\{}", std::env::var("USERNAME").unwrap_or_default()));
+    let claude_dir = PathBuf::from(&user_profile).join(".local").join("bin");
+
     let local_app_data = std::env::var("LOCALAPPDATA")
-        .unwrap_or_else(|_| format!("{}\\AppData\\Local", std::env::var("USERPROFILE").unwrap_or_default()));
-    let claude_dir = PathBuf::from(&local_app_data).join("Claude");
+        .unwrap_or_else(|_| format!("{}\\AppData\\Local", user_profile));
     let git_dir = PathBuf::from(&local_app_data).join("PortableGit");
     (claude_dir, git_dir)
 }
@@ -30,7 +33,7 @@ fn get_install_dirs() -> (PathBuf, PathBuf) {
 #[cfg(not(target_os = "windows"))]
 fn get_install_dirs() -> (PathBuf, PathBuf) {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let claude_dir = PathBuf::from(&home).join(".claude-local");
+    let claude_dir = PathBuf::from(&home).join(".local").join("bin");
     let git_dir = PathBuf::from(&home).join("PortableGit"); // macOS/Linux 不需要 Git 便携版
     (claude_dir, git_dir)
 }
