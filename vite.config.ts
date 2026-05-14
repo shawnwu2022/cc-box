@@ -14,6 +14,12 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version)
   },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    include: ['tests/**/*.test.ts'],
+    setupFiles: ['tests/test-setup.ts'],
+  },
   // Vite options tailored for Tauri development
   clearScreen: false,
   server: {

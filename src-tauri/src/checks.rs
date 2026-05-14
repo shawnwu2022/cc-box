@@ -229,7 +229,7 @@ fn refresh_path() {
 /// Windows 上 cmd.exe 输出使用系统 OEM 代码页（中文系统为 GBK），
 /// 直接用 `from_utf8_lossy` 会产生乱码。先尝试 UTF-8，失败后回退 GBK。
 #[cfg(target_os = "windows")]
-fn decode_output(bytes: &[u8]) -> String {
+pub(crate) fn decode_output(bytes: &[u8]) -> String {
     if let Ok(s) = String::from_utf8(bytes.to_vec()) {
         return s;
     }
@@ -238,7 +238,7 @@ fn decode_output(bytes: &[u8]) -> String {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn decode_output(bytes: &[u8]) -> String {
+pub(crate) fn decode_output(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).to_string()
 }
 
@@ -417,3 +417,4 @@ fn detect_git_bash_from_git() -> Option<String> {
 
     None
 }
+

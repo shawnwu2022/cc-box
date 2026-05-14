@@ -802,7 +802,7 @@ pub fn get_pty_manager() -> Option<Arc<PtyManager>> {
 }
 
 /// 返回 `data` 中最后一个完整 UTF-8 字符序列的结束位置
-fn utf8_complete_boundary(data: &[u8]) -> usize {
+pub(crate) fn utf8_complete_boundary(data: &[u8]) -> usize {
     if data.is_empty() {
         return 0;
     }
@@ -829,7 +829,7 @@ fn utf8_complete_boundary(data: &[u8]) -> usize {
 }
 
 /// 根据 UTF-8 前导字节判断序列长度
-fn utf8_seq_len(byte: u8) -> usize {
+pub(crate) fn utf8_seq_len(byte: u8) -> usize {
     if byte & 0x80 == 0 {
         1
     } else if byte & 0xE0 == 0xC0 {
@@ -842,3 +842,4 @@ fn utf8_seq_len(byte: u8) -> usize {
         1
     }
 }
+

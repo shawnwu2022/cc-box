@@ -81,15 +81,15 @@ struct JsonRpcRequest {
 }
 
 #[derive(Debug, Deserialize)]
-struct JsonRpcResponse {
-    jsonrpc: String,
-    id: u64,
-    result: Option<serde_json::Value>,
-    error: Option<JsonRpcError>,
+pub(crate) struct JsonRpcResponse {
+    pub(crate) jsonrpc: String,
+    pub(crate) id: u64,
+    pub(crate) result: Option<serde_json::Value>,
+    pub(crate) error: Option<JsonRpcError>,
 }
 
 #[derive(Debug, Deserialize)]
-struct JsonRpcError {
+pub(crate) struct JsonRpcError {
     code: i32,
     message: String,
 }
@@ -284,7 +284,7 @@ impl McpHttpClient {
 // ==================== 解析函数 ====================
 
 /// 解析 SSE 格式响应
-fn parse_sse_response(text: &str) -> Result<JsonRpcResponse, String> {
+pub(crate) fn parse_sse_response(text: &str) -> Result<JsonRpcResponse, String> {
     // SSE 格式：
     // id:1
     // event:message
@@ -306,7 +306,7 @@ fn parse_sse_response(text: &str) -> Result<JsonRpcResponse, String> {
     Err("No data line found in SSE response".to_string())
 }
 
-fn parse_server_info(result: &serde_json::Value) -> Option<ServerInfo> {
+pub(crate) fn parse_server_info(result: &serde_json::Value) -> Option<ServerInfo> {
     result.get("serverInfo").and_then(|info| {
         Some(ServerInfo {
             name: info
@@ -323,7 +323,7 @@ fn parse_server_info(result: &serde_json::Value) -> Option<ServerInfo> {
     })
 }
 
-fn parse_capabilities(result: &serde_json::Value) -> ServerCapabilities {
+pub(crate) fn parse_capabilities(result: &serde_json::Value) -> ServerCapabilities {
     let empty = serde_json::json!({});
     let caps = result.get("capabilities").unwrap_or(&empty);
     ServerCapabilities {
@@ -333,7 +333,7 @@ fn parse_capabilities(result: &serde_json::Value) -> ServerCapabilities {
     }
 }
 
-fn parse_tools(response: &JsonRpcResponse) -> Vec<McpToolInfo> {
+pub(crate) fn parse_tools(response: &JsonRpcResponse) -> Vec<McpToolInfo> {
     response
         .result
         .as_ref()
@@ -360,7 +360,7 @@ fn parse_tools(response: &JsonRpcResponse) -> Vec<McpToolInfo> {
         .unwrap_or_default()
 }
 
-fn parse_prompts(response: &JsonRpcResponse) -> Vec<McpPromptInfo> {
+pub(crate) fn parse_prompts(response: &JsonRpcResponse) -> Vec<McpPromptInfo> {
     response
         .result
         .as_ref()
@@ -410,7 +410,7 @@ fn parse_prompts(response: &JsonRpcResponse) -> Vec<McpPromptInfo> {
         .unwrap_or_default()
 }
 
-fn parse_resources(response: &JsonRpcResponse) -> Vec<McpResourceInfo> {
+pub(crate) fn parse_resources(response: &JsonRpcResponse) -> Vec<McpResourceInfo> {
     response
         .result
         .as_ref()
@@ -716,3 +716,4 @@ pub async fn get_mcp_server_detail_cached(
 
     Ok(None)
 }
+

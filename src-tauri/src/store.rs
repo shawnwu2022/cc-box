@@ -546,7 +546,7 @@ pub fn get_project_info(path: &str) -> Result<Option<Project>> {
 }
 
 /// 从 JSONL 提取会话名称
-fn extract_session_name(jsonl_path: &Path) -> String {
+pub(crate) fn extract_session_name(jsonl_path: &Path) -> String {
     if let Ok(content) = fs::read_to_string(jsonl_path) {
         let mut custom_title: Option<String> = None;
         let mut last_user_message: Option<String> = None;
@@ -947,7 +947,7 @@ pub fn search_session_messages(
 }
 
 /// 解析 ISO 时间戳
-fn parse_timestamp(ts: &str) -> u64 {
+pub(crate) fn parse_timestamp(ts: &str) -> u64 {
     // 简单解析 ISO 格式时间戳
     // 2024-01-01T00:00:00Z -> milliseconds
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
@@ -1003,7 +1003,7 @@ pub fn update_app_config(updates: serde_json::Value) -> Result<()> {
 }
 
 /// 合并 JSON 值
-fn merge_json_values(base: serde_json::Value, updates: serde_json::Value) -> serde_json::Value {
+pub(crate) fn merge_json_values(base: serde_json::Value, updates: serde_json::Value) -> serde_json::Value {
     match (base, updates) {
         (serde_json::Value::Object(mut base_map), serde_json::Value::Object(updates_map)) => {
             for (key, value) in updates_map {
@@ -1448,7 +1448,7 @@ fn read_hooks_config(project_path: &str) -> Result<Vec<HookItem>> {
 
 /// 从 Markdown 提取描述
 /// 优先从 YAML frontmatter 的 description 字段读取，其次从正文提取第一行非空非标题内容
-fn extract_md_description(path: &Path) -> Option<String> {
+pub(crate) fn extract_md_description(path: &Path) -> Option<String> {
     if let Ok(content) = fs::read_to_string(path) {
         let lines = content.lines().collect::<Vec<_>>();
 
@@ -1830,7 +1830,7 @@ fn read_mcp_configs_from_claude_json() -> HashMap<String, McpConfigEntry> {
 }
 
 /// 解析 claude mcp list 输出
-fn parse_mcp_list_output(output: &str) -> Vec<ParsedMcpServer> {
+pub(crate) fn parse_mcp_list_output(output: &str) -> Vec<ParsedMcpServer> {
     let mut servers = Vec::new();
 
     for line in output.lines() {
@@ -1851,14 +1851,14 @@ fn parse_mcp_list_output(output: &str) -> Vec<ParsedMcpServer> {
 }
 
 /// 解析后的 MCP Server（临时结构）
-struct ParsedMcpServer {
-    name: String,
-    display_name: String,
-    scope: String,
-    server_type: String,
-    status: String,
-    url: Option<String>,
-    command: Option<String>,
+pub(crate) struct ParsedMcpServer {
+    pub(crate) name: String,
+    pub(crate) display_name: String,
+    pub(crate) scope: String,
+    pub(crate) server_type: String,
+    pub(crate) status: String,
+    pub(crate) url: Option<String>,
+    pub(crate) command: Option<String>,
 }
 
 /// 解析单个服务器信息行
@@ -1937,7 +1937,7 @@ fn parse_server_info_line(info: &str, status: &str) -> Option<ParsedMcpServer> {
 }
 
 /// 找到分割 name 和 command/url 的冒号位置
-fn find_name_separator(info: &str, server_type: &str) -> Option<usize> {
+pub(crate) fn find_name_separator(info: &str, server_type: &str) -> Option<usize> {
     if server_type == "HTTP" || server_type == "SSE" {
         if let Some(http_pos) = info.find("https://").or_else(|| info.find("http://")) {
             let before_url = &info[..http_pos];
@@ -2074,7 +2074,7 @@ fn detect_git_bash_path() -> Option<String> {
 }
 
 /// 解析 claude agents list 输出
-fn parse_agents_list_output(output: &str, agents: &mut Vec<AgentInfo>) {
+pub(crate) fn parse_agents_list_output(output: &str, agents: &mut Vec<AgentInfo>) {
     // 输出格式示例：
     // Plugin agents:
     //   paper-tool:paper-search · inherit
@@ -2406,3 +2406,4 @@ fn parse_plugin_agents(install_path: &str, plugin_name: &str) -> Option<Vec<Plug
         Some(agents)
     }
 }
+

@@ -20,6 +20,7 @@ import {
 } from '@/api/provider'
 import { providerPresets } from '@/config/providerPresets'
 import type { ProviderPreset } from '@/types/provider'
+import { deepMergeSettings, replaceInSettings } from '@/utils/json'
 
 export const useProvidersStore = defineStore('providers', () => {
   const providers = ref<Provider[]>([])
@@ -89,19 +90,6 @@ export const useProvidersStore = defineStore('providers', () => {
     }
   }
 
-  /** 深度合并（与 Rust deep_merge_json 一致） */
-  function deepMergeSettings(target: any, source: any): any {
-    if (target !== null && typeof target === 'object' && !Array.isArray(target) &&
-        source !== null && typeof source === 'object' && !Array.isArray(source)) {
-      const result = { ...target }
-      for (const key of Object.keys(source)) {
-        result[key] = key in result ? deepMergeSettings(result[key], source[key]) : source[key]
-      }
-      return result
-    }
-    return source
-  }
-
   /** 从预设创建本地 Provider 对象（不写入后端），编辑面板保存时才持久化 */
   function createLocalFromPreset(preset: ProviderPreset, customName?: string): Provider {
     const name = customName || preset.name
@@ -153,29 +141,6 @@ export const useProvidersStore = defineStore('providers', () => {
     )
     providers.value.push(created)
     return created
-  }
-
-  /** 递归替换 settingsConfig 中的占位符 */
-  function replaceInSettings(obj: any, placeholder: string, value: string) {
-    if (typeof obj === 'string') {
-      if (obj.includes(placeholder)) {
-        return obj.replace(placeholder, value)
-      }
-      return obj
-    }
-    if (Array.isArray(obj)) {
-      for (let i = 0; i < obj.length; i++) {
-        obj[i] = replaceInSettings(obj[i], placeholder, value)
-      }
-      return obj
-    }
-    if (typeof obj === 'object' && obj !== null) {
-      for (const key of Object.keys(obj)) {
-        obj[key] = replaceInSettings(obj[key], placeholder, value)
-      }
-      return obj
-    }
-    return obj
   }
 
   async function update(id: string, updates: {

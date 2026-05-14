@@ -126,7 +126,10 @@ npm run tauri:build        # 生产构建
 ```
 
 ### Windows 环境配置
-- **MinGW 设置**：`set PATH=C:\ProgramData\mingw64\mingw64\bin;%PATH%`
+- **Rust 工具链**：使用 MSVC 工具链（`rustup default stable-x86_64-pc-windows-msvc`）
+- **前置依赖**：需安装 [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)，勾选「C++ build tools」和「Windows 11 SDK」
+  - 安装后确保 `link.exe` 为 MSVC 版本而非 Git coreutils 的 `link`
+  - 若 Git bash 中 `cargo build/test` 提示 `link: extra operand`，在 `.cargo/config.toml` 中显式指定 linker 路径
 - **代理设置**：
   - 推送到 GitHub 需要代理：
     ```bash
@@ -219,3 +222,17 @@ npm run release -- --oss-only v0.5.1
 - Rust 结构体返回前端时统一使用 `#[serde(rename_all = "camelCase")]`
 - 添加新 Tauri Command：commands.rs 定义 → lib.rs 注册 → api/tauri.ts 封装
 - 添加新 Tauri JS API 调用时，必须确认 `capabilities/default.json` 中有对应权限（`<plugin>:default` 不包含大部分写操作，需显式添加）→ 详见 [docs/capabilities.md](docs/capabilities.md)
+
+### 测试要求
+
+- **开发必须搭配测试**：新增功能、修改逻辑、修复 bug 时，同步编写或更新对应测试。遵循 [测试编写原则](docs/测试编写原则.md)
+- **测试文件独立存放**：
+  - 前端：项目根目录 `tests/` 文件夹，运行 `npm test`
+  - 后端：`src-tauri/src/tests/` 文件夹，运行 `cd src-tauri && cargo test`
+- **测试基础设施**：
+  - 前端：Vitest + jsdom + `@tauri-apps/api/mocks`（mockIPC）
+  - 后端：Rust `#[cfg(test)]` 模块，被测函数 `pub(crate)` 可见性
+  - Store 测试：`setActivePinia(createPinia())` + `mockIPC`
+- **命名规范**：英文函数名 `Feature_SubFeature_SeqNum` 格式，中文注释描述目标
+- **什么要测**：纯函数、数据转换、解析逻辑、状态管理、边界条件和错误路径
+- **什么不测**：getter/setter、类型定义、简单 props 传递、第三方库能力

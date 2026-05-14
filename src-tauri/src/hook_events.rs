@@ -76,7 +76,7 @@ fn str_field(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
 }
 
-fn extract_detail(event_name: &str, event: &Value) -> HookEventDetail {
+pub(crate) fn extract_detail(event_name: &str, event: &Value) -> HookEventDetail {
     match event_name {
         "SessionStart" => HookEventDetail::SessionStart(SessionStartData {
             model: str_field(event, "model"),
@@ -100,7 +100,7 @@ fn extract_detail(event_name: &str, event: &Value) -> HookEventDetail {
     }
 }
 
-fn derive_state(event_name: &str, event: &Value) -> String {
+pub(crate) fn derive_state(event_name: &str, event: &Value) -> String {
     match event_name {
         "UserPromptSubmit" => "thinking".into(),
         "PreToolUse" => "tool_executing".into(),
@@ -125,3 +125,4 @@ fn derive_state(event_name: &str, event: &Value) -> String {
         _ => "unknown".into(),
     }
 }
+

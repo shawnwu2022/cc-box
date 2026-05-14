@@ -143,9 +143,29 @@ pub fn save_providers_config(config: &ProvidersConfig) -> Result<()> {
     Ok(())
 }
 
+/// 从通用配置的 env 中剥离 6 个核心 Provider 字段，防止导入时覆盖各 Provider 独有的配置
+const CORE_ENV_KEYS: &[&str] = &[
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_MODEL",
+];
+
+pub(crate) fn strip_core_env(settings: &serde_json::Value) -> serde_json::Value {
+    let mut result = settings.clone();
+    if let Some(env) = result.get_mut("env").and_then(|v| v.as_object_mut()) {
+        for key in CORE_ENV_KEYS {
+            env.remove(*key);
+        }
+    }
+    result
+}
+
 /// 深度合并两个 JSON 对象（与 cc-switch json_deep_merge 兼容）
 /// source 的值覆盖 target 中同名键，对象递归合并，非对象直接覆盖
-fn deep_merge_json(target: &serde_json::Value, source: &serde_json::Value) -> serde_json::Value {
+pub(crate) fn deep_merge_json(target: &serde_json::Value, source: &serde_json::Value) -> serde_json::Value {
     match (target, source) {
         (serde_json::Value::Object(target_map), serde_json::Value::Object(source_map)) => {
             let mut merged = target_map.clone();
@@ -450,6 +470,9 @@ pub fn import_from_cc_switch() -> Result<ImportResult> {
                 config.common_config.settings = common_settings.clone();
                 imported_common_config = true;
 
+                // 剥离核心 env 字段后再合并，防止覆盖各 Provider 独有的 API Key / 模型等
+                let safe_settings = strip_core_env(&common_settings);
+
                 // 按原则：将通用配置合并到所有 commonConfigEnabled === true 的 Provider
                 for provider in &mut config.providers {
                     let should_merge = provider
@@ -460,7 +483,7 @@ pub fn import_from_cc_switch() -> Result<ImportResult> {
 
                     if should_merge {
                         provider.settings_config =
-                            deep_merge_json(&provider.settings_config, &common_settings);
+                            deep_merge_json(&provider.settings_config, &safe_settings);
                     }
                 }
             }
@@ -494,6 +517,54 @@ pub struct TestConnectionResult {
     pub latency_ms: Option<u64>,
 }
 
+/// 测试 Provider 连接参数
+pub(crate) struct TestConnectionParams {
+    pub api_key: String,
+    pub base_url: String,
+    pub model: String,
+    pub url: String,
+}
+
+/// 从 Provider 的 settingsConfig.env 提取测试连接所需参数
+/// 返回 None 表示 api_key 为空（未配置）
+pub(crate) fn extract_test_params(settings_config: &serde_json::Value) -> Option<TestConnectionParams> {
+    let env = settings_config
+        .get("env")
+        .and_then(|v| v.as_object())?;
+
+    let api_key = env
+        .get("ANTHROPIC_AUTH_TOKEN")
+        .or_else(|| env.get("ANTHROPIC_API_KEY"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if api_key.is_empty() {
+        return None;
+    }
+
+    let base_url = env
+        .get("ANTHROPIC_BASE_URL")
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://api.anthropic.com")
+        .to_string();
+
+    let model = env
+        .get("ANTHROPIC_MODEL")
+        .and_then(|v| v.as_str())
+        .unwrap_or("claude-sonnet-4-6")
+        .to_string();
+
+    let url = format!("{}/v1/messages", base_url.trim_end_matches('/'));
+
+    Some(TestConnectionParams {
+        api_key,
+        base_url,
+        model,
+        url,
+    })
+}
+
 /// 测试 Provider 连接
 /// 从 provider 的 settingsConfig.env 中提取 AUTH_TOKEN、BASE_URL、MODEL，
 /// 发送一个最小的 Anthropic Messages API 请求（流式），等待第一个 SSE 事件即判定成功。
@@ -507,39 +578,20 @@ pub async fn test_provider_connection(provider_id: &str) -> Result<TestConnectio
         .find(|p| p.id == provider_id)
         .context("Provider not found")?;
 
-    // 从 settingsConfig.env 提取必要参数
-    let env = provider
-        .settings_config
-        .get("env")
-        .and_then(|v| v.as_object())
-        .context("Provider settingsConfig.env 不存在")?;
+    let params = match extract_test_params(&provider.settings_config) {
+        Some(p) => p,
+        None => {
+            return Ok(TestConnectionResult {
+                success: false,
+                message: "未配置 API Key（ANTHROPIC_AUTH_TOKEN 或 ANTHROPIC_API_KEY）".to_string(),
+                latency_ms: None,
+            });
+        }
+    };
 
-    let api_key = env
-        .get("ANTHROPIC_AUTH_TOKEN")
-        .or_else(|| env.get("ANTHROPIC_API_KEY"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    if api_key.is_empty() {
-        return Ok(TestConnectionResult {
-            success: false,
-            message: "未配置 API Key（ANTHROPIC_AUTH_TOKEN 或 ANTHROPIC_API_KEY）".to_string(),
-            latency_ms: None,
-        });
-    }
-
-    let base_url = env
-        .get("ANTHROPIC_BASE_URL")
-        .and_then(|v| v.as_str())
-        .unwrap_or("https://api.anthropic.com");
-
-    let model = env
-        .get("ANTHROPIC_MODEL")
-        .and_then(|v| v.as_str())
-        .unwrap_or("claude-sonnet-4-6");
-
-    let url = format!("{}/v1/messages", base_url.trim_end_matches('/'));
+    let url = params.url;
+    let model = params.model;
+    let api_key = params.api_key;
 
     let request_body = serde_json::json!({
         "model": model,
@@ -632,3 +684,4 @@ pub async fn test_provider_connection(provider_id: &str) -> Result<TestConnectio
         }
     }
 }
+

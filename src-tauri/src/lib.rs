@@ -10,6 +10,8 @@ mod hook_server;
 mod hook_config;
 mod installer;
 mod providers;
+#[cfg(test)]
+mod tests;
 
 use tauri::Manager;
 use tauri::menu::MenuBuilder;

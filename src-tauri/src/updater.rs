@@ -86,7 +86,7 @@ fn get_current_version(_app_handle: &AppHandle) -> String {
 }
 
 /// 比较语义化版本号，返回 true 如果 remote_version > current_version
-fn is_newer_version(current: &str, remote: &str) -> bool {
+pub(crate) fn is_newer_version(current: &str, remote: &str) -> bool {
     let parse_parts = |v: &str| -> Vec<u32> {
         v.trim_start_matches('v')
             .split('.')
@@ -111,7 +111,7 @@ fn is_newer_version(current: &str, remote: &str) -> bool {
 }
 
 /// 从 URL 提取文件名
-fn extract_filename(url: &str) -> String {
+pub(crate) fn extract_filename(url: &str) -> String {
     url.rsplit('/').next().unwrap_or("unknown").to_string()
 }
 
@@ -339,4 +339,81 @@ pub async fn install_update(file_path: String, app_handle: AppHandle) -> Result<
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── is_newer_version(current, remote) → true if remote > current ──
+
+    #[test]
+    fn patch_升级返回_true() {
+        assert!(is_newer_version("0.6.3", "0.6.4"));
+    }
+
+    #[test]
+    fn 降级返回_false() {
+        assert!(!is_newer_version("0.6.4", "0.6.3"));
+    }
+
+    #[test]
+    fn 相同版本返回_false() {
+        assert!(!is_newer_version("0.6.4", "0.6.4"));
+    }
+
+    #[test]
+    fn major_升级返回_true() {
+        assert!(is_newer_version("0.6.4", "1.0.0"));
+    }
+
+    #[test]
+    fn minor_升级返回_true() {
+        assert!(is_newer_version("0.6.4", "0.7.0"));
+    }
+
+    #[test]
+    fn v_前缀版本正确处理() {
+        assert!(is_newer_version("v0.6.4", "v0.7.0"));
+    }
+
+    #[test]
+    fn 混合_v_前缀正确处理() {
+        assert!(is_newer_version("v0.6.4", "0.7.0"));
+    }
+
+    #[test]
+    fn 不等长段数用_0_补齐() {
+        assert!(is_newer_version("0.6", "0.6.4"));
+    }
+
+    #[test]
+    fn 非数字段被跳过() {
+        assert!(!is_newer_version("0.6.4-beta", "0.6.4"));
+    }
+
+    // ── extract_filename(url) → last path segment or "unknown" ──
+
+    #[test]
+    fn 从简单_url_提取文件名() {
+        assert_eq!(extract_filename("https://example.com/file.zip"), "file.zip");
+    }
+
+    #[test]
+    fn 从嵌套路径提取文件名() {
+        assert_eq!(
+            extract_filename("https://example.com/a/b/c/file.msi"),
+            "file.msi"
+        );
+    }
+
+    #[test]
+    fn url_以_斜杠_结尾返回_unknown() {
+        assert_eq!(extract_filename("https://example.com/"), "unknown");
+    }
+
+    #[test]
+    fn 空字符串返回_unknown() {
+        assert_eq!(extract_filename(""), "unknown");
+    }
 }
