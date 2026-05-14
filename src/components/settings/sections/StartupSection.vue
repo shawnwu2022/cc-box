@@ -29,57 +29,62 @@
       </div>
     </div>
 
-    <div class="env-header">
-      <div>
-        <h2 class="section-heading" style="margin-bottom: 4px">Environment Variables</h2>
-        <p class="section-desc" style="margin-bottom: 0">Written to <code class="path-hint">~/.claude/settings.json</code> on change and at startup.</p>
-      </div>
-      <button class="reset-btn" @click="handleReset">Reset to defaults</button>
-    </div>
-
-    <div class="env-list">
-      <div v-for="(value, key) in envVars" :key="key" class="env-row">
-        <input
-          type="text"
-          class="env-key"
-          :value="key"
-          @change="handleKeyChange(key, ($event.target as HTMLInputElement).value)"
-          spellcheck="false"
-        />
-        <span class="env-eq">=</span>
-        <input
-          type="text"
-          class="env-value"
-          :value="value"
-          @change="handleValueChange(key, ($event.target as HTMLInputElement).value)"
-          spellcheck="false"
-        />
-        <button class="env-remove" @click="handleRemove(key)" title="Remove">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-        </button>
+    <!-- 启动环境变量 -->
+    <div class="env-section">
+      <div class="env-header">
+        <div>
+          <h2 class="section-heading" style="margin-bottom: 4px">Environment Variables</h2>
+          <p class="section-desc" style="margin-bottom: 0">
+            应用启动时注入到 <code class="path-hint">~/.claude/settings.json</code> 的环境变量
+          </p>
+        </div>
+        <button class="reset-btn" @click="handleReset">Reset to defaults</button>
       </div>
 
-      <div class="env-add-row">
-        <input
-          type="text"
-          v-model="newKey"
-          class="env-key"
-          placeholder="KEY"
-          spellcheck="false"
-          @keydown.enter="handleAdd"
-        />
-        <span class="env-eq">=</span>
-        <input
-          type="text"
-          v-model="newValue"
-          class="env-value"
-          placeholder="value"
-          spellcheck="false"
-          @keydown.enter="handleAdd"
-        />
-        <button class="env-add-btn" @click="handleAdd" :disabled="!newKey.trim()">Add</button>
+      <div class="env-list">
+        <div v-for="(value, key) in envVars" :key="key" class="env-row">
+          <input
+            type="text"
+            class="env-key"
+            :value="key"
+            @change="handleKeyChange(key, ($event.target as HTMLInputElement).value)"
+            spellcheck="false"
+          />
+          <span class="env-eq">=</span>
+          <input
+            type="text"
+            class="env-value"
+            :value="value"
+            @change="handleValueChange(key, ($event.target as HTMLInputElement).value)"
+            spellcheck="false"
+          />
+          <button class="env-remove" @click="handleRemove(key)" title="Remove">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="env-add-row">
+          <input
+            type="text"
+            v-model="newKey"
+            class="env-key"
+            placeholder="KEY"
+            spellcheck="false"
+            @keydown.enter="handleAdd"
+          />
+          <span class="env-eq">=</span>
+          <input
+            type="text"
+            v-model="newValue"
+            class="env-value"
+            placeholder="value"
+            spellcheck="false"
+            @keydown.enter="handleAdd"
+          />
+          <button class="env-add-btn" @click="handleAdd" :disabled="!newKey.trim()">Add</button>
+        </div>
       </div>
     </div>
   </div>
@@ -258,12 +263,16 @@ function handleReset() {
   color: var(--text-tertiary);
 }
 
+/* 环境变量区域 */
+.env-section {
+  margin-top: 32px;
+}
+
 .env-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   margin-bottom: 16px;
-  margin-top: 32px;
 }
 
 .reset-btn {

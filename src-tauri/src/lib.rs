@@ -9,6 +9,7 @@ mod hook_events;
 mod hook_server;
 mod hook_config;
 mod installer;
+mod providers;
 
 use tauri::Manager;
 use tauri::menu::MenuBuilder;
@@ -164,6 +165,18 @@ pub fn run() {
             installer::download_and_install_claude,
             #[cfg(target_os = "windows")]
             installer::download_and_install_git,
+            // Provider Commands
+            commands::get_providers_config,
+            commands::save_providers_config,
+            commands::activate_provider,
+            commands::create_provider,
+            commands::update_provider,
+            commands::delete_provider,
+            commands::update_provider_sort_order,
+            commands::update_common_config,
+            commands::check_cc_switch_db_exists,
+            commands::import_from_cc_switch,
+            commands::test_provider_connection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

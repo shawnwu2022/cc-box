@@ -29,6 +29,7 @@
     <div class="settings-content">
       <AppearanceSection v-if="sidebarStore.activeSettingsSection === 'appearance'" />
       <StartupSection v-if="sidebarStore.activeSettingsSection === 'startup'" />
+      <ProvidersSection v-if="sidebarStore.activeSettingsSection === 'providers'" />
       <ShortcutsSection v-if="sidebarStore.activeSettingsSection === 'shortcuts'" />
       <UpdateSection v-if="sidebarStore.activeSettingsSection === 'update'" />
       <AboutSection v-if="sidebarStore.activeSettingsSection === 'about'" />
@@ -40,6 +41,7 @@
 import { useSidebarStore } from '@/stores/sidebar'
 import AppearanceSection from './sections/AppearanceSection.vue'
 import StartupSection from './sections/StartupSection.vue'
+import ProvidersSection from './sections/ProvidersSection.vue'
 import ShortcutsSection from './sections/ShortcutsSection.vue'
 import UpdateSection from './sections/UpdateSection.vue'
 import AboutSection from './sections/AboutSection.vue'
@@ -53,6 +55,7 @@ const sidebarStore = useSidebarStore()
 const navItems = [
   { id: 'appearance', label: '外观 Appearance' },
   { id: 'startup', label: '启动 Startup' },
+  { id: 'providers', label: '接口 Providers' },
   { id: 'shortcuts', label: '快捷键 Shortcuts' },
   { id: 'update', label: '更新 Update' },
   { id: 'about', label: '关于 About' },

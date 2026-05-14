@@ -9,12 +9,12 @@
 
 ## 文件路径
 
-### Claude Code 原生文件（只读）
+### Claude Code 原生文件（只读，Provider 激活时写入）
 
 | 文件 | 用途 |
 |------|------|
 | `~/.claude.json` | 项目列表、用户偏好、会话信息 |
-| `~/.claude/settings.json` | 全局配置（MCP、权限、模型） |
+| `~/.claude/settings.json` | 全局配置（MCP、权限、模型）—— **Provider 激活时完整替换写入** |
 | `~/.claude/projects/<encoded-path>/` | 项目会话数据 |
 | `<project>/.claude/settings.json` | 项目配置 |
 
@@ -23,6 +23,7 @@
 | 文件 | 用途 |
 |------|------|
 | `~/.cc-box/config.json` | GUI 配置（路径缓存、主题、字号、启动参数默认值） |
+| `~/.cc-box/providers.json` | **Provider 配置**（列表 + 通用配置 + 激活状态） |
 | `~/.cc-box/claude-plugin/` | Hook Plugin 文件（运行时生成） |
 | `~/.cc-box/logs/` | 日志文件 |
 

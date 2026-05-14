@@ -46,6 +46,7 @@ cc-box/
 │   │   ├── pty.rs              # PTY 管理（portable-pty 封装）
 │   │   ├── commands.rs         # Tauri IPC 命令
 │   │   ├── store.rs            # Claude Code 原生数据读取
+│   │   ├── providers.rs        # **Provider 管理**（存储、合并、激活、cc-switch 导入）
 │   │   ├── mcp.rs              # MCP 协议客户端（HTTP/SSE + stdio）
 │   │   ├── hook_events.rs      # Hook 事件数据结构与提取
 │   │   ├── hook_server.rs      # Hook HTTP 服务器（接收 Claude 运行时事件）
@@ -59,7 +60,9 @@ cc-box/
 │   └── tauri.conf.json
 │
 ├── src/                        # Vue 3 前端
-│   ├── api/tauri.ts            # Tauri invoke/listen 封装
+│   ├── api/
+│   │   ├── tauri.ts            # Tauri invoke/listen 封装
+│   │   └── provider.ts         # **Provider API**（Tauri invoke 封装）
 │   ├── components/             # UI 组件
 │   │   ├── App.vue             # 视图切换 + 环境检查
 │   │   ├── TitleBar.vue        # 自定义标题栏（Windows）
@@ -77,8 +80,11 @@ cc-box/
 │   │   ├── plugins/            # Plugins 面板（PluginsPanel > PluginGroup > PluginItem）
 │   │   ├── sidebar/            # 侧边栏容器（SidebarPanel > PanelHeader）
 │   │   └── settings/           # 设置（SettingsOverlay > SettingsView + sections/）
-│   ├── stores/                 # Pinia：app、session、sidebar、config、hook
-│   ├── types/                  # TypeScript 类型定义（pty、session、project、config、app、hook）
+│   │       └── providers/      # **Provider 组件**（ProviderList > ProviderCard、EditPanel、PresetPanel、CommonConfigPanel）
+│   ├── config/
+│   │   └── providerPresets.ts  # **Provider 预设模板**（50+ 厂商）
+│   ├── stores/                 # Pinia：app、session、sidebar、config、hook、providers
+│   ├── types/                  # TypeScript 类型定义（pty、session、project、config、app、hook、provider）
 │   ├── composables/            # useAppShortcuts、useTerminalCommand、useStatusMonitor、useWindowAttention
 │   ├── utils/                  # platform 工具
 │   └── styles/global.css       # CSS 变量与全局样式
@@ -185,20 +191,23 @@ npm run release -- --oss-only v0.5.1
 
 ## 详细文档
 
-| 文档 | 内容 |
-|------|------|
-| [docs/terminal-integration.md](docs/terminal-integration.md) | 终端集成架构、PTY 生命周期、IPC 命令与事件对照 |
-| [docs/hook-monitor.md](docs/hook-monitor.md) | **Hook 监控系统**：Plugin 注入、事件采集、状态机、多终端区分 |
-| [docs/layout-design.md](docs/layout-design.md) | 布局设计、窗口结构、色彩系统、排版规范 |
-| [docs/components.md](docs/components.md) | 组件树、各组件职责与 props/events、Store 结构 |
-| [docs/interaction.md](docs/interaction.md) | **快捷键处理架构**、三场景输入处理、DOM 捕获期监听 |
-| [docs/capabilities.md](docs/capabilities.md) | **Tauri 权限管理**、查询/确认/添加 capabilities 权限的方法 |
-| [docs/data-persistence.md](docs/data-persistence.md) | 数据存储架构、文件路径、JSON 结构 |
-| [docs/env-injection.md](docs/env-injection.md) | **环境变量注入**：Claude settings env 管理、启动同步、优先级、扩展方式 |
-| [docs/startup-checks.md](docs/startup-checks.md) | 启动先决条件检查、路径检测与自动保存 |
-| [docs/roadmap.md](docs/roadmap.md) | 开发路线图、进度跟踪、待办事项 |
-| [docs/logging.md](docs/logging.md) | 日志文件路径、级别策略、轮转与清理机制 |
-| [docs/release-process.md](docs/release-process.md) | 版本号管理、本地打包、CI/CD 发布、签名与分发 |
+| 文档                                                           | 内容                                                    |
+|--------------------------------------------------------------|-------------------------------------------------------|
+| [docs/测试编写原则.md](docs/测试编写原则.md)   | 项目如何编写测试                                              |
+| [docs/terminal-integration.md](docs/terminal-integration.md) | 终端集成架构、PTY 生命周期、IPC 命令与事件对照                           |
+| [docs/hook-monitor.md](docs/hook-monitor.md)                 | **Hook 监控系统**：Plugin 注入、事件采集、状态机、多终端区分                |
+| [docs/provider-management.md](docs/provider-management.md)   | **Provider 管理**：数据结构、激活流程、通用配置合并、CRUD、cc-switch 导入    |
+| [docs/provider-test-cases.md](docs/provider-test-cases.md)   | **Provider 测试条目**：9 大类 80+ 测试用例，覆盖 CRUD、激活合并、导入、UI 交互 |
+| [docs/layout-design.md](docs/layout-design.md)               | 布局设计、窗口结构、色彩系统、排版规范                                   |
+| [docs/components.md](docs/components.md)                     | 组件树、各组件职责与 props/events、Store 结构                      |
+| [docs/interaction.md](docs/interaction.md)                   | **快捷键处理架构**、三场景输入处理、DOM 捕获期监听                         |
+| [docs/capabilities.md](docs/capabilities.md)                 | **Tauri 权限管理**、查询/确认/添加 capabilities 权限的方法            |
+| [docs/data-persistence.md](docs/data-persistence.md)         | 数据存储架构、文件路径、JSON 结构                                   |
+| [docs/env-injection.md](docs/env-injection.md)               | **环境变量注入**：Claude settings env 管理、启动同步、优先级、扩展方式       |
+| [docs/startup-checks.md](docs/startup-checks.md)             | 启动先决条件检查、路径检测与自动保存                                    |
+| [docs/roadmap.md](docs/roadmap.md)                           | 开发路线图、进度跟踪、待办事项                                       |
+| [docs/logging.md](docs/logging.md)                           | 日志文件路径、级别策略、轮转与清理机制                                   |
+| [docs/release-process.md](docs/release-process.md)           | 版本号管理、本地打包、CI/CD 发布、签名与分发                             |
 
 外部参考：[Claude Code 线上文档](https://code.claude.com/docs/llms.txt)
 
