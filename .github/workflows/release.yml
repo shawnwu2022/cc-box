@@ -65,13 +65,13 @@ jobs:
           LINK_PATH=$(powershell.exe -Command "Get-Command link -CommandType Application | Where-Object { \$_.Source -notlike '*Git*' } | Select-Object -First 1 -ExpandProperty Source")
           if [ -n "$LINK_PATH" ]; then
             echo "Found MSVC link.exe at: $LINK_PATH"
-            # Convert Windows path to proper format for cargo config
-            LINK_PATH_WIN=$(echo "$LINK_PATH" | sed 's|/c/|C:\\|; s|/|\\|g')
-            echo "Windows path: $LINK_PATH_WIN"
+            # Convert Windows path to TOML-escaped format (double backslashes)
+            LINK_PATH_TOML=$(echo "$LINK_PATH" | sed 's|\\|\\\\|g')
+            echo "TOML path: $LINK_PATH_TOML"
             # Create cargo config in project root
             mkdir -p .cargo
             echo '[target.x86_64-pc-windows-msvc]' > .cargo/config.toml
-            echo "linker = \"$LINK_PATH_WIN\"" >> .cargo/config.toml
+            echo "linker = \"$LINK_PATH_TOML\"" >> .cargo/config.toml
             echo "Created .cargo/config.toml:"
             cat .cargo/config.toml
           else
