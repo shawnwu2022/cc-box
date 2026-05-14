@@ -11,4 +11,4 @@ mod pty;
 #[cfg(test)]
 mod mcp;
 #[cfg(test)]
-mod updater;
+mod env;
