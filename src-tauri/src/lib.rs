@@ -3,7 +3,6 @@ mod commands;
 mod store;
 mod checks;
 mod mcp;
-mod updater;
 mod logger;
 mod hook_events;
 mod hook_server;
@@ -56,6 +55,8 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .on_window_event(|_window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { .. } => {
@@ -155,10 +156,6 @@ pub fn run() {
             commands::get_all_plugins,
             commands::get_mcp_server_detail,
             commands::test_communication,
-            commands::check_for_updates,
-            commands::download_update,
-            commands::install_update,
-            commands::cancel_download,
             commands::get_app_path,
             commands::spawn_new_instance,
             commands::log_message,

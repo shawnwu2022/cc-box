@@ -368,39 +368,6 @@ pub fn spawn_new_instance() -> Result<(), String> {
     Ok(())
 }
 
-// ==================== Updater Commands ====================
-
-/// 检查 GitHub Releases 是否有新版本
-#[tauri::command]
-pub async fn check_for_updates(app_handle: AppHandle) -> Result<crate::updater::UpdateInfo, String> {
-    crate::updater::check_for_updates(app_handle)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// 下载更新文件
-#[tauri::command]
-pub async fn download_update(
-    url: String,
-    file_name: String,
-    expected_size: u64,
-    app_handle: AppHandle,
-) -> Result<String, String> {
-    crate::updater::download_update(url, file_name, expected_size, app_handle).await
-}
-
-/// 安装更新
-#[tauri::command]
-pub async fn install_update(file_path: String, app_handle: AppHandle) -> Result<(), String> {
-    crate::updater::install_update(file_path, app_handle).await
-}
-
-/// 取消下载
-#[tauri::command]
-pub fn cancel_download() {
-    crate::updater::cancel_download()
-}
-
 // ==================== Provider Commands ====================
 
 /// 获取 Provider 配置

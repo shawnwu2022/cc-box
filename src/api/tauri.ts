@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { listen, type Unlisten } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 
 // 从统一类型目录导入
 import type {
@@ -83,27 +85,27 @@ export const ptyKillAll = async (): Promise<void> => {
 // Event Listeners (Tauri events)
 // ============================================
 
-export const onPtyOutput = (callback: (payload: PtyOutputPayload) => void): Promise<UnlistenFn> =>
+export const onPtyOutput = (callback: (payload: PtyOutputPayload) => void): Promise<Unlisten> =>
   listen<PtyOutputPayload>('pty-output', (event) => callback(event.payload));
 
-export const onPtyExit = (callback: (payload: PtyExitPayload) => void): Promise<UnlistenFn> =>
+export const onPtyExit = (callback: (payload: PtyExitPayload) => void): Promise<Unlisten> =>
   listen<PtyExitPayload>('pty-exit', (event) => callback(event.payload));
 
 // Hook 监控事件
-export const onHookEvent = (callback: (payload: HookEventPayload) => void): Promise<UnlistenFn> =>
+export const onHookEvent = (callback: (payload: HookEventPayload) => void): Promise<Unlisten> =>
   listen<HookEventPayload>('hook-event', (event) => callback(event.payload));
 
 // Menu events
-export const onMenuSettings = (callback: () => void): Promise<UnlistenFn> =>
+export const onMenuSettings = (callback: () => void): Promise<Unlisten> =>
   listen('menu:settings', () => callback());
 
-export const onMenuShortcuts = (callback: () => void): Promise<UnlistenFn> =>
+export const onMenuShortcuts = (callback: () => void): Promise<Unlisten> =>
   listen('menu:shortcuts', () => callback());
 
-export const onConfigFontSize = (callback: (size: number) => void): Promise<UnlistenFn> =>
+export const onConfigFontSize = (callback: (size: number) => void): Promise<Unlisten> =>
   listen<number>('config:fontSize', (event) => callback(event.payload));
 
-export const onTerminalRestart = (callback: (data: { cwd: string }) => void): Promise<UnlistenFn> =>
+export const onTerminalRestart = (callback: (data: { cwd: string }) => void): Promise<Unlisten> =>
   listen<{ cwd: string }>('terminal:restart', (event) => callback(event.payload));
 
 // ============================================
@@ -193,23 +195,24 @@ export const openInFileManager = (path: string): Promise<void> =>
   invoke<void>('open_in_file_manager', { path });
 
 // ============================================
-// Updater
+// Updater (Tauri official plugin)
 // ============================================
 
-export const checkForUpdates = (): Promise<UpdateInfo> =>
-  invoke<UpdateInfo>('check_for_updates');
+export type { Update } from '@tauri-apps/plugin-updater';
+export { check, relaunch };
 
-export const downloadUpdate = (url: string, fileName: string, expectedSize: number): Promise<string> =>
-  invoke<string>('download_update', { url, fileName, expectedSize });
-
-export const installUpdate = (filePath: string): Promise<void> =>
-  invoke<void>('install_update', { filePath });
-
-export const cancelDownload = (): Promise<void> =>
-  invoke<void>('cancel_download');
-
-export const onUpdateDownloadProgress = (callback: (progress: DownloadProgress) => void): Promise<UnlistenFn> =>
-  listen<DownloadProgress>('update:download-progress', (event) => callback(event.payload));
+export const checkForUpdates = async (): Promise<UpdateInfo | null> => {
+  const update = await check();
+  if (!update) return null;
+  return {
+    version: update.version,
+    currentVersion: __APP_VERSION__,
+    hasUpdate: true,
+    releaseNotes: update.body || '',
+    downloadUrl: '',
+    platformAsset: null,
+  };
+};
 
 // ============================================
 // App Instance
@@ -295,5 +298,5 @@ export const downloadAndInstallClaude = (): Promise<void> =>
 export const downloadAndInstallGit = (): Promise<void> =>
   invoke<void>('download_and_install_git');
 
-export const onInstallProgress = (callback: (progress: InstallProgress) => void): Promise<UnlistenFn> =>
+export const onInstallProgress = (callback: (progress: InstallProgress) => void): Promise<Unlisten> =>
   listen<InstallProgress>('download-progress', (event) => callback(event.payload));

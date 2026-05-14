@@ -261,8 +261,10 @@ function initAfterChecks() {
   window.addEventListener('app:toggleHome', handleToggleHome)
 
   checkForUpdates().then(info => {
-    sidebarStore.setUpdateInfo(info)
-    updateStore.setUpdateInfo(info)
+    if (info) {
+      sidebarStore.setUpdateInfo(info)
+      updateStore.setUpdateInfo(info)
+    }
   }).catch(() => {})
 }
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0] - 2026-05-14
+
+### Features
+- Switch to Tauri official updater plugin with signature verification
+- Generate dual-format OSS JSON for backward compatibility with v0.7.x
+- Auto-generate .sig signature files during CI build
+- Simplify update UI: single Download & Install button
+
 ## [0.7.0] - 2026-05-14
 
 ### Fixed

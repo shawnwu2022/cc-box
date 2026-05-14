@@ -43,34 +43,20 @@
 
           <!-- 下载/安装状态 -->
           <div class="update-actions">
-            <!-- 初始状态：显示下载按钮 -->
+            <!-- 初始状态：显示下载并安装按钮 -->
             <template v-if="updateStore.downloadState === 'idle'">
               <div class="action-row">
-                <button
-                  v-if="updateStore.updateInfo.platformAsset"
-                  class="action-btn primary"
-                  @click="handleDownload"
-                >
+                <button class="action-btn primary" @click="handleDownloadAndInstall">
                   Download & Install
                 </button>
-                <a
-                  class="action-btn secondary"
-                  @click.prevent="openExternal(updateStore.updateInfo.downloadUrl)"
-                >
-                  Manual Download
-                </a>
               </div>
-              <span v-if="updateStore.updateInfo.platformAsset" class="file-size">
-                {{ formatSize(updateStore.updateInfo.platformAsset.size) }}
-              </span>
             </template>
 
             <!-- 下载中 -->
             <template v-if="updateStore.downloadState === 'downloading'">
               <div class="progress-section">
                 <div class="progress-header">
-                  <span>Downloading...</span>
-                  <button class="cancel-btn" @click="handleCancel">Cancel</button>
+                  <span>Downloading update...</span>
                 </div>
                 <div class="progress-bar">
                   <div class="progress-fill" :style="{ width: updateStore.downloadProgress.percent + '%' }"></div>
@@ -82,17 +68,6 @@
                   </span>
                 </div>
               </div>
-            </template>
-
-            <!-- 下载完成 -->
-            <template v-if="updateStore.downloadState === 'downloaded'">
-              <div class="downloaded-info">
-                <span class="downloaded-icon">✓</span>
-                <span>Download complete</span>
-              </div>
-              <button class="action-btn primary" @click="handleInstall">
-                Install & Restart
-              </button>
             </template>
 
             <!-- 安装中 -->
@@ -108,9 +83,6 @@
               <span>{{ updateStore.downloadError }}</span>
               <div class="error-actions">
                 <button class="retry-link" @click="handleRetry">Retry</button>
-                <a class="manual-link" @click.prevent="openExternal(updateStore.updateInfo.downloadUrl)">
-                  Manual Download
-                </a>
               </div>
             </div>
           </div>
@@ -121,9 +93,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { open } from '@tauri-apps/plugin-shell'
-import { checkForUpdates, downloadUpdate, installUpdate, cancelDownload, onUpdateDownloadProgress } from '@/api/tauri'
+import { ref, computed } from 'vue'
+import { check, relaunch } from '@/api/tauri'
+import { checkForUpdates } from '@/api/tauri'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useUpdateStore } from '@/stores/update'
 
@@ -134,32 +106,12 @@ const checking = ref(false)
 const error = ref(false)
 const errorMessage = ref('')
 
-let unlistenProgress: (() => void) | null = null
-
-onMounted(async () => {
-  // 监听下载进度事件
-  unlistenProgress = await onUpdateDownloadProgress((progress) => {
-    updateStore.setDownloadProgress(progress)
-    if (progress.percent >= 100) {
-      updateStore.setDownloadState('downloaded')
-    }
-  })
-})
-
-onUnmounted(() => {
-  unlistenProgress?.()
-})
-
 const renderedNotes = computed(() => {
   if (!updateStore.updateInfo?.releaseNotes) return ''
   return updateStore.updateInfo.releaseNotes
     .replace(/\n/g, '<br>')
     .replace(/#{1,3}\s(.+)/g, '<strong>$1</strong>')
 })
-
-function openExternal(url: string) {
-  open(url)
-}
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -174,8 +126,10 @@ async function handleCheckUpdate() {
   errorMessage.value = ''
   try {
     const info = await checkForUpdates()
-    updateStore.setUpdateInfo(info)
-    sidebarStore.setUpdateInfo(info)
+    if (info) {
+      updateStore.setUpdateInfo(info)
+      sidebarStore.setUpdateInfo(info)
+    }
   } catch (err) {
     error.value = true
     errorMessage.value = String(err)
@@ -184,44 +138,49 @@ async function handleCheckUpdate() {
   }
 }
 
-async function handleDownload() {
-  if (!updateStore.updateInfo?.platformAsset) return
-
+async function handleDownloadAndInstall() {
   updateStore.setDownloadState('downloading')
   updateStore.clearError()
   updateStore.setDownloadProgress({ downloaded: 0, total: 0, percent: 0 })
 
   try {
-    const asset = updateStore.updateInfo.platformAsset
-    const filePath = await downloadUpdate(asset.url, asset.name, asset.size)
-    updateStore.setDownloadedFilePath(filePath)
-    updateStore.setDownloadState('downloaded')
+    const update = await check()
+    if (!update) {
+      updateStore.setDownloadError('No update available')
+      updateStore.setDownloadState('error')
+      return
+    }
+
+    let downloaded = 0
+    let contentLength = 0
+
+    await update.downloadAndInstall((event) => {
+      switch (event.event) {
+        case 'Started':
+          contentLength = event.data.contentLength ?? 0
+          updateStore.setDownloadProgress({ downloaded: 0, total: contentLength, percent: 0 })
+          break
+        case 'Progress':
+          downloaded += event.data.chunkLength
+          const percent = contentLength > 0 ? (downloaded / contentLength) * 100 : 0
+          updateStore.setDownloadProgress({ downloaded, total: contentLength, percent })
+          break
+        case 'Finished':
+          updateStore.setDownloadState('installing')
+          break
+      }
+    })
+
+    await relaunch()
   } catch (err) {
-    updateStore.setDownloadError(`Download failed: ${err}`)
+    updateStore.setDownloadError(`Update failed: ${err}`)
     updateStore.setDownloadState('error')
   }
 }
 
-async function handleCancel() {
-  cancelDownload()
-  updateStore.resetDownload()
-}
-
 async function handleRetry() {
   updateStore.resetDownload()
-  await handleDownload()
-}
-
-async function handleInstall() {
-  if (!updateStore.downloadedFilePath) return
-
-  updateStore.setDownloadState('installing')
-  try {
-    await installUpdate(updateStore.downloadedFilePath)
-  } catch (err) {
-    updateStore.setDownloadError(`Install failed: ${err}`)
-    updateStore.setDownloadState('downloaded')
-  }
+  await handleDownloadAndInstall()
 }
 </script>
 
@@ -411,22 +370,6 @@ async function handleInstall() {
   color: white;
 }
 
-.action-btn.secondary {
-  background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-}
-
-.action-btn.secondary:hover {
-  border-color: var(--accent-color);
-  color: var(--accent-color);
-}
-
-.file-size {
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
 .progress-section {
   display: flex;
   flex-direction: column;
@@ -439,22 +382,6 @@ async function handleInstall() {
   align-items: center;
   font-size: 13px;
   color: var(--text-secondary);
-}
-
-.cancel-btn {
-  padding: 4px 12px;
-  background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.cancel-btn:hover {
-  border-color: var(--error-color);
-  color: var(--error-color);
 }
 
 .progress-bar {
@@ -481,19 +408,6 @@ async function handleInstall() {
 
 .progress-size {
   color: var(--text-tertiary);
-}
-
-.downloaded-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--success-color);
-  margin-bottom: 8px;
-}
-
-.downloaded-icon {
-  font-size: 16px;
 }
 
 .installing-message {
@@ -529,8 +443,7 @@ async function handleInstall() {
   margin-top: 8px;
 }
 
-.retry-link,
-.manual-link {
+.retry-link {
   background: none;
   border: none;
   color: var(--accent-color);
@@ -538,9 +451,5 @@ async function handleInstall() {
   font-size: 13px;
   text-decoration: underline;
   padding: 0;
-}
-
-.manual-link {
-  color: var(--text-secondary);
 }
 </style>

@@ -389,11 +389,84 @@ function downloadGitHubRelease(version) {
 
   fs.mkdirSync(versionDir, { recursive: true })
 
-  execWithProxyRetry(`gh release download ${version} --dir "${versionDir}" --pattern "*.exe" --pattern "*.dmg" --pattern "*.AppImage" --clobber`)
+  // 下载所有产物：安装包 + 签名文件 + macOS 双产物 (.app.tar.gz + .dmg)
+  execWithProxyRetry(`gh release download ${version} --dir "${versionDir}" --pattern "*.exe" --pattern "*.exe.sig" --pattern "*.app.tar.gz" --pattern "*.app.tar.gz.sig" --pattern "*.dmg" --pattern "*.AppImage" --pattern "*.AppImage.sig" --clobber`)
   logSuccess(`产物下载完成: ${versionDir}`)
 
   return { versionDir }
 }
+
+// ============================================
+// 双格式 JSON 生成（可独立测试）
+// ============================================
+
+/**
+ * 生成双格式 latest.json（同时兼容 Tauri 官方插件和旧版本自定义 updater）
+ * @param {object} params
+ * @param {string} params.version - 版本号（如 "v0.8.0"）
+ * @param {string} params.releaseNotes - 更新说明
+ * @param {object} params.files - 文件列表 [{ name, path }]
+ * @param {string} params.bucketName - OSS bucket
+ * @param {string} params.endpoint - OSS endpoint
+ * @param {function} params.readFileContent - 读取文件内容
+ * @param {function} params.getFileSize - 获取文件大小
+ * @returns {object} latestJson
+ */
+function generateLatestJson({ version, releaseNotes, files, bucketName, endpoint, readFileContent, getFileSize }) {
+  // 检测各类文件
+  const winFile = files.find(f => /-setup\.exe$/i.test(f.name))
+  const winSigFile = files.find(f => /-setup\.exe\.sig$/i.test(f.name))
+  const macTarGzFile = files.find(f => /\.app\.tar\.gz$/i.test(f.name))
+  const macTarGzSigFile = files.find(f => /\.app\.tar\.gz\.sig$/i.test(f.name))
+  const macDmgFile = files.find(f => /\.dmg$/i.test(f.name))
+  const linuxFile = files.find(f => /\.AppImage$/i.test(f.name))
+  const linuxSigFile = files.find(f => /\.AppImage\.sig$/i.test(f.name))
+
+  const versionWithoutV = version.replace(/^v/, '')
+  const makeUrl = (file) => `https://${bucketName}.${endpoint}/cc-box/${version}/${file?.name || ''}`
+
+  return {
+    // === Tauri 官方格式（新版本使用） ===
+    version: versionWithoutV,
+    notes: releaseNotes || '',
+    pub_date: new Date().toISOString(),
+    platforms: {
+      "windows-x86_64": {
+        signature: readFileContent(winSigFile?.path),
+        url: makeUrl(winFile)
+      },
+      "darwin-x86_64": {
+        signature: readFileContent(macTarGzSigFile?.path),
+        url: makeUrl(macTarGzFile)
+      },
+      "linux-x86_64": {
+        signature: readFileContent(linuxSigFile?.path),
+        url: makeUrl(linuxFile)
+      }
+    },
+
+    // === 自定义格式（旧版本兼容） ===
+    release_date: new Date().toISOString().split('T')[0],
+    release_notes: releaseNotes || '',
+    release_notes_url: `https://github.com/orczh-hj/cc-box/releases/tag/${version}`,
+    assets: {
+      windows: {
+        url: makeUrl(winFile),
+        size: getFileSize(winFile?.path),
+      },
+      macos: {
+        url: makeUrl(macDmgFile),
+        size: getFileSize(macDmgFile?.path),
+      },
+      linux: {
+        url: makeUrl(linuxFile),
+        size: getFileSize(linuxFile?.path),
+      },
+    },
+  }
+}
+
+module.exports = { generateLatestJson }
 
 function uploadToOSS(version, versionDir, releaseNotes) {
   logStep('上传到阿里云 OSS...')
@@ -420,7 +493,7 @@ function uploadToOSS(version, versionDir, releaseNotes) {
   // 配置 ossutil
   exec(`"${ossUtilPath}" config -e ${endpoint} -i ${accessKeyId} -k ${accessKeySecret} -L CH`)
 
-  // 上传安装包
+  // 上传安装包（包括签名文件）
   const files = fs.readdirSync(versionDir).map(f => ({
     name: f,
     path: path.join(versionDir, f),
@@ -431,10 +504,11 @@ function uploadToOSS(version, versionDir, releaseNotes) {
     logSuccess(`已上传: ${file.name}`)
   }
 
-  // 生成 latest.json
-  const winFile = files.find(f => /-setup\.exe$/i.test(f.name))
-  const macFile = files.find(f => /\.dmg$/i.test(f.name))
-  const linuxFile = files.find(f => /\.AppImage$/i.test(f.name))
+  // 读取签名文件内容
+  const readFileContent = (filePath) => {
+    if (!filePath || !fs.existsSync(filePath)) return ''
+    return fs.readFileSync(filePath, 'utf-8')
+  }
 
   // 获取文件大小
   const getFileSize = (filePath) => {
@@ -446,32 +520,14 @@ function uploadToOSS(version, versionDir, releaseNotes) {
     }
   }
 
-  const latestJson = {
-    version,
-    release_date: new Date().toISOString().split('T')[0],
-    release_notes: releaseNotes || '',
-    release_notes_url: `https://github.com/orczh-hj/cc-box/releases/tag/${version}`,
-    assets: {
-      windows: {
-        url: `https://${bucketName}.${endpoint}/cc-box/${version}/${winFile?.name || ''}`,
-        size: getFileSize(winFile?.path),
-      },
-      macos: {
-        url: `https://${bucketName}.${endpoint}/cc-box/${version}/${macFile?.name || ''}`,
-        size: getFileSize(macFile?.path),
-      },
-      linux: {
-        url: `https://${bucketName}.${endpoint}/cc-box/${version}/${linuxFile?.name || ''}`,
-        size: getFileSize(linuxFile?.path),
-      },
-    },
-  }
+  // 生成双格式 JSON
+  const latestJson = generateLatestJson({ version, releaseNotes, files, bucketName, endpoint, readFileContent, getFileSize })
 
   // latest.json 保存到项目 releases 目录
   const jsonPath = path.join(versionDir, 'latest.json')
   fs.writeFileSync(jsonPath, JSON.stringify(latestJson, null, 2))
   exec(`"${ossUtilPath}" cp "${jsonPath}" "oss://${bucketName}/cc-box/latest.json" -f`)
-  logSuccess('latest.json 已上传')
+  logSuccess('latest.json 已上传（双格式：官方 + 旧版本兼容）')
 }
 
 // ============================================
@@ -643,7 +699,10 @@ async function main() {
   console.log('======================================\x1b[0m')
 }
 
-main().catch(e => {
-  logError(e.message)
-  process.exit(1)
-})
+// 只在直接运行时执行主流程（被 require 时不执行）
+if (require.main === module) {
+  main().catch(e => {
+    logError(e.message)
+    process.exit(1)
+  })
+}
