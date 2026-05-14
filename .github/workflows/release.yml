@@ -57,20 +57,27 @@ jobs:
         with:
           arch: x64
 
-      - name: Configure Rust linker via RUSTFLAGS (windows only)
+      - name: Configure Rust linker via cargo config (windows only)
         if: matrix.platform == 'windows-2022'
         shell: bash
         run: |
-          # Get the link.exe path from PATH
-          LINK_PATH=$(where link | head -1 | tr -d '\r\n')
+          # Use PowerShell to find link.exe and filter out Git's link
+          LINK_PATH=$(powershell.exe -Command "Get-Command link -CommandType Application | Where-Object { \$_.Source -notlike '*Git*' } | Select-Object -First 1 -ExpandProperty Source")
           if [ -n "$LINK_PATH" ]; then
-            echo "Found link.exe at: $LINK_PATH"
-            # Create cargo config
+            echo "Found MSVC link.exe at: $LINK_PATH"
+            # Convert Windows path to proper format for cargo config
+            LINK_PATH_WIN=$(echo "$LINK_PATH" | sed 's|/c/|C:\\|; s|/|\\|g')
+            echo "Windows path: $LINK_PATH_WIN"
+            # Create cargo config in project root
             mkdir -p .cargo
-            printf '[target.x86_64-pc-windows-msvc]\nlinker = "%s"\n' "$LINK_PATH" > .cargo/config.toml
+            echo '[target.x86_64-pc-windows-msvc]' > .cargo/config.toml
+            echo "linker = \"$LINK_PATH_WIN\"" >> .cargo/config.toml
+            echo "Created .cargo/config.toml:"
             cat .cargo/config.toml
           else
-            echo "ERROR: link.exe not found in PATH"
+            echo "ERROR: MSVC link.exe not found"
+            echo "Available link commands:"
+            powershell.exe -Command "Get-Command link -CommandType Application | Select-Object Source"
             exit 1
           fi
 
