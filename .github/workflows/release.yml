@@ -30,7 +30,7 @@ jobs:
             name: 'linux'
             patterns: |
               src-tauri/target/release/bundle/appimage/*.AppImage
-          - platform: 'windows-latest'
+          - platform: 'windows-2022'
             target: ''
             name: 'windows'
             patterns: |
@@ -52,7 +52,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Setup MSVC developer command prompt (windows only)
-        if: matrix.platform == 'windows-latest'
+        if: matrix.platform == 'windows-2022'
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install dependencies (ubuntu only)
