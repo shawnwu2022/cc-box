@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.0] - 2026-05-14
+
+### Fixed
+- Add tests for startup environment variables (frontend 5, backend 6)
+- Fix Windows CI: configure MSVC linker for windows-2022 runner
+
 ## [0.6.5] - 2026-05-14
 
 ### Fixed
