@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.0] - 2026-05-15
+
+### Features
+- Add one-click update with custom confirmation dialog when active PTs detected
+- Add manual download button opening GitHub Releases page
+- Add i18n support with Chinese/English language switching
+- Add useTimeFormat composable for localized relative time display
+
+### Fixed
+- Fix session name using last message instead of first user message
+- Fix history session list reloading on resume (unnecessary full reload)
+- Fix UI lag when closing tabs by deleting tab before async PTY kill
+
 ## [0.7.0] - 2026-05-14
 
 ### Fixed
