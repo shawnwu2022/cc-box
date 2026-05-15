@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.8.1] - 2026-05-15
+
+### Fixed
+- Fix update check showing no status feedback when already up to date
+
 ## [0.8.0] - 2026-05-14
 
 ### Features
