@@ -1,34 +1,34 @@
 <template>
   <div class="edit-panel">
     <div class="panel-header">
-      <button class="back-btn" @click="$emit('close')">← 返回</button>
-      <span class="panel-title">编辑 Provider: {{ provider.name }}</span>
+      <button class="back-btn" @click="$emit('close')">← {{ t('back') }}</button>
+      <span class="panel-title">{{ t('editProviderTitle', { name: provider.name }) }}</span>
     </div>
 
     <div class="panel-body">
       <!-- 基本信息 -->
       <div class="config-section">
-        <h3 class="section-title">基本信息</h3>
+        <h3 class="section-title">{{ t('basicInfo') }}</h3>
         <div class="form-row">
-          <label class="form-label">名称</label>
-          <input class="form-input" v-model="editName" placeholder="Provider 名称" />
+          <label class="form-label">{{ t('nameLabel') }}</label>
+          <input class="form-input" v-model="editName" :placeholder="t('namePlaceholder')" />
         </div>
         <div class="form-row">
-          <label class="form-label">备注</label>
-          <input class="form-input" v-model="editNotes" placeholder="备注信息" />
+          <label class="form-label">{{ t('notesLabel') }}</label>
+          <input class="form-input" v-model="editNotes" :placeholder="t('notesPlaceholder')" />
         </div>
         <div class="form-row" v-if="provider.websiteUrl">
-          <label class="form-label">官网</label>
+          <label class="form-label">{{ t('websiteLabel') }}</label>
           <div class="url-row">
             <span class="url-text">{{ provider.websiteUrl }}</span>
-            <button class="btn-link" @click="openWebsite">打开</button>
+            <button class="btn-link" @click="openWebsite">{{ t('openWebsite') }}</button>
           </div>
         </div>
       </div>
 
       <!-- 环境变量（从 JSON 中的 env 提取，双向同步） -->
       <div class="config-section">
-        <h3 class="section-title">环境变量</h3>
+        <h3 class="section-title">{{ t('envVariables') }}</h3>
         <div class="env-list">
           <div v-for="key in requiredEnvKeys" :key="key" class="env-row">
             <label class="env-key" :title="key">
@@ -47,15 +47,15 @@
                 v-if="isSensitive(key)"
                 class="btn-eye"
                 @click="showSensitive[key] = !showSensitive[key]"
-                :title="showSensitive[key] ? '隐藏' : '显示'"
+                :title="showSensitive[key] ? t('hide') : t('show')"
               >
-                {{ showSensitive[key] ? 'Hide' : 'Show' }}
+                {{ showSensitive[key] ? t('hide') : t('show') }}
               </button>
             </div>
           </div>
           <template v-if="customEnvKeys.length > 0">
             <button class="btn-toggle-custom" @click="showCustomEnv = !showCustomEnv">
-              {{ showCustomEnv ? '▾' : '▸' }} 自定义变量 ({{ customEnvKeys.length }})
+              {{ showCustomEnv ? '▾' : '▸' }} {{ t('customVariables', { count: customEnvKeys.length }) }}
             </button>
             <template v-if="showCustomEnv">
               <div class="env-divider"></div>
@@ -76,11 +76,11 @@
                     v-if="isSensitive(key)"
                     class="btn-eye"
                     @click="showSensitive[key] = !showSensitive[key]"
-                    :title="showSensitive[key] ? '隐藏' : '显示'"
+                    :title="showSensitive[key] ? t('hide') : t('show')"
                   >
-                    {{ showSensitive[key] ? 'Hide' : 'Show' }}
+                    {{ showSensitive[key] ? t('hide') : t('show') }}
                   </button>
-                  <button class="btn-remove" @click="removeEnvVar(key)" title="删除">×</button>
+                  <button class="btn-remove" @click="removeEnvVar(key)">×</button>
                 </div>
               </div>
             </template>
@@ -92,7 +92,7 @@
                 ref="newEnvKeyInput"
                 class="env-input new-key-input"
                 v-model="newEnvKey"
-                placeholder="变量名"
+                :placeholder="t('varNamePlaceholder')"
                 spellcheck="false"
                 @keydown.enter="confirmAddEnv"
                 @keydown.escape="cancelAddEnv"
@@ -101,31 +101,31 @@
                 <input
                   class="env-input"
                   v-model="newEnvValue"
-                  placeholder="变量值"
+                  :placeholder="t('varValuePlaceholder')"
                   spellcheck="false"
                   @keydown.enter="confirmAddEnv"
                   @keydown.escape="cancelAddEnv"
                 />
-                <button class="btn-confirm-add" @click="confirmAddEnv" title="确认">✓</button>
-                <button class="btn-remove" @click="cancelAddEnv" title="取消">×</button>
+                <button class="btn-confirm-add" @click="confirmAddEnv" :title="t('confirmBtn')">✓</button>
+                <button class="btn-remove" @click="cancelAddEnv" :title="t('cancel')">×</button>
               </div>
             </div>
           </template>
         </div>
-        <button v-if="!isAddingEnv" class="btn-add" @click="startAddEnv">+ 添加自定义变量</button>
+        <button v-if="!isAddingEnv" class="btn-add" @click="startAddEnv">+ {{ t('addVariable') }}</button>
       </div>
 
       <!-- 完整配置 JSON 编辑器（包含 env，与表单字段双向同步） -->
       <div class="config-section json-section">
         <div class="section-header">
-          <h3 class="section-title">配置 (JSON)</h3>
+          <h3 class="section-title">{{ t('configJson') }}</h3>
           <div class="section-actions">
             <label class="toggle-row">
               <input type="checkbox" v-model="applyCommonConfig" class="toggle-checkbox" />
-              <span class="toggle-label">应用通用配置</span>
+              <span class="toggle-label">{{ t('applyCommonConfig') }}</span>
             </label>
-            <button class="btn-secondary-sm" @click="handleEditCommon">编辑通用配置</button>
-            <button class="btn-format" @click="formatJson">Format</button>
+            <button class="btn-secondary-sm" @click="handleEditCommon">{{ t('editCommonConfig') }}</button>
+            <button class="btn-format" @click="formatJson">{{ t('format') }}</button>
           </div>
         </div>
         <div class="json-editor-wrap" :class="{ 'has-error': jsonError }">
@@ -142,20 +142,23 @@
       </div>
 
     <div class="panel-footer">
-      <button class="btn-cancel" @click="$emit('close')">取消</button>
-      <button class="btn-save" @click="handleSave" :disabled="!!jsonError">保存</button>
+      <button class="btn-cancel" @click="$emit('close')">{{ t('cancel') }}</button>
+      <button class="btn-save" @click="handleSave" :disabled="!!jsonError">{{ t('save') }}</button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, nextTick, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Codemirror } from 'vue-codemirror'
 import { json, jsonParseLinter } from '@codemirror/lang-json'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { linter } from '@codemirror/lint'
 import { EditorView } from '@codemirror/view'
 import type { Provider, CommonConfig } from '@/types/provider'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   provider: Provider
@@ -382,7 +385,7 @@ function validateJson() {
     JSON.parse(jsonContent.value)
     jsonError.value = ''
   } catch (e: any) {
-    jsonError.value = e.message || 'JSON 格式错误'
+    jsonError.value = e.message || t('jsonFormatError')
   }
 }
 
@@ -422,7 +425,7 @@ function handleSave() {
     }
     emit('save', updatedProvider)
   } catch {
-    jsonError.value = 'JSON 解析失败'
+    jsonError.value = t('jsonParseError')
   }
 }
 </script>

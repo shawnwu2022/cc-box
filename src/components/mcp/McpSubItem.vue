@@ -18,17 +18,17 @@
         {{ description }}
       </div>
       <div v-else class="sub-description-empty">
-        无描述
+        {{ t('noDescription') }}
       </div>
 
       <!-- Parameters (for tools, parsed from inputSchema) -->
       <div v-if="parsedParams.length > 0" class="sub-arguments">
-        <div class="args-title">参数：</div>
+        <div class="args-title">{{ t('parameters') }}</div>
         <div class="args-list">
           <div v-for="param in parsedParams" :key="param.name" class="arg-item">
             <span class="arg-name">{{ param.name }}</span>
             <span v-if="param.type" class="arg-type">{{ param.type }}</span>
-            <span v-if="param.required" class="arg-required">必填</span>
+            <span v-if="param.required" class="arg-required">{{ t('required') }}</span>
             <span v-if="param.description" class="arg-desc">{{ param.description }}</span>
           </div>
         </div>
@@ -36,11 +36,11 @@
 
       <!-- Arguments (for prompts) -->
       <div v-else-if="arguments && arguments.length > 0" class="sub-arguments">
-        <div class="args-title">参数：</div>
+        <div class="args-title">{{ t('parameters') }}</div>
         <div class="args-list">
           <div v-for="arg in arguments" :key="arg.name" class="arg-item">
             <span class="arg-name">{{ arg.name }}</span>
-            <span v-if="arg.required" class="arg-required">必填</span>
+            <span v-if="arg.required" class="arg-required">{{ t('required') }}</span>
             <span v-if="arg.description" class="arg-desc">{{ arg.description }}</span>
           </div>
         </div>
@@ -48,7 +48,7 @@
 
       <!-- URI (for resources) -->
       <div v-if="uri" class="sub-uri">
-        <div class="uri-title">URI：</div>
+        <div class="uri-title">{{ t('uri') }}</div>
         <div class="uri-value">{{ uri }}</div>
       </div>
     </div>
@@ -57,6 +57,9 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 interface PromptArgument {
   name: string

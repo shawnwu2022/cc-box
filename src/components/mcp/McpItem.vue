@@ -3,7 +3,7 @@
     <!-- Server Header -->
     <div class="server-header" @click="handleClick">
       <span class="server-name">{{ server.displayName }}</span>
-      <button class="expand-btn" :class="{ rotated: isExpanded }" title="Toggle details">
+      <button class="expand-btn" :class="{ rotated: isExpanded }" :title="t('toggleDetails')">
         <img src="@/assets/icons/chevron.svg" alt="Toggle" />
       </button>
     </div>
@@ -26,27 +26,27 @@
       <!-- Loading -->
       <div v-if="loading" class="loading-detail">
         <span class="loading-spinner"></span>
-        <span class="loading-text">Fetching details...</span>
+        <span class="loading-text">{{ t('fetchingDetails') }}</span>
       </div>
 
       <!-- Error -->
       <div v-else-if="error" class="error-detail">
         <span class="error-text">{{ error }}</span>
-        <button class="retry-btn" @click="fetchDetail(true)">Retry</button>
+        <button class="retry-btn" @click="fetchDetail(true)">{{ t('retry') }}</button>
       </div>
 
       <!-- Detail Content -->
       <div v-else-if="detail" class="detail-content">
         <!-- Server Info -->
         <div v-if="detail.serverInfo" class="detail-group">
-          <div class="group-title">Server Info</div>
+          <div class="group-title">{{ t('serverInfo') }}</div>
           <div class="group-content">
             <div class="info-row">
-              <span class="info-label">Name:</span>
+              <span class="info-label">{{ t('mcpNameLabel') }}</span>
               <span class="info-value">{{ detail.serverInfo.name }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Version:</span>
+              <span class="info-label">{{ t('mcpVersionLabel') }}</span>
               <span class="info-value">{{ detail.serverInfo.version }}</span>
             </div>
           </div>
@@ -54,7 +54,7 @@
 
         <!-- Tools -->
         <div v-if="detail.tools.length > 0" class="detail-group">
-          <div class="group-title">Tools ({{ detail.tools.length }})</div>
+          <div class="group-title">{{ t('tools', { count: detail.tools.length }) }}</div>
           <div class="item-list">
             <McpSubItem
               v-for="tool in detail.tools"
@@ -69,7 +69,7 @@
 
         <!-- Prompts -->
         <div v-if="detail.prompts.length > 0" class="detail-group">
-          <div class="group-title">Prompts ({{ detail.prompts.length }})</div>
+          <div class="group-title">{{ t('prompts', { count: detail.prompts.length }) }}</div>
           <div class="item-list">
             <McpSubItem
               v-for="prompt in detail.prompts"
@@ -84,7 +84,7 @@
 
         <!-- Resources -->
         <div v-if="detail.resources.length > 0" class="detail-group">
-          <div class="group-title">Resources ({{ detail.resources.length }})</div>
+          <div class="group-title">{{ t('resources', { count: detail.resources.length }) }}</div>
           <div class="item-list">
             <McpSubItem
               v-for="resource in detail.resources"
@@ -99,19 +99,19 @@
 
         <!-- No Details -->
         <div v-if="!hasDetails" class="no-details">
-          <span class="no-details-text">No tools, prompts, or resources available</span>
+          <span class="no-details-text">{{ t('noToolsAvailable') }}</span>
         </div>
 
         <!-- Refresh Button -->
-        <button class="refresh-detail-btn" @click="fetchDetail(true)" title="Refresh details">
-          <img src="@/assets/icons/refresh.svg" alt="Refresh" />
-          Refresh
+        <button class="refresh-detail-btn" @click="fetchDetail(true)" :title="t('refreshDetails')">
+          <img src="@/assets/icons/refresh.svg" :alt="t('refreshDetails')" />
+          {{ t('refreshDetails') }}
         </button>
       </div>
 
       <!-- No Details -->
       <div v-if="!hasDetails && detail" class="no-details">
-        <span class="no-details-text">No tools, prompts, or resources available</span>
+        <span class="no-details-text">{{ t('noToolsAvailable') }}</span>
       </div>
     </div>
   </div>
@@ -119,10 +119,13 @@
 
 <script setup lang="ts">
 import { ref, computed, inject } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { McpServerInfo, McpServerDetail } from '@/types'
 import { getMcpServerDetail } from '@/api/tauri'
 import { useAppStore } from '@/stores/app'
 import McpSubItem from './McpSubItem.vue'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   server: McpServerInfo
@@ -180,7 +183,7 @@ async function fetchDetail(force: boolean) {
       detailCache.set(props.server.name, result)
     }
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to fetch details'
+    error.value = err instanceof Error ? err.message : t('fetchFailed')
     console.error('[McpItem] Failed to fetch detail:', err)
   } finally {
     loading.value = false

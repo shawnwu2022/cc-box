@@ -3,29 +3,29 @@ import { getCategoryLabel, filterPresetsByCategory, providerPresets } from '@/co
 import type { ProviderPreset, ProviderCategory } from '@/types/provider'
 
 describe('getCategoryLabel', () => {
-  // official 分类返回对应中文标签
+  // official 分类返回英文标签（i18n 在 UI 层处理）
   it('CategoryLabel_Official_001', () => {
-    expect(getCategoryLabel('official')).toBe('官方 Official')
+    expect(getCategoryLabel('official')).toBe('Official')
   })
 
-  // cn_official 分类返回对应中文标签
+  // cn_official 分类返回对应标签
   it('CategoryLabel_CnOfficial_001', () => {
-    expect(getCategoryLabel('cn_official')).toBe('国内 CN')
+    expect(getCategoryLabel('cn_official')).toBe('CN')
   })
 
-  // cloud_provider 分类返回对应中文标签
+  // cloud_provider 分类返回对应标签
   it('CategoryLabel_CloudProvider_001', () => {
-    expect(getCategoryLabel('cloud_provider')).toBe('云服务 Cloud')
+    expect(getCategoryLabel('cloud_provider')).toBe('Cloud')
   })
 
-  // aggregator 分类返回对应中文标签
+  // aggregator 分类返回对应标签
   it('CategoryLabel_Aggregator_001', () => {
-    expect(getCategoryLabel('aggregator')).toBe('聚合 Aggregator')
+    expect(getCategoryLabel('aggregator')).toBe('Aggregator')
   })
 
-  // custom 分类返回对应中文标签
+  // custom 分类返回对应标签
   it('CategoryLabel_Custom_001', () => {
-    expect(getCategoryLabel('custom')).toBe('自定义 Custom')
+    expect(getCategoryLabel('custom')).toBe('Custom')
   })
 
   // undefined 输入返回空字符串

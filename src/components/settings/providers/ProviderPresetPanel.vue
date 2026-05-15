@@ -1,8 +1,8 @@
 <template>
   <div class="preset-panel">
     <div class="panel-header">
-      <button class="back-btn" @click="$emit('close')">← 返回</button>
-      <span class="panel-title">选择预设模板</span>
+      <button class="back-btn" @click="$emit('close')">← {{ t('back') }}</button>
+      <span class="panel-title">{{ t('selectPreset') }}</span>
     </div>
 
     <div class="panel-content">
@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { providerPresets, getCategoryLabel } from '@/config/providerPresets'
 import type { ProviderPreset } from '@/types/provider'
 
@@ -48,16 +49,18 @@ defineEmits<{
   select: [preset: ProviderPreset]
 }>()
 
+const { t } = useI18n()
+
 const presets = ref<ProviderPreset[]>(providerPresets)
 
-const categories = [
-  { value: '', label: '全部' },
-  { value: 'official', label: '官方' },
-  { value: 'cn_official', label: '国内' },
-  { value: 'aggregator', label: '聚合' },
-  { value: 'cloud_provider', label: '云服务' },
-  { value: 'third_party', label: '第三方' },
-]
+const categories = computed(() => [
+  { value: '', label: t('categoryAll') },
+  { value: 'official', label: t('categoryOfficial') },
+  { value: 'cn_official', label: t('categoryCn') },
+  { value: 'aggregator', label: t('categoryAggregator') },
+  { value: 'cloud_provider', label: t('categoryCloud') },
+  { value: 'third_party', label: t('categoryThirdParty') },
+])
 
 const selectedCategory = ref<string>('')
 

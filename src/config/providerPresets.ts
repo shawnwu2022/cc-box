@@ -633,13 +633,15 @@ export const providerPresets: ProviderPreset[] = [
 /** 获取分类标签 */
 export function getCategoryLabel(category?: ProviderCategory): string {
   if (!category) return ''
+  // These labels are now handled via i18n in ProviderPresetPanel
+  // This function returns a fallback for non-i18n contexts
   const labels: Record<ProviderCategory, string> = {
-    official: '官方 Official',
-    cn_official: '国内 CN',
-    cloud_provider: '云服务 Cloud',
-    aggregator: '聚合 Aggregator',
-    third_party: '第三方 Third-party',
-    custom: '自定义 Custom',
+    official: 'Official',
+    cn_official: 'CN',
+    cloud_provider: 'Cloud',
+    aggregator: 'Aggregator',
+    third_party: 'Third-party',
+    custom: 'Custom',
     omo: 'OMO',
     'omo-slim': 'OMO Slim',
   }

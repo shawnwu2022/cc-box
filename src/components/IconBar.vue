@@ -7,7 +7,7 @@
         class="icon-btn"
         :class="{ active: activePanel === 'sessions' }"
         @click="$emit('toggle', 'sessions')"
-        title="Sessions"
+        :title="t('titleSessions')"
       >
         <img src="@/assets/icons/sessions.svg" alt="Sessions" />
         <span v-if="showPendingBadge" class="icon-badge pending-badge"></span>
@@ -18,7 +18,7 @@
         class="icon-btn"
         :class="{ active: activePanel === 'skills' }"
         @click="$emit('toggle', 'skills')"
-        title="Skills"
+        :title="t('titleSkills')"
       >
         <img src="@/assets/icons/skills.svg" alt="Skills" />
       </button>
@@ -28,7 +28,7 @@
         class="icon-btn"
         :class="{ active: activePanel === 'agents' }"
         @click="$emit('toggle', 'agents')"
-        title="Agents"
+        :title="t('titleAgents')"
       >
         <img src="@/assets/icons/agents.svg" alt="Agents" />
       </button>
@@ -38,7 +38,7 @@
           class="icon-btn"
           :class="{ active: activePanel === 'mcp' }"
           @click="$emit('toggle', 'mcp')"
-          title="MCP Servers"
+          :title="t('titleMcp')"
       >
         <img src="@/assets/icons/mcp.svg" alt="MCP" />
       </button>
@@ -48,7 +48,7 @@
         class="icon-btn"
         :class="{ active: activePanel === 'plugins' }"
         @click="$emit('toggle', 'plugins')"
-        title="Plugins"
+        :title="t('titlePlugins')"
       >
         <img src="@/assets/icons/plugins.svg" alt="Plugins" />
       </button>
@@ -62,7 +62,7 @@
         class="icon-btn settings-btn"
         :class="{ active: sidebarStore.showSettings }"
         @click="handleSettingsClick"
-        :title="`Settings (${ctrl}+,)`"
+        :title="t('titleSettings', { key: ctrl + '+,' })"
       >
         <img src="@/assets/icons/settings.svg" alt="Settings" />
         <span v-if="sidebarStore.updateAvailable" class="icon-badge update-badge"></span>
@@ -72,7 +72,7 @@
       <button
         class="icon-btn folder-btn"
         @click="$emit('openFolder')"
-        title="Open folder"
+        :title="t('titleOpenFolder')"
       >
         <img src="@/assets/icons/folder.svg" alt="Folder" />
       </button>
@@ -82,11 +82,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { SidebarPanelType } from '@/stores/sidebar'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useSessionStore } from '@/stores/session'
 import { useAppStore } from '@/stores/app'
 import { ctrl } from '@/utils/platform'
+
+const { t } = useI18n()
 
 defineProps<{
   activePanel: SidebarPanelType

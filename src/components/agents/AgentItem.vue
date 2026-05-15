@@ -13,8 +13,8 @@
         <span v-if="agent.sourceType === 'plugin'" class="agent-full-name">{{ agent.name }}</span>
       </div>
       <span v-if="agent.model" class="agent-model">{{ agent.model }}</span>
-      <button class="use-btn" @click.stop="emitUseAgent" title="Use this agent">
-        <img src="@/assets/icons/use.svg" alt="Use" />
+      <button class="use-btn" @click.stop="emitUseAgent" :title="t('useThisAgent')">
+        <img src="@/assets/icons/use.svg" :alt="t('useBtn')" />
       </button>
     </div>
 
@@ -24,7 +24,7 @@
         {{ agent.description }}
       </div>
       <div v-else class="agent-description-empty">
-        No description available
+        {{ t('noDescription') }}
       </div>
       <div class="agent-invoke-format">
         <span class="invoke-label">Invoke:</span>
@@ -36,9 +36,11 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { AgentInfo } from '@/types'
 import { sendTerminalCommand } from '@/composables/useTerminalCommand'
 
+const { t } = useI18n()
 const props = defineProps<{
   agent: AgentInfo
 }>()

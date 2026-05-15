@@ -4,13 +4,17 @@
     <div class="header-actions">
       <slot name="actions" />
       <button class="close-btn" @click="$emit('close')">
-        <img src="@/assets/icons/close.svg" alt="Close" />
+        <img src="@/assets/icons/close.svg" :alt="t('close')" />
       </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 defineProps<{
   title: string
 }>()

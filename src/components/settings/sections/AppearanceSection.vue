@@ -1,12 +1,12 @@
 <template>
   <div class="section-content">
-    <h2 class="section-heading">Appearance</h2>
+    <h2 class="section-heading">{{ t('appearanceTitle') }}</h2>
 
     <div class="setting-group">
       <div class="setting-row">
         <div class="setting-info">
-          <span class="setting-label">Font Size</span>
-          <span class="setting-desc">Terminal font size (10–24px)</span>
+          <span class="setting-label">{{ t('fontSize') }}</span>
+          <span class="setting-desc">{{ t('fontSizeDesc') }}</span>
         </div>
         <div class="font-size-control">
           <button class="size-btn" @click="decreaseFontSize" :disabled="fontSize <= 10">−</button>
@@ -19,8 +19,8 @@
     <div class="setting-group">
       <div class="setting-row">
         <div class="setting-info">
-          <span class="setting-label">Theme</span>
-          <span class="setting-desc">Application color scheme</span>
+          <span class="setting-label">{{ t('theme') }}</span>
+          <span class="setting-desc">{{ t('themeDesc') }}</span>
         </div>
       </div>
       <div class="theme-options">
@@ -33,7 +33,7 @@
               <div class="preview-line short"></div>
             </div>
           </div>
-          <span>Light</span>
+          <span>{{ t('light') }}</span>
         </label>
         <label class="theme-card" :class="{ active: theme === 'dark', disabled: true }">
           <input type="radio" v-model="theme" value="dark" disabled />
@@ -44,7 +44,32 @@
               <div class="preview-line short"></div>
             </div>
           </div>
-          <span>Dark <small>(Soon)</small></span>
+          <span>{{ t('dark') }} <small>(Soon)</small></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('language') }}</span>
+          <span class="setting-desc">{{ t('languageDesc') }}</span>
+        </div>
+      </div>
+      <div class="theme-options">
+        <label class="theme-card" :class="{ active: currentLanguage === 'en' }">
+          <input type="radio" v-model="currentLanguage" value="en" />
+          <div class="lang-preview">
+            <span class="lang-icon">EN</span>
+          </div>
+          <span>{{ t('languageEn') }}</span>
+        </label>
+        <label class="theme-card" :class="{ active: currentLanguage === 'zh' }">
+          <input type="radio" v-model="currentLanguage" value="zh" />
+          <div class="lang-preview">
+            <span class="lang-icon">中</span>
+          </div>
+          <span>{{ t('languageZh') }}</span>
         </label>
       </div>
     </div>
@@ -53,11 +78,18 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 
+const { t } = useI18n()
 const appStore = useAppStore()
 const fontSize = computed(() => appStore.fontSize)
 const theme = ref(appStore.theme)
+
+const currentLanguage = computed({
+  get: () => appStore.language,
+  set: (val: string) => appStore.setLanguage(val)
+})
 
 watch(theme, (val) => { appStore.setTheme(val) })
 
@@ -236,5 +268,22 @@ function decreaseFontSize() { appStore.setFontSize(fontSize.value - 1) }
 
 .preview-line.short {
   width: 60%;
+}
+
+.lang-preview {
+  width: 80px;
+  height: 52px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lang-icon {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent-color);
 }
 </style>

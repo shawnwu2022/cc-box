@@ -197,6 +197,7 @@ npm run release -- --oss-only v0.5.1
 | 文档                                                           | 内容                                                    |
 |--------------------------------------------------------------|-------------------------------------------------------|
 | [docs/测试编写原则.md](docs/测试编写原则.md)   | 项目如何编写测试                                              |
+| [docs/manual-test-cases.md](docs/manual-test-cases.md)   | **手动测试条目**：自动化无法覆盖的 UI 交互与端到端测试                  |
 | [docs/terminal-integration.md](docs/terminal-integration.md) | 终端集成架构、PTY 生命周期、IPC 命令与事件对照                           |
 | [docs/hook-monitor.md](docs/hook-monitor.md)                 | **Hook 监控系统**：Plugin 注入、事件采集、状态机、多终端区分                |
 | [docs/provider-management.md](docs/provider-management.md)   | **Provider 管理**：数据结构、激活流程、通用配置合并、CRUD、cc-switch 导入    |
@@ -226,6 +227,8 @@ npm run release -- --oss-only v0.5.1
 ### 测试要求
 
 - **开发必须搭配测试**：新增功能、修改逻辑、修复 bug 时，同步编写或更新对应测试。遵循 [测试编写原则](docs/测试编写原则.md)
+- **Bug 修复必须先写测试**：修复 bug 时，先编写测试复现问题，确认测试失败，然后修复代码直至测试通过
+- **手动测试条目**：自动化测试无法覆盖的场景（如 UI 交互、视觉表现、端到端流程），必须以明确的条目形式记录到 `docs/manual-test-cases.md`，每个条目包含：测试目标、前置条件、操作步骤、预期结果
 - **测试文件独立存放**：
   - 前端：项目根目录 `tests/` 文件夹，运行 `npm test`
   - 后端：`src-tauri/src/tests/` 文件夹，运行 `cd src-tauri && cargo test`

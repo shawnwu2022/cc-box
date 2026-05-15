@@ -12,8 +12,8 @@
         <span class="skill-name">{{ skill.displayName }}</span>
         <span v-if="skill.sourceType === 'plugin'" class="skill-full-name">{{ skill.name }}</span>
       </div>
-      <button class="use-btn" @click.stop="emitUseSkill" title="Use this skill">
-        <img src="@/assets/icons/use.svg" alt="Use" />
+      <button class="use-btn" @click.stop="emitUseSkill" :title="t('useThisSkill')">
+        <img src="@/assets/icons/use.svg" :alt="t('useBtn')" />
       </button>
     </div>
 
@@ -23,7 +23,7 @@
         {{ skill.description }}
       </div>
       <div v-else class="skill-description-empty">
-        No description available
+        {{ t('noDescription') }}
       </div>
       <div class="skill-invoke-format">
         <span class="invoke-label">Invoke:</span>
@@ -35,9 +35,11 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { SkillInfo } from '@/types'
 import { sendTerminalCommand } from '@/composables/useTerminalCommand'
 
+const { t } = useI18n()
 const props = defineProps<{
   skill: SkillInfo
 }>()

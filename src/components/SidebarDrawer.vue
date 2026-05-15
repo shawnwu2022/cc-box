@@ -4,16 +4,16 @@
     <div class="sidebar-inner">
       <!-- 头部 -->
       <header class="sidebar-header">
-        <h2>Sessions</h2>
+        <h2>{{ t('sessions') }}</h2>
         <div class="header-actions">
-          <button class="new-btn" @click="handleNewSession" title="New session">
-            <img src="@/assets/icons/plus.svg" alt="New" />
+          <button class="new-btn" @click="handleNewSession" :title="t('newSessionTitle')">
+            <img src="@/assets/icons/plus.svg" :alt="t('newBtn')" />
           </button>
-          <button class="refresh-btn" @click="handleRefresh" title="Refresh sessions">
-            <img src="@/assets/icons/refresh.svg" alt="Refresh" />
+          <button class="refresh-btn" @click="handleRefresh" :title="t('refreshSessions')">
+            <img src="@/assets/icons/refresh.svg" :alt="t('refresh')" />
           </button>
           <button class="close-btn" @click="$emit('close')">
-            <img src="@/assets/icons/close.svg" alt="Close" />
+            <img src="@/assets/icons/close.svg" :alt="t('close')" />
           </button>
         </div>
       </header>
@@ -24,7 +24,7 @@
         <input
           v-model="sessionStore.searchQuery"
           type="text"
-          placeholder="Search sessions..."
+          :placeholder="t('searchSessions')"
           class="search-input"
         />
       </div>
@@ -45,16 +45,16 @@
 
         <!-- 加载更多指示器 -->
         <div v-if="sessionStore.isLoading" class="loading-indicator">
-          Loading...
+          {{ t('loading') }}
         </div>
         <div v-else-if="sessionStore.hasMore && !sessionStore.searchQuery" class="load-more-hint">
-          Scroll down for more
+          {{ t('loadingMore') }}
         </div>
         <div v-else-if="!sessionStore.hasMore && sessionStore.loadedCount > 0" class="no-more-hint">
-          {{ sessionStore.loadedCount }} sessions
+          {{ sessionStore.loadedCount }} {{ t('sessions') }}
         </div>
         <div v-else-if="sessionStore.loadedCount === 0" class="empty-hint">
-          No sessions found
+          {{ t('noSessionsFound') }}
         </div>
       </div>
 
@@ -69,14 +69,14 @@
       <!-- 设置区（折叠） -->
       <footer class="sidebar-footer">
         <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
-          <img src="@/assets/icons/settings.svg" alt="Settings" />
-          <span>Settings</span>
+          <img src="@/assets/icons/settings.svg" :alt="t('settings')" />
+          <span>{{ t('settings') }}</span>
           <img class="chevron" src="@/assets/icons/chevron.svg" alt="Toggle" :class="{ expanded: settingsExpanded }" />
         </button>
 
         <div v-if="settingsExpanded" class="settings-content">
           <div class="font-size-control">
-            <span class="settings-label">Font Size:</span>
+            <span class="settings-label">{{ t('fontSize') }}:</span>
             <div class="font-size-buttons">
               <button @click="decreaseFontSize" :disabled="fontSize <= 10">-</button>
               <span class="font-size-value">{{ fontSize }}</span>
@@ -91,10 +91,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSessionStore } from '@/stores/session'
 import { useAppStore } from '@/stores/app'
 import SessionList from './sidebar/SessionList.vue'
 import SessionStatus from './sidebar/SessionStatus.vue'
+
+const { t } = useI18n()
 
 defineProps<{
   visible: boolean

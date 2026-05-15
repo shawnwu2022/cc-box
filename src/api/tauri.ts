@@ -252,7 +252,7 @@ export const selectDirectory = async (): Promise<{ path: string } | null> => {
     directory: true,
     multiple: false,
     title: 'Select Project Directory'
-  });
+  } as any);
   if (result && typeof result === 'string') {
     return { path: result };
   }

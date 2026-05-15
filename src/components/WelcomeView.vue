@@ -8,22 +8,26 @@
           <path d="M2 12l10 5 10-5"/>
         </svg>
       </div>
-      <h1>Claude Code</h1>
-      <p class="subtitle">AI-powered coding assistant</p>
+      <h1>{{ t('claudeCode') }}</h1>
+      <p class="subtitle">{{ t('aiPoweredAssistant') }}</p>
       <button class="select-btn" @click="handleSelectProject">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           <line x1="12" y1="11" x2="12" y2="17"/>
           <line x1="9" y1="14" x2="15" y2="14"/>
         </svg>
-        Select Project Directory
+        {{ t('selectProjectDir') }}
       </button>
-      <p class="hint">Choose a directory to start a new session</p>
+      <p class="hint">{{ t('chooseDirHint') }}</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 const emit = defineEmits<{
   selectProject: []
 }>()

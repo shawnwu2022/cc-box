@@ -31,7 +31,7 @@
       class="action-btn restart-btn"
       :disabled="!canResume"
       @click.stop="canResume && $emit('restart', id)"
-      :title="canResume ? 'Restart' : 'Waiting for session ID...'"
+      :title="canResume ? t('restart') : t('waitingForSessionId')"
     >
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="23 4 23 10 17 10"/>
@@ -43,7 +43,7 @@
       v-if="isActive"
       class="action-btn rename-btn"
       @click.stop="startRename"
-      title="Rename"
+      :title="t('rename')"
     >
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
@@ -55,7 +55,7 @@
       v-if="closable"
       class="action-btn close-action-btn"
       @click.stop="$emit('close', id)"
-      title="Close"
+      :title="t('close')"
     >
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="18" y1="6" x2="6" y2="18"/>
@@ -70,6 +70,9 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   id: string
@@ -116,7 +119,7 @@ const timeAgo = computed(() => {
   const hours = Math.floor(diff / 3600000)
   const days = Math.floor(diff / 86400000)
 
-  if (minutes < 1) return 'Just now'
+  if (minutes < 1) return t('justNow')
   if (minutes < 60) return `${minutes}m`
   if (hours < 24) return `${hours}h`
   return `${days}d`

@@ -1,11 +1,11 @@
 <template>
   <div class="section-content">
-    <h2 class="section-heading">Software Update</h2>
+    <h2 class="section-heading">{{ t('softwareUpdate') }}</h2>
 
     <div class="update-card">
       <div class="version-row">
         <div class="version-info">
-          <span class="version-label">Current Version</span>
+          <span class="version-label">{{ t('currentVersion') }}</span>
           <span class="version-value">v{{ currentVersion }}</span>
         </div>
         <button
@@ -14,16 +14,16 @@
           @click="handleCheckUpdate"
         >
           <img v-if="checking" src="@/assets/icons/refresh.svg" class="spinning" alt="" />
-          <span>{{ checking ? 'Checking...' : 'Check for Updates' }}</span>
+          <span>{{ checking ? t('checking') : t('checkForUpdates') }}</span>
         </button>
       </div>
 
       <div v-if="error" class="update-message error">
-        <span>Check failed: {{ errorMessage }}</span>
+        <span>{{ t('checkFailed', { error: errorMessage }) }}</span>
       </div>
 
       <div v-if="updateStore.updateInfo && !updateStore.updateInfo.hasUpdate" class="update-message success">
-        <span>You're up to date!</span>
+        <span>{{ t('upToDate') }}</span>
       </div>
 
       <template v-if="updateStore.updateInfo && updateStore.updateInfo.hasUpdate">
@@ -31,13 +31,13 @@
           <div class="update-banner">
             <span class="update-icon">🆕</span>
             <div>
-              <span class="update-version">v{{ updateStore.updateInfo.version }} is available</span>
-              <span class="update-hint">Your version: v{{ updateStore.updateInfo.currentVersion }}</span>
+              <span class="update-version">{{ t('versionAvailable', { version: updateStore.updateInfo.version }) }}</span>
+              <span class="update-hint">{{ t('yourVersion') }} v{{ updateStore.updateInfo.currentVersion }}</span>
             </div>
           </div>
 
           <div v-if="updateStore.updateInfo.releaseNotes" class="release-notes">
-            <h4>What's New</h4>
+            <h4>{{ t('whatsNew') }}</h4>
             <div class="notes-content" v-html="renderedNotes"></div>
           </div>
 
@@ -47,7 +47,7 @@
             <template v-if="updateStore.downloadState === 'idle'">
               <div class="action-row">
                 <button class="action-btn primary" @click="handleDownloadAndInstall">
-                  Download & Install
+                  {{ t('downloadAndInstall') }}
                 </button>
               </div>
             </template>
@@ -56,7 +56,7 @@
             <template v-if="updateStore.downloadState === 'downloading'">
               <div class="progress-section">
                 <div class="progress-header">
-                  <span>Downloading update...</span>
+                  <span>{{ t('downloadingUpdate') }}</span>
                 </div>
                 <div class="progress-bar">
                   <div class="progress-fill" :style="{ width: updateStore.downloadProgress.percent + '%' }"></div>
@@ -73,8 +73,8 @@
             <!-- 安装中 -->
             <template v-if="updateStore.downloadState === 'installing'">
               <div class="installing-message">
-                <span class="spinning-text">Installing update...</span>
-                <span class="installing-hint">The application will restart automatically.</span>
+                <span class="spinning-text">{{ t('installingUpdate') }}</span>
+                <span class="installing-hint">{{ t('willRestartAuto') }}</span>
               </div>
             </template>
 
@@ -82,7 +82,7 @@
             <div v-if="updateStore.downloadState === 'error'" class="update-message error">
               <span>{{ updateStore.downloadError }}</span>
               <div class="error-actions">
-                <button class="retry-link" @click="handleRetry">Retry</button>
+                <button class="retry-link" @click="handleRetry">{{ t('retry') }}</button>
               </div>
             </div>
           </div>
@@ -94,11 +94,13 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { check, relaunch } from '@/api/tauri'
 import { checkForUpdates } from '@/api/tauri'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useUpdateStore } from '@/stores/update'
 
+const { t } = useI18n()
 const sidebarStore = useSidebarStore()
 const updateStore = useUpdateStore()
 const currentVersion = __APP_VERSION__
@@ -146,7 +148,7 @@ async function handleDownloadAndInstall() {
   try {
     const update = await check()
     if (!update) {
-      updateStore.setDownloadError('No update available')
+      updateStore.setDownloadError(t('noUpdateAvailable'))
       updateStore.setDownloadState('error')
       return
     }
@@ -173,7 +175,7 @@ async function handleDownloadAndInstall() {
 
     await relaunch()
   } catch (err) {
-    updateStore.setDownloadError(`Update failed: ${err}`)
+    updateStore.setDownloadError(t('updateFailed', { error: String(err) }))
     updateStore.setDownloadState('error')
   }
 }

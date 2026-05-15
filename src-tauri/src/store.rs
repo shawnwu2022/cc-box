@@ -75,6 +75,7 @@ pub struct AppConfig {
     pub git_bash_path: Option<String>,
     #[serde(rename = "claudeEnvVars")]
     pub claude_env_vars: Option<std::collections::HashMap<String, String>>,
+    pub language: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

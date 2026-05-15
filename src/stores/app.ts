@@ -11,6 +11,7 @@ import {
   runChecks,
   syncClaudeEnv
 } from '@/api/tauri'
+import i18n from '@/i18n'
 
 import type { ClaudeOptions, DefaultClaudeOptions, CheckResult, Project, SessionInfo } from '@/types'
 
@@ -37,6 +38,7 @@ export const useAppStore = defineStore('app', () => {
   const cwd = ref<string>('')
   const theme = ref<string>('light')
   const fontSize = ref<number>(12)
+  const language = ref<string>('en')
   const claudeEnvVars = ref<Record<string, string>>({})
 
   // 启动控制
@@ -82,6 +84,8 @@ export const useAppStore = defineStore('app', () => {
       const config = await getAppConfig()
       theme.value = config.theme || 'light'
       fontSize.value = config.fontSize || 12
+      language.value = config.language || detectSystemLocale()
+      i18n.global.locale.value = language.value
 
       // 加载环境变量（首次使用默认值）
       claudeEnvVars.value = Object.keys(config.claudeEnvVars ?? {}).length > 0
@@ -182,6 +186,17 @@ export const useAppStore = defineStore('app', () => {
     updateAppConfig({ fontSize: size })
   }
 
+  function detectSystemLocale(): string {
+    const browserLang = navigator.language || 'en'
+    return browserLang.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+  }
+
+  function setLanguage(lang: string) {
+    language.value = lang
+    updateAppConfig({ language: lang })
+    i18n.global.locale.value = lang
+  }
+
   /** 同步当前 claudeEnvVars 到 cc-box config + ~/.claude/settings.json */
   async function doSyncEnv(removedKeys: string[] = []) {
     updateAppConfig({ claudeEnvVars: claudeEnvVars.value })
@@ -271,6 +286,7 @@ export const useAppStore = defineStore('app', () => {
     cwd,
     theme,
     fontSize,
+    language,
     claudeEnvVars,
     defaultClaudeOptions,
     claudeOptions,
@@ -296,6 +312,7 @@ export const useAppStore = defineStore('app', () => {
     setCwd,
     setTheme,
     setFontSize,
+    setLanguage,
     setClaudeEnvVars,
     resetClaudeEnvVars,
     setClaudeOptions,

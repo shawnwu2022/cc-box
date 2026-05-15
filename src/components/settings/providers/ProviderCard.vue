@@ -1,6 +1,6 @@
 <template>
   <div class="provider-card" :class="{ active: isActive }">
-    <span class="drag-handle" title="拖拽排序">⋮⋮</span>
+    <span class="drag-handle" :title="t('dragToSort')">⋮⋮</span>
     <div class="provider-icon" :style="{ color: provider.iconColor || 'var(--accent-primary)' }">
       {{ getIconChar(provider.icon) }}
     </div>
@@ -10,20 +10,23 @@
     </div>
     <div class="card-actions">
       <button class="action-btn primary" @click.stop="$emit('activate')" v-if="!isActive">
-        使用
+        {{ t('useBtn') }}
       </button>
-      <span class="active-badge" v-else>使用中</span>
-      <button class="action-btn" @click.stop="$emit('edit')">编辑</button>
+      <span class="active-badge" v-else>{{ t('activeBadge') }}</span>
+      <button class="action-btn" @click.stop="$emit('edit')">{{ t('editBtn') }}</button>
       <button class="action-btn" @click.stop="$emit('test')" :disabled="isTesting">
-        {{ isTesting ? '测试中...' : '测试' }}
+        {{ isTesting ? t('testingBtn') : t('testBtn') }}
       </button>
-      <button class="action-btn danger" @click.stop="$emit('delete')">删除</button>
+      <button class="action-btn danger" @click.stop="$emit('delete')">{{ t('deleteBtn') }}</button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { Provider } from '@/types/provider'
+
+const { t } = useI18n()
 
 defineProps<{
   provider: Provider

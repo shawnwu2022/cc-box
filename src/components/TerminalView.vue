@@ -24,17 +24,17 @@
     <!-- 主内容区 -->
     <div class="main-content">
       <TerminalHeader
-        :project-name="appStore.currentProject || 'Claude Code'"
+        :project-name="appStore.currentProject || t('claudeCode')"
         @back="handleBack"
       />
       <div class="terminal-container">
         <!-- 空状态提示：没有任何 session -->
         <div v-if="showEmptyState" class="empty-state-overlay">
           <div class="empty-state-content">
-            <p class="empty-state-text">Start a new Claude session</p>
+            <p class="empty-state-text">{{ t('startNewSession') }}</p>
             <button class="empty-state-btn" @click="handleNewSession">
               <img src="@/assets/icons/plus.svg" alt="New" />
-              New Session
+              {{ t('newSession') }}
             </button>
           </div>
         </div>
@@ -50,6 +50,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useSessionStore } from '@/stores/session'
 import { useSidebarStore, type SidebarPanelType } from '@/stores/sidebar'
@@ -77,6 +78,8 @@ const sessionStore = useSessionStore()
 const sidebarStore = useSidebarStore()
 const configStore = useConfigStore()
 const terminalRef = ref()
+
+const { t } = useI18n()
 
 const { isFocused } = useWindowAttention()
 const isTerminalVisible = computed(() => props.visible ?? false)

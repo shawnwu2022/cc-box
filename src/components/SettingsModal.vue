@@ -4,16 +4,16 @@
       <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
         <div class="modal-content">
           <header class="modal-header">
-            <h2>Settings</h2>
+            <h2>{{ t('settings') }}</h2>
             <button class="close-btn" @click="$emit('close')">
-              <img src="@/assets/icons/close.svg" alt="Close" />
+              <img src="@/assets/icons/close.svg" :alt="t('close')" />
             </button>
           </header>
 
           <div class="modal-body">
             <!-- Font Size -->
             <section class="settings-section">
-              <h3>Font Size</h3>
+              <h3>{{ t('fontSize') }}</h3>
               <div class="font-size-control">
                 <button class="size-btn" @click="decreaseFontSize">-</button>
                 <span class="size-value">{{ fontSize }}</span>
@@ -23,22 +23,22 @@
 
             <!-- Theme -->
             <section class="settings-section">
-              <h3>Theme</h3>
+              <h3>{{ t('theme') }}</h3>
               <div class="theme-options">
                 <label class="theme-option">
                   <input type="radio" v-model="theme" value="light" />
-                  <span>Light</span>
+                  <span>{{ t('light') }}</span>
                 </label>
                 <label class="theme-option">
                   <input type="radio" v-model="theme" value="dark" />
-                  <span>Dark (Coming soon)</span>
+                  <span>{{ t('dark') }} (Coming soon)</span>
                 </label>
               </div>
             </section>
 
             <!-- Startup Options -->
             <section class="settings-section">
-              <h3>Default Startup Options</h3>
+              <h3>{{ t('startupDefaults') }}</h3>
               <label class="option-item">
                 <input type="checkbox" v-model="defaultContinue" />
                 <span class="option-label">Continue last session</span>
@@ -46,11 +46,11 @@
               </label>
               <label class="option-item">
                 <input type="checkbox" v-model="defaultSkipPermissions" />
-                <span class="option-label">Skip permissions</span>
+                <span class="option-label">{{ t('skipPermissions') }}</span>
                 <span class="option-flag warning">--dangerously-skip</span>
               </label>
               <div class="option-item text-option">
-                <span class="option-label">Custom args</span>
+                <span class="option-label">{{ t('customArgs') }}</span>
                 <input type="text" v-model="defaultCustomArgs" placeholder="--model sonnet" />
               </div>
             </section>
@@ -59,7 +59,7 @@
             <section class="settings-section about-section">
               <div class="about-info">
                 <span class="version">CC-Box v0.1.0</span>
-                <a class="link" @click="openDocs">Claude Code Docs</a>
+                <a class="link" @click="openDocs">{{ t('claudeDocs') }}</a>
               </div>
             </section>
           </div>
@@ -71,6 +71,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { getAppConfig, saveDefaultClaudeOptions } from '@/api/tauri'
 
@@ -78,6 +79,7 @@ defineProps<{
   visible: boolean
 }>()
 
+const { t } = useI18n()
 const emit = defineEmits<{
   close: []
 }>()

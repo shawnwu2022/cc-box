@@ -1,17 +1,17 @@
 <template>
   <div class="skills-panel">
     <!-- Header -->
-    <PanelHeader title="Skills" @close="$emit('close')">
+    <PanelHeader :title="t('skills')" @close="$emit('close')">
       <template #actions>
-        <button class="action-btn" @click="handleRefresh" title="Refresh skills">
-          <img src="@/assets/icons/refresh.svg" alt="Refresh" />
+        <button class="action-btn" @click="handleRefresh" :title="t('refreshSkills')">
+          <img src="@/assets/icons/refresh.svg" :alt="t('refreshSkills')" />
         </button>
       </template>
     </PanelHeader>
 
     <!-- Loading -->
     <div v-if="loading" class="loading-state">
-      <span class="loading-text">Loading skills...</span>
+      <span class="loading-text">{{ t('loadingSkills') }}</span>
     </div>
 
     <!-- Error -->
@@ -21,8 +21,8 @@
 
     <!-- Empty -->
     <div v-else-if="allSkills.length === 0" class="empty-state">
-      <span class="empty-text">No skills available</span>
-      <span class="empty-hint">Add skills to ~/.claude/skills/ or .claude/skills/</span>
+      <span class="empty-text">{{ t('noSkillsAvailable') }}</span>
+      <span class="empty-hint">{{ t('addSkillsHint') }}</span>
     </div>
 
     <!-- Skills List (按顺序: Project -> User -> Plugin) -->
@@ -30,7 +30,7 @@
       <!-- Project Skills -->
       <SkillGroup
         v-if="projectSkills.length > 0"
-        title="Project Skills"
+        :title="t('projectSkills')"
         :expanded="sidebarStore.skillsExpandedGroups.project"
         :count="projectSkills.length"
         :skills="projectSkills"
@@ -40,7 +40,7 @@
       <!-- User Skills -->
       <SkillGroup
         v-if="userSkills.length > 0"
-        title="User Skills"
+        :title="t('userSkills')"
         :expanded="sidebarStore.skillsExpandedGroups.user"
         :count="userSkills.length"
         :skills="userSkills"
@@ -50,7 +50,7 @@
       <!-- Plugin Skills -->
       <SkillGroup
         v-if="pluginSkills.length > 0"
-        title="Plugin Skills"
+        :title="t('pluginSkills')"
         :expanded="sidebarStore.skillsExpandedGroups.plugin"
         :count="pluginSkills.length"
         :skills="pluginSkills"
@@ -62,8 +62,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useAppStore } from '@/stores/app'
+
+const { t } = useI18n()
 import type { SkillInfo } from '@/types'
 import SkillGroup from './SkillGroup.vue'
 import PanelHeader from '../sidebar/PanelHeader.vue'

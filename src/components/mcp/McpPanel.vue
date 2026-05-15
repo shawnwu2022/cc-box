@@ -1,17 +1,17 @@
 <template>
   <div class="mcp-panel">
     <!-- Header -->
-    <PanelHeader title="MCP Servers" @close="$emit('close')">
+    <PanelHeader :title="t('mcpServers')" @close="$emit('close')">
       <template #actions>
-        <button class="action-btn" @click="handleRefresh" title="Refresh MCP servers">
-          <img src="@/assets/icons/refresh.svg" alt="Refresh" />
+        <button class="action-btn" @click="handleRefresh" :title="t('refreshMcp')">
+          <img src="@/assets/icons/refresh.svg" :alt="t('refreshMcp')" />
         </button>
       </template>
     </PanelHeader>
 
     <!-- Loading -->
     <div v-if="loading" class="loading-state">
-      <span class="loading-text">Loading MCP servers...</span>
+      <span class="loading-text">{{ t('loadingMcp') }}</span>
     </div>
 
     <!-- Error -->
@@ -21,8 +21,8 @@
 
     <!-- Empty -->
     <div v-else-if="allServers.length === 0" class="empty-state">
-      <span class="empty-text">No MCP servers configured</span>
-      <span class="empty-hint">Add MCP servers via claude mcp add</span>
+      <span class="empty-text">{{ t('noMcpConfigured') }}</span>
+      <span class="empty-hint">{{ t('addMcpHint') }}</span>
     </div>
 
     <!-- Servers List -->
@@ -30,7 +30,7 @@
       <!-- Project Servers -->
       <McpGroup
         v-if="projectServers.length > 0"
-        title="Project"
+        :title="t('project')"
         :expanded="sidebarStore.mcpExpandedGroups.project"
         :count="projectServers.length"
         :servers="projectServers"
@@ -40,7 +40,7 @@
       <!-- User Servers -->
       <McpGroup
         v-if="userServers.length > 0"
-        title="User"
+        :title="t('user')"
         :expanded="sidebarStore.mcpExpandedGroups.user"
         :count="userServers.length"
         :servers="userServers"
@@ -50,7 +50,7 @@
       <!-- Plugin Servers -->
       <McpGroup
         v-if="pluginServers.length > 0"
-        title="Plugin"
+        :title="t('plugin')"
         :expanded="sidebarStore.mcpExpandedGroups.plugin"
         :count="pluginServers.length"
         :servers="pluginServers"
@@ -62,8 +62,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, provide } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useAppStore } from '@/stores/app'
+
+const { t } = useI18n()
 import type { McpServerInfo, McpServerDetail } from '@/types'
 import McpGroup from './McpGroup.vue'
 import PanelHeader from '../sidebar/PanelHeader.vue'

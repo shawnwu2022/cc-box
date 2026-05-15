@@ -3,7 +3,7 @@
     <!-- 左侧：近期会话列表 -->
     <aside class="sessions-panel">
       <header class="panel-header">
-        <h2>Recent Sessions</h2>
+        <h2>{{ t('recentSessions') }}</h2>
       </header>
 
       <div class="session-list">
@@ -36,7 +36,7 @@
           </button>
 
           <div v-if="recentSessions.length === 0" class="empty-sessions">
-            <span>No recent sessions</span>
+            <span>{{ t('noRecentSessions') }}</span>
           </div>
         </template>
       </div>
@@ -44,17 +44,17 @@
       <!-- 底部：启动参数设置 -->
       <footer class="startup-options">
         <div class="options-header">
-          <span class="options-title">Startup Options</span>
+          <span class="options-title">{{ t('startupOptions') }}</span>
         </div>
 
         <label class="option-item">
           <input type="checkbox" v-model="localOptions.skipPermissions" />
-          <span class="option-label">Allow</span>
+          <span class="option-label">{{ t('allow') }}</span>
           <code class="option-flag warning">skip-permissions</code>
         </label>
 
         <div class="option-item text-option">
-          <span class="option-label">Custom args</span>
+          <span class="option-label">{{ t('customArgs') }}</span>
           <input type="text" v-model="localOptions.customArgs" placeholder="--model sonnet" />
         </div>
 
@@ -64,9 +64,9 @@
           :disabled="isSaving"
           @click="handleSaveDefault"
         >
-          <span v-if="isSaving">Saving...</span>
-          <span v-else-if="saveSuccess">Saved!</span>
-          <span v-else>Save as Default</span>
+          <span v-if="isSaving">{{ t('saving') }}</span>
+          <span v-else-if="saveSuccess">{{ t('saved') }}</span>
+          <span v-else>{{ t('saveAsDefault') }}</span>
         </button>
       </footer>
     </aside>
@@ -75,8 +75,8 @@
     <div class="projects-panel">
       <header class="panel-header">
         <div class="header-row">
-          <h2>Projects</h2>
-          <button class="settings-btn" @click="handleSettingsClick" :title="`Settings (${ctrl}+,)`">
+          <h2>{{ t('projects') }}</h2>
+          <button class="settings-btn" @click="handleSettingsClick" :title="t('titleSettings', { key: ctrl + '+,' })">
             <img src="@/assets/icons/settings.svg" alt="Settings" />
             <span v-if="sidebarStore.updateAvailable" class="update-badge"></span>
           </button>
@@ -89,7 +89,7 @@
           <input
             type="text"
             v-model="searchQuery"
-            placeholder="Search..."
+            :placeholder="t('search')"
           />
         </div>
       </header>
@@ -129,17 +129,17 @@
                 <line x1="12" y1="5" x2="12" y2="19"/>
                 <line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
-              <span>Load More Projects</span>
+              <span>{{ t('loadMoreProjects') }}</span>
             </button>
           </div>
 
           <div v-if="appStore.isLoadingProjects" class="loading-more">
-            <span>Loading...</span>
+            <span>{{ t('loading') }}</span>
           </div>
 
           <div v-if="filteredProjects.length === 0 && !appStore.isLoadingProjects" class="empty-list">
-            <span v-if="searchQuery">No matching projects</span>
-            <span v-else>No projects yet</span>
+            <span v-if="searchQuery">{{ t('noMatchingProjects') }}</span>
+            <span v-else>{{ t('noProjectsYet') }}</span>
           </div>
         </template>
       </div>
@@ -150,7 +150,7 @@
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          <span>Add Project</span>
+          <span>{{ t('addProject') }}</span>
         </button>
       </footer>
     </div>
@@ -159,11 +159,14 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useSessionStore } from '@/stores/session'
 import { useSidebarStore } from '@/stores/sidebar'
 import { ctrl } from '@/utils/platform'
 import type { SessionInfo } from '@/api/tauri'
+
+const { t } = useI18n()
 
 const emit = defineEmits<{
   selectProject: [path: string]

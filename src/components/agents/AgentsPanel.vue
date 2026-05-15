@@ -1,17 +1,17 @@
 <template>
   <div class="agents-panel">
     <!-- Header -->
-    <PanelHeader title="Agents" @close="$emit('close')">
+    <PanelHeader :title="t('agents')" @close="$emit('close')">
       <template #actions>
-        <button class="action-btn" @click="handleRefresh" title="Refresh agents">
-          <img src="@/assets/icons/refresh.svg" alt="Refresh" />
+        <button class="action-btn" @click="handleRefresh" :title="t('refreshAgents')">
+          <img src="@/assets/icons/refresh.svg" :alt="t('refreshAgents')" />
         </button>
       </template>
     </PanelHeader>
 
     <!-- Loading -->
     <div v-if="loading" class="loading-state">
-      <span class="loading-text">Loading agents...</span>
+      <span class="loading-text">{{ t('loadingAgents') }}</span>
     </div>
 
     <!-- Error -->
@@ -21,7 +21,7 @@
 
     <!-- Empty -->
     <div v-else-if="allAgents.length === 0" class="empty-state">
-      <span class="empty-text">No agents available</span>
+      <span class="empty-text">{{ t('noAgentsAvailable') }}</span>
     </div>
 
     <!-- Agents List -->
@@ -29,7 +29,7 @@
       <!-- Project Agents -->
       <AgentGroup
         v-if="projectAgents.length > 0"
-        title="Project"
+        :title="t('project')"
         :expanded="sidebarStore.agentsExpandedGroups.project"
         :count="projectAgents.length"
         :agents="projectAgents"
@@ -39,7 +39,7 @@
       <!-- User Agents -->
       <AgentGroup
         v-if="userAgents.length > 0"
-        title="User"
+        :title="t('user')"
         :expanded="sidebarStore.agentsExpandedGroups.user"
         :count="userAgents.length"
         :agents="userAgents"
@@ -49,7 +49,7 @@
       <!-- Plugin Agents -->
       <AgentGroup
         v-if="pluginAgents.length > 0"
-        title="Plugin"
+        :title="t('plugin')"
         :expanded="sidebarStore.agentsExpandedGroups.plugin"
         :count="pluginAgents.length"
         :agents="pluginAgents"
@@ -59,7 +59,7 @@
       <!-- Built-in Agents -->
       <AgentGroup
         v-if="builtinAgents.length > 0"
-        title="Built-in"
+        :title="t('builtin')"
         :expanded="sidebarStore.agentsExpandedGroups.builtin"
         :count="builtinAgents.length"
         :agents="builtinAgents"
@@ -71,8 +71,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useAppStore } from '@/stores/app'
+
+const { t } = useI18n()
 import type { AgentInfo } from '@/types'
 import AgentGroup from './AgentGroup.vue'
 import PanelHeader from '../sidebar/PanelHeader.vue'

@@ -1,34 +1,34 @@
 <template>
   <div class="providers-section">
     <div class="section-header">
-      <h2 class="section-title">API Providers</h2>
-      <p class="section-desc">管理 Claude API 接口配置，支持预设厂商和自定义配置</p>
+      <h2 class="section-title">{{ t('apiProviders') }}</h2>
+      <p class="section-desc">{{ t('providersDesc') }}</p>
     </div>
 
     <div class="toolbar">
       <button class="btn-primary" @click="showPresetPanel = true">
         <span class="btn-icon">+</span>
-        新增 Provider
+        {{ t('addProvider') }}
       </button>
       <button class="btn-secondary" @click="showCommonPanel = true">
-        编辑通用配置
+        {{ t('editCommonConfig') }}
       </button>
       <button
         v-if="providersStore.hasCcSwitchDb"
         class="btn-secondary"
         @click="handleImportCcSwitch"
       >
-        从 cc-switch 导入
+        {{ t('importFromCcSwitch') }}
       </button>
     </div>
 
     <div v-if="providersStore.isLoading" class="loading-state">
-      加载中...
+      {{ t('loading') }}
     </div>
 
     <div v-else-if="providersStore.providers.length === 0" class="empty-state">
-      <p>暂无 Provider 配置</p>
-      <p class="empty-hint">点击"新增 Provider"从预设模板创建配置</p>
+      <p>{{ t('noProviders') }}</p>
+      <p class="empty-hint">{{ t('noProvidersHint') }}</p>
     </div>
 
     <ProviderList
@@ -73,11 +73,11 @@
     <!-- 删除确认对话框 -->
     <div v-if="deleteConfirm" class="confirm-overlay" @click.self="deleteConfirm = null">
       <div class="confirm-dialog">
-        <p class="confirm-text">确定删除 Provider「{{ deleteConfirm.name }}」？</p>
-        <p class="confirm-hint">此操作不可撤销</p>
+        <p class="confirm-text">{{ t('confirmDeleteProvider', { name: deleteConfirm.name }) }}</p>
+        <p class="confirm-hint">{{ t('irreversible') }}</p>
         <div class="confirm-actions">
-          <button class="btn-cancel" @click="deleteConfirm = null">取消</button>
-          <button class="btn-danger" @click="confirmDelete">删除</button>
+          <button class="btn-cancel" @click="deleteConfirm = null">{{ t('cancel') }}</button>
+          <button class="btn-danger" @click="confirmDelete">{{ t('delete') }}</button>
         </div>
       </div>
     </div>
@@ -87,15 +87,15 @@
       <div class="confirm-dialog">
         <p class="confirm-text">
           <span :class="testResult.success ? 'test-success' : 'test-fail'">
-            {{ testResult.success ? '连接成功' : '连接失败' }}
+            {{ testResult.success ? t('connectionSuccess') : t('connectionFailed') }}
           </span>
         </p>
         <p class="confirm-hint">{{ testResult.message }}</p>
         <p v-if="testResult.latencyMs != null" class="confirm-hint">
-          延迟: {{ testResult.latencyMs }}ms
+          {{ t('latency', { ms: testResult.latencyMs }) }}
         </p>
         <div class="confirm-actions">
-          <button class="btn-cancel" @click="testResult = null">关闭</button>
+          <button class="btn-cancel" @click="testResult = null">{{ t('close') }}</button>
         </div>
       </div>
     </div>
@@ -104,6 +104,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useProvidersStore } from '@/stores/providers'
 import ProviderList from '../providers/ProviderList.vue'
 import ProviderPresetPanel from '../providers/ProviderPresetPanel.vue'
@@ -111,6 +112,7 @@ import CommonConfigPanel from '../providers/CommonConfigPanel.vue'
 import ProviderEditPanel from '../providers/ProviderEditPanel.vue'
 import type { Provider, ProviderPreset } from '@/types/provider'
 
+const { t } = useI18n()
 const providersStore = useProvidersStore()
 
 const showPresetPanel = ref(false)
@@ -165,7 +167,7 @@ function handleTest(provider: Provider) {
       testResult.value = result
     })
     .catch(err => {
-      testResult.value = { success: false, message: `测试失败: ${err}`, latencyMs: null }
+      testResult.value = { success: false, message: t('testFailed', { error: String(err) }), latencyMs: null }
     })
     .finally(() => {
       testingId.value = null
@@ -205,7 +207,6 @@ function handleOpenCommonConfig(currentJson: Record<string, any>) {
 }
 
 function handleEditClose() {
-  // 新建的未写入后端，直接丢弃；编辑中的本地修改一并丢弃
   editingProvider.value = null
   isNewProvider.value = false
 }
@@ -233,16 +234,16 @@ async function handleImportCcSwitch() {
   try {
     const result = await providersStore.importCcSwitch()
     if (result.count > 0) {
-      const parts = [`成功导入 ${result.count} 个 Provider`]
-      if (result.importedCommonConfig) parts.push('通用配置已导入')
-      if (result.activeProviderName) parts.push(`当前激活：${result.activeProviderName}`)
+      const parts = [t('importSuccess', { count: result.count })]
+      if (result.importedCommonConfig) parts.push(t('commonConfigImported'))
+      if (result.activeProviderName) parts.push(t('activeProvider', { name: result.activeProviderName }))
       alert(parts.join('\n'))
     } else {
-      alert('未发现可导入的 Provider 配置')
+      alert(t('noProvidersToImport'))
     }
   } catch (err) {
     console.error('Import failed:', err)
-    alert('导入失败')
+    alert(t('importFailed'))
   }
 }
 </script>

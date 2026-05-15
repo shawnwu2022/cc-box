@@ -5,7 +5,7 @@
   <!-- 环境检查提示 -->
   <div v-if="appStore.checkFailed" class="check-failed-overlay">
     <div class="check-failed-card">
-      <h2>Environment Check</h2>
+      <h2>{{ t('environmentCheck') }}</h2>
       <div class="check-list">
         <div v-for="check in appStore.checkResults" :key="check.name"
           class="check-item" :class="{ passed: check.passed, failed: !check.passed }">
@@ -40,10 +40,10 @@
       <!-- 按钮：Auto Install 和 Retry -->
       <div class="check-btn-row">
         <button class="check-auto-btn" @click="autoInstall" :disabled="isInstalling">
-          {{ isInstalling ? 'Installing...' : 'Auto Install' }}
+          {{ isInstalling ? t('installing') : t('autoInstall') }}
         </button>
         <button class="check-retry-btn" @click="retryChecks" :disabled="isInstalling">
-          Retry
+          {{ t('retry') }}
         </button>
       </div>
     </div>
@@ -86,6 +86,7 @@ import { useHookStore } from '@/stores/hook'
 import { useSessionStore } from '@/stores/session'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useUpdateStore } from '@/stores/update'
+import { useI18n } from 'vue-i18n'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-shell'
 import {
@@ -113,6 +114,7 @@ const appStore = useAppStore()
 const sessionStore = useSessionStore()
 const sidebarStore = useSidebarStore()
 const updateStore = useUpdateStore()
+const { t } = useI18n()
 const { setupShortcutListeners } = useAppShortcuts()
 const currentView = ref<ViewType>('welcome')
 
@@ -282,7 +284,7 @@ async function autoInstall() {
         name: check.name,
         status: 'waiting',
         progress: 0,
-        message: '等待安装...'
+        message: t('installWaiting')
       })
     }
   }
@@ -306,11 +308,11 @@ async function autoInstall() {
     if (needsClaude) {
       installPromises.push(
         downloadAndInstallClaude().then(() => {
-          const task = installTasks.value.find(t => t.name === 'Claude CLI')
+          const task = installTasks.value.find(item => item.name === 'Claude CLI')
           if (task) {
             task.status = 'done'
             task.progress = 100
-            task.message = '安装完成'
+            task.message = t('installComplete')
           }
         })
       )
@@ -320,11 +322,11 @@ async function autoInstall() {
     if (needsGit) {
       installPromises.push(
         downloadAndInstallGit().then(() => {
-          const task = installTasks.value.find(t => t.name === 'Git Bash')
+          const task = installTasks.value.find(item => item.name === 'Git Bash')
           if (task) {
             task.status = 'done'
             task.progress = 100
-            task.message = '安装完成'
+            task.message = t('installComplete')
           }
         })
       )
@@ -347,7 +349,7 @@ async function autoInstall() {
       for (const task of installTasks.value) {
         if (task.status !== 'done') {
           task.status = 'error'
-          task.message = '安装后验证失败'
+          task.message = t('installVerifyFailed')
         }
       }
     }
@@ -356,7 +358,7 @@ async function autoInstall() {
     for (const task of installTasks.value) {
       if (task.status !== 'done') {
         task.status = 'error'
-        task.message = `安装失败: ${e}`
+        task.message = t('installFailed', { error: String(e) })
       }
     }
     console.error('Auto install failed:', e)

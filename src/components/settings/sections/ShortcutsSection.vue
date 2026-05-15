@@ -1,6 +1,6 @@
 <template>
   <div class="section-content">
-    <h2 class="section-heading">Keyboard Shortcuts</h2>
+    <h2 class="section-heading">{{ t('keyboardShortcuts') }}</h2>
 
     <div class="shortcuts-group" v-for="group in filteredGroups" :key="group.title">
       <h3 class="group-title">{{ group.title }}</h3>
@@ -17,113 +17,116 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ctrl, alt, cmd, isMac } from '@/utils/platform'
+
+const { t } = useI18n()
 
 const filteredGroups = computed(() => [
   {
-    title: 'Application Shortcuts',
+    title: t('applicationShortcuts'),
     hint: '',
     items: [
-      { key: `${cmd}+Shift+N`, desc: 'Open new window' },
-      { key: `${cmd}+Shift+← / →`, desc: 'Snap window to left / right half' },
-      { key: `${cmd}+Shift+R`, desc: 'Restart application' },
-      { key: `${cmd}+Shift+H`, desc: 'Toggle home / terminal' },
-      { key: `${cmd}+Shift+/`, desc: 'Show keyboard shortcuts' },
-      { key: `${cmd}+Shift+S`, desc: 'Toggle sessions panel' },
-      { key: `${cmd},`, desc: 'Toggle settings' },
-      { key: `${cmd}+Plus / −`, desc: 'Increase / decrease font size' },
-      { key: `${cmd}+0`, desc: 'Reset font size' },
+      { key: `${cmd}+Shift+N`, desc: t('shortcut_openNewWindow') },
+      { key: `${cmd}+Shift+← / →`, desc: t('shortcut_snapWindow') },
+      { key: `${cmd}+Shift+R`, desc: t('shortcut_restartApp') },
+      { key: `${cmd}+Shift+H`, desc: t('shortcut_toggleHome') },
+      { key: `${cmd}+Shift+/`, desc: t('shortcut_showShortcuts') },
+      { key: `${cmd}+Shift+S`, desc: t('shortcut_toggleSessions') },
+      { key: `${cmd},`, desc: t('shortcut_toggleSettings') },
+      { key: `${cmd}+Plus / −`, desc: t('shortcut_fontSize') },
+      { key: `${cmd}+0`, desc: t('shortcut_resetFontSize') },
     ]
   },
   {
-    title: 'Session Management',
-    hint: 'Only available in terminal view.',
+    title: t('sessionManagement'),
+    hint: t('sessionManagementHint'),
     items: [
-      { key: `${alt}+N`, desc: 'New session' },
-      { key: `${alt}+R`, desc: 'Restart session' },
-      { key: `${alt}+W`, desc: 'Close current tab' },
-      { key: `${ctrl}+Tab`, desc: 'Switch to next tab' },
-      { key: `${ctrl}+Shift+Tab`, desc: 'Switch to previous tab' },
-      { key: `${alt}+↑ / ↓`, desc: 'Switch to previous / next tab (alt)' },
+      { key: `${alt}+N`, desc: t('shortcut_newSession') },
+      { key: `${alt}+R`, desc: t('shortcut_restartSession') },
+      { key: `${alt}+W`, desc: t('shortcut_closeTab') },
+      { key: `${ctrl}+Tab`, desc: t('shortcut_switchNext') },
+      { key: `${ctrl}+Shift+Tab`, desc: t('shortcut_switchPrev') },
+      { key: `${alt}+↑ / ↓`, desc: t('shortcut_switchAlt') },
     ]
   },
   {
-    title: 'Claude Code Shortcuts',
-    hint: 'Shortcuts passed directly to the Claude terminal.',
+    title: t('claudeCodeShortcuts'),
+    hint: t('claudeCodeShortcutsHint'),
     items: [
-      { key: `${ctrl}+C`, desc: 'Cancel current input or generation' },
-      { key: `${ctrl}+D`, desc: 'Exit Claude Code session' },
-      { key: `${alt}+P`, desc: 'Switch model without clearing prompt' },
-      { key: `${alt}+T`, desc: 'Toggle extended thinking' },
-      { key: `${alt}+O`, desc: 'Toggle fast mode' },
-      { key: `${ctrl}+L`, desc: 'Clear prompt input and redraw screen' },
-      { key: `${ctrl}+R`, desc: 'Reverse search command history' },
-      { key: `${ctrl}+O`, desc: 'Toggle transcript viewer' },
-      { key: `${ctrl}+B`, desc: 'Run task in background' },
-      { key: `${ctrl}+T`, desc: 'Toggle task list' },
-      { key: 'Esc Esc', desc: 'Rewind or summarize' },
+      { key: `${ctrl}+C`, desc: t('shortcut_cancelInput') },
+      { key: `${ctrl}+D`, desc: t('shortcut_exitSession') },
+      { key: `${alt}+P`, desc: t('shortcut_switchModel') },
+      { key: `${alt}+T`, desc: t('shortcut_toggleThinking') },
+      { key: `${alt}+O`, desc: t('shortcut_toggleFast') },
+      { key: `${ctrl}+L`, desc: t('shortcut_clearPrompt') },
+      { key: `${ctrl}+R`, desc: t('shortcut_reverseSearch') },
+      { key: `${ctrl}+O`, desc: t('shortcut_toggleTranscript') },
+      { key: `${ctrl}+B`, desc: t('shortcut_backgroundTask') },
+      { key: `${ctrl}+T`, desc: t('shortcut_toggleTaskList') },
+      { key: 'Esc Esc', desc: t('shortcut_rewind') },
     ]
   },
   {
-    title: 'Text Editing',
+    title: t('textEditing'),
     hint: '',
     items: [
-      { key: `${ctrl}+A`, desc: 'Move cursor to start of line' },
-      { key: `${ctrl}+E`, desc: 'Move cursor to end of line' },
-      { key: `${ctrl}+W`, desc: 'Delete previous word' },
-      { key: `${ctrl}+K`, desc: 'Delete to end of line' },
-      { key: `${ctrl}+U`, desc: 'Delete from cursor to start of line' },
-      { key: `${ctrl}+Y`, desc: 'Paste deleted text' },
-      { key: `${alt}+B`, desc: 'Move cursor back one word' },
-      { key: `${alt}+F`, desc: 'Move cursor forward one word' },
+      { key: `${ctrl}+A`, desc: t('shortcut_cursorStart') },
+      { key: `${ctrl}+E`, desc: t('shortcut_cursorEnd') },
+      { key: `${ctrl}+W`, desc: t('shortcut_deletePrevWord') },
+      { key: `${ctrl}+K`, desc: t('shortcut_deleteToEnd') },
+      { key: `${ctrl}+U`, desc: t('shortcut_deleteToStart') },
+      { key: `${ctrl}+Y`, desc: t('shortcut_pasteDeleted') },
+      { key: `${alt}+B`, desc: t('shortcut_moveBackWord') },
+      { key: `${alt}+F`, desc: t('shortcut_moveForwardWord') },
     ]
   },
   {
-    title: 'Multi-line Input',
+    title: t('multilineInput'),
     hint: '',
     items: [
-      { key: '\\ + Enter', desc: 'Insert newline' },
-      { key: `${ctrl}+J`, desc: 'Insert newline (any terminal)' },
+      { key: '\\ + Enter', desc: t('shortcut_insertNewline') },
+      { key: `${ctrl}+J`, desc: t('shortcut_insertNewlineAny') },
       ...(isMac
-        ? [{ key: 'Shift+Enter', desc: 'Insert newline (iTerm2, WezTerm, etc.)' }]
-        : [{ key: 'Shift+Enter', desc: 'Insert newline (if terminal supports it)' }]
+        ? [{ key: 'Shift+Enter', desc: t('shortcut_insertNewlineIterm') }]
+        : [{ key: 'Shift+Enter', desc: t('shortcut_insertNewlineSupported') }]
       ),
     ]
   },
   {
-    title: 'Quick Input',
+    title: t('quickInput'),
     hint: '',
     items: [
-      { key: '/ at start', desc: 'Command or skill' },
-      { key: '! at start', desc: 'Bash mode — run command directly' },
-      { key: '@', desc: 'File path mention with autocomplete' },
+      { key: '/ at start', desc: t('shortcut_commandOrSkill') },
+      { key: '! at start', desc: t('shortcut_bashMode') },
+      { key: '@', desc: t('shortcut_fileMention') },
     ]
   },
   {
-    title: 'Slash Commands',
-    hint: 'Type in the Claude prompt:',
+    title: t('slashCommands'),
+    hint: t('slashCommandsHint'),
     items: [
-      { key: '/clear', desc: 'Start new conversation (alias /reset, /new)' },
-      { key: '/compact', desc: 'Summarize to free context window' },
-      { key: '/model', desc: 'Switch AI model' },
-      { key: '/cost', desc: 'Show session cost (alias /usage, /stats)' },
-      { key: '/permissions', desc: 'Manage tool permission rules' },
-      { key: '/init', desc: 'Initialize CLAUDE.md for project' },
-      { key: '/config', desc: 'Open settings (alias /settings)' },
-      { key: '/resume', desc: 'Resume a previous session (alias /continue)' },
-      { key: '/diff', desc: 'Interactive diff viewer for changes' },
-      { key: '/help', desc: 'Show available commands' },
-      { key: '/context', desc: 'Visualize context window usage' },
-      { key: '/doctor', desc: 'Diagnose Claude Code installation' },
-      { key: '/theme', desc: 'Change color theme' },
-      { key: '/memory', desc: 'Edit CLAUDE.md memory files' },
-      { key: '/rename', desc: 'Rename current session' },
-      { key: '/btw <q>', desc: 'Quick side question without context' },
-      { key: '/plan', desc: 'Enter plan mode' },
-      { key: '/branch', desc: 'Branch conversation (alias /fork)' },
-      { key: '/copy', desc: 'Copy last response to clipboard' },
-      { key: '/review', desc: 'Review pull request in session' },
-      { key: '/exit', desc: 'Exit CLI (alias /quit)' },
+      { key: '/clear', desc: t('shortcut_slashClear') },
+      { key: '/compact', desc: t('shortcut_slashCompact') },
+      { key: '/model', desc: t('shortcut_slashModel') },
+      { key: '/cost', desc: t('shortcut_slashCost') },
+      { key: '/permissions', desc: t('shortcut_slashPermissions') },
+      { key: '/init', desc: t('shortcut_slashInit') },
+      { key: '/config', desc: t('shortcut_slashConfig') },
+      { key: '/resume', desc: t('shortcut_slashResume') },
+      { key: '/diff', desc: t('shortcut_slashDiff') },
+      { key: '/help', desc: t('shortcut_slashHelp') },
+      { key: '/context', desc: t('shortcut_slashContext') },
+      { key: '/doctor', desc: t('shortcut_slashDoctor') },
+      { key: '/theme', desc: t('shortcut_slashTheme') },
+      { key: '/memory', desc: t('shortcut_slashMemory') },
+      { key: '/rename', desc: t('shortcut_slashRename') },
+      { key: '/btw <q>', desc: t('shortcut_slashBug') },
+      { key: '/plan', desc: t('shortcut_slashPlan') },
+      { key: '/branch', desc: t('shortcut_slashBranch') },
+      { key: '/copy', desc: t('shortcut_slashCopy') },
+      { key: '/review', desc: t('shortcut_slashReview') },
+      { key: '/exit', desc: t('shortcut_slashExit') },
     ]
   },
 ])

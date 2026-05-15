@@ -1,17 +1,17 @@
 <template>
   <div class="plugins-panel">
     <!-- Header -->
-    <PanelHeader title="Plugins" @close="$emit('close')">
+    <PanelHeader :title="t('plugins')" @close="$emit('close')">
       <template #actions>
-        <button class="action-btn" @click="handleRefresh" title="Refresh plugins">
-          <img src="@/assets/icons/refresh.svg" alt="Refresh" />
+        <button class="action-btn" @click="handleRefresh" :title="t('refreshPlugins')">
+          <img src="@/assets/icons/refresh.svg" :alt="t('refreshPlugins')" />
         </button>
       </template>
     </PanelHeader>
 
     <!-- Loading -->
     <div v-if="loading" class="loading-state">
-      <span class="loading-text">Loading plugins...</span>
+      <span class="loading-text">{{ t('loadingPlugins') }}</span>
     </div>
 
     <!-- Error -->
@@ -21,8 +21,8 @@
 
     <!-- Empty -->
     <div v-else-if="userPlugins.length === 0 && projectPlugins.length === 0" class="empty-state">
-      <span class="empty-text">No plugins installed</span>
-      <span class="empty-hint">Install plugins via claude plugin install</span>
+      <span class="empty-text">{{ t('noPluginsInstalled') }}</span>
+      <span class="empty-hint">{{ t('installPluginsHint') }}</span>
     </div>
 
     <!-- Plugins List -->
@@ -30,7 +30,7 @@
       <!-- Project Plugins -->
       <PluginGroup
         v-if="projectPlugins.length > 0"
-        title="Project Plugins"
+        :title="t('projectPlugins')"
         :expanded="sidebarStore.pluginsExpandedGroups.project"
         :count="projectPlugins.length"
         :plugins="projectPlugins"
@@ -40,7 +40,7 @@
       <!-- User Plugins -->
       <PluginGroup
         v-if="userPlugins.length > 0"
-        title="User Plugins"
+        :title="t('userPlugins')"
         :expanded="sidebarStore.pluginsExpandedGroups.user"
         :count="userPlugins.length"
         :plugins="userPlugins"
@@ -52,8 +52,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSidebarStore } from '@/stores/sidebar'
 import { useAppStore } from '@/stores/app'
+
+const { t } = useI18n()
 import type { PluginInfo } from '@/types'
 import PluginGroup from './PluginGroup.vue'
 import PanelHeader from '../sidebar/PanelHeader.vue'

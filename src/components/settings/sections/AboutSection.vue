@@ -1,6 +1,6 @@
 <template>
   <div class="section-content">
-    <h2 class="section-heading">About</h2>
+    <h2 class="section-heading">{{ t('aboutTitle') }}</h2>
 
     <div class="about-card">
       <div class="about-logo">
@@ -8,22 +8,22 @@
       </div>
       <div class="about-details">
         <span class="app-name">CC-Box</span>
-        <span class="app-version">Version {{ currentVersion }}</span>
-        <span class="app-desc">Multi-terminal manager for Claude Code power users.</span>
+        <span class="app-version">{{ t('version', { version: currentVersion }) }}</span>
+        <span class="app-desc">{{ t('aboutDesc') }}</span>
       </div>
     </div>
 
     <div class="links-group">
       <a class="about-link" @click="openExternal('https://github.com/orczh-hj/cc-box')">
         <div class="link-content">
-          <span class="link-title">GitHub Repository</span>
+          <span class="link-title">{{ t('githubRepo') }}</span>
           <span class="link-url">github.com/orczh-hj/cc-box</span>
         </div>
         <span class="link-arrow">→</span>
       </a>
       <a class="about-link" @click="openExternal('https://code.claude.com/docs')">
         <div class="link-content">
-          <span class="link-title">Claude Code Docs</span>
+          <span class="link-title">{{ t('claudeDocs') }}</span>
           <span class="link-url">code.claude.com/docs</span>
         </div>
         <span class="link-arrow">→</span>
@@ -34,7 +34,9 @@
 
 <script setup lang="ts">
 import { open } from '@tauri-apps/plugin-shell'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const currentVersion = __APP_VERSION__
 
 function openExternal(url: string) {

@@ -1,15 +1,15 @@
 <template>
   <div class="section-content">
-    <h2 class="section-heading">Startup Defaults</h2>
-    <p class="section-desc">Default arguments applied when starting a new Claude session.</p>
+    <h2 class="section-heading">{{ t('startupDefaults') }}</h2>
+    <p class="section-desc">{{ t('startupDefaultsDesc') }}</p>
 
     <div class="setting-group">
       <label class="setting-card">
         <div class="card-left">
           <input type="checkbox" v-model="skipPermissions" />
           <div class="card-info">
-            <span class="setting-label">Skip permissions</span>
-            <span class="setting-hint">Auto-accept all tool permissions</span>
+            <span class="setting-label">{{ t('skipPermissions') }}</span>
+            <span class="setting-hint">{{ t('skipPermissionsHint') }}</span>
           </div>
         </div>
         <code class="flag-badge warning">--allow-dangerously-skip-permissions</code>
@@ -17,13 +17,13 @@
 
       <div class="setting-card text-card">
         <div class="card-info">
-          <span class="setting-label">Custom arguments</span>
-          <span class="setting-hint">Additional CLI flags appended to every new session</span>
+          <span class="setting-label">{{ t('customArguments') }}</span>
+          <span class="setting-hint">{{ t('customArgumentsHint') }}</span>
         </div>
         <input
           type="text"
           v-model="customArgs"
-          placeholder="e.g. --model sonnet"
+          :placeholder="t('customArgsPlaceholder')"
           class="text-input"
         />
       </div>
@@ -33,12 +33,12 @@
     <div class="env-section">
       <div class="env-header">
         <div>
-          <h2 class="section-heading" style="margin-bottom: 4px">Environment Variables</h2>
+          <h2 class="section-heading" style="margin-bottom: 4px">{{ t('envVars') }}</h2>
           <p class="section-desc" style="margin-bottom: 0">
-            应用启动时注入到 <code class="path-hint">~/.claude/settings.json</code> 的环境变量
+            {{ t('envVarsDesc') }}
           </p>
         </div>
-        <button class="reset-btn" @click="handleReset">Reset to defaults</button>
+        <button class="reset-btn" @click="handleReset">{{ t('resetToDefaults') }}</button>
       </div>
 
       <div class="env-list">
@@ -58,7 +58,7 @@
             @change="handleValueChange(key, ($event.target as HTMLInputElement).value)"
             spellcheck="false"
           />
-          <button class="env-remove" @click="handleRemove(key)" title="Remove">
+          <button class="env-remove" @click="handleRemove(key)" :title="t('remove')">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
@@ -70,7 +70,7 @@
             type="text"
             v-model="newKey"
             class="env-key"
-            placeholder="KEY"
+            :placeholder="t('envKeyPlaceholder')"
             spellcheck="false"
             @keydown.enter="handleAdd"
           />
@@ -79,11 +79,11 @@
             type="text"
             v-model="newValue"
             class="env-value"
-            placeholder="value"
+            :placeholder="t('envValuePlaceholder')"
             spellcheck="false"
             @keydown.enter="handleAdd"
           />
-          <button class="env-add-btn" @click="handleAdd" :disabled="!newKey.trim()">Add</button>
+          <button class="env-add-btn" @click="handleAdd" :disabled="!newKey.trim()">{{ t('add') }}</button>
         </div>
       </div>
     </div>
@@ -92,8 +92,10 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAppStore, DEFAULT_CLAUDE_ENV_VARS } from '@/stores/app'
 
+const { t } = useI18n()
 const appStore = useAppStore()
 const skipPermissions = ref(appStore.defaultClaudeOptions.skipPermissions)
 const customArgs = ref(appStore.defaultClaudeOptions.customArgs)

@@ -1,22 +1,22 @@
 <template>
   <div class="common-panel">
     <div class="panel-header">
-      <button class="back-btn" @click="$emit('close')">&#8592; 返回</button>
-      <span class="panel-title">通用配置</span>
+      <button class="back-btn" @click="$emit('close')">&#8592; {{ t('back') }}</button>
+      <span class="panel-title">{{ t('commonConfigTitle') }}</span>
     </div>
 
     <div class="panel-body">
       <div class="config-info">
         <p class="info-desc">
-          所有勾选了"应用通用配置"的 Provider，激活时会将此配置合并进去。适合放置公共参数（如权限、归属等）。
+          {{ t('commonConfigDesc') }}
         </p>
       </div>
 
       <div class="json-toolbar">
-        <span class="toolbar-label">配置内容 (JSON)</span>
+        <span class="toolbar-label">{{ t('configContentJson') }}</span>
         <div class="toolbar-actions">
-          <button class="btn-extract" @click="extractFromSource" v-if="sourceJson">从编辑内容中提取</button>
-          <button class="btn-format" @click="formatJson">Format</button>
+          <button class="btn-extract" @click="extractFromSource" v-if="sourceJson">{{ t('extractFromEdit') }}</button>
+          <button class="btn-format" @click="formatJson">{{ t('format') }}</button>
         </div>
       </div>
 
@@ -32,20 +32,23 @@
     </div>
 
     <div class="panel-footer">
-      <button class="btn-cancel" @click="$emit('close')">取消</button>
-      <button class="btn-save" @click="handleSave" :disabled="!!jsonError">保存</button>
+      <button class="btn-cancel" @click="$emit('close')">{{ t('cancel') }}</button>
+      <button class="btn-save" @click="handleSave" :disabled="!!jsonError">{{ t('save') }}</button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Codemirror } from 'vue-codemirror'
 import { json, jsonParseLinter } from '@codemirror/lang-json'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { linter } from '@codemirror/lint'
 import { EditorView } from '@codemirror/view'
 import type { CommonConfig } from '@/types/provider'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   config: CommonConfig
@@ -96,7 +99,7 @@ function validateJson() {
     JSON.parse(jsonContent.value)
     jsonError.value = ''
   } catch (e: any) {
-    jsonError.value = e.message || 'JSON 格式错误'
+    jsonError.value = e.message || t('jsonFormatError')
   }
 }
 
@@ -130,7 +133,7 @@ function handleSave() {
     const settings = JSON.parse(jsonContent.value)
     emit('save', settings)
   } catch {
-    jsonError.value = 'JSON 解析失败'
+    jsonError.value = t('jsonParseError')
   }
 }
 </script>

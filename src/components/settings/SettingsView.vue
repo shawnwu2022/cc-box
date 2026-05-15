@@ -3,9 +3,9 @@
     <!-- 左侧导航 -->
     <nav class="settings-nav">
       <div class="settings-nav-header">
-        <span class="nav-title">Settings</span>
+        <span class="nav-title">{{ t('settings') }}</span>
         <button class="close-btn" @click="$emit('close')">
-          <img src="@/assets/icons/close.svg" alt="Close" />
+          <img src="@/assets/icons/close.svg" :alt="t('close')" />
         </button>
       </div>
       <div class="nav-items">
@@ -38,6 +38,8 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSidebarStore } from '@/stores/sidebar'
 import AppearanceSection from './sections/AppearanceSection.vue'
 import StartupSection from './sections/StartupSection.vue'
@@ -46,20 +48,21 @@ import ShortcutsSection from './sections/ShortcutsSection.vue'
 import UpdateSection from './sections/UpdateSection.vue'
 import AboutSection from './sections/AboutSection.vue'
 
+const { t } = useI18n()
 const currentVersion = __APP_VERSION__
 
 defineEmits<{ close: [] }>()
 
 const sidebarStore = useSidebarStore()
 
-const navItems = [
-  { id: 'appearance', label: '外观 Appearance' },
-  { id: 'startup', label: '启动 Startup' },
-  { id: 'providers', label: '接口 Providers' },
-  { id: 'shortcuts', label: '快捷键 Shortcuts' },
-  { id: 'update', label: '更新 Update' },
-  { id: 'about', label: '关于 About' },
-]
+const navItems = computed(() => [
+  { id: 'appearance', label: t('appearance') },
+  { id: 'startup', label: t('startup') },
+  { id: 'providers', label: t('providers') },
+  { id: 'shortcuts', label: t('shortcuts') },
+  { id: 'update', label: t('update') },
+  { id: 'about', label: t('about') },
+])
 </script>
 
 <style scoped>

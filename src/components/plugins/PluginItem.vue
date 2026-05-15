@@ -32,18 +32,18 @@
     <div v-if="isExpanded" class="plugin-expanded">
       <!-- Skills -->
       <div v-if="plugin.skills?.length" class="component-section">
-        <div class="section-title">Skills</div>
+        <div class="section-title">{{ t('skills') }}</div>
         <div v-for="skill in plugin.skills" :key="skill.name" class="component-item" :class="{ expanded: expandedSkills[skill.name] }">
           <div class="item-header" @click="toggleSkillDetail(skill.name)">
             <img class="item-expand-icon" :class="{ expanded: expandedSkills[skill.name] }" src="@/assets/icons/chevron.svg" alt="Toggle" />
             <span class="item-name">{{ skill.name }}</span>
-            <button class="item-use-btn" @click.stop="useSkill(skill.invokeFormat)" title="Use this skill">
-              <img src="@/assets/icons/skills.svg" alt="Skills" class="item-icon" />
+            <button class="item-use-btn" @click.stop="useSkill(skill.invokeFormat)" :title="t('useThisSkill')">
+              <img src="@/assets/icons/skills.svg" :alt="t('skills')" class="item-icon" />
             </button>
           </div>
           <div v-if="expandedSkills[skill.name]" class="item-detail">
             <div v-if="skill.description" class="item-desc-full">{{ skill.description }}</div>
-            <div v-else class="item-desc-empty">No description</div>
+            <div v-else class="item-desc-empty">{{ t('noDescription') }}</div>
             <div class="item-invoke-format">
               <span class="invoke-label">Invoke:</span>
               <span class="invoke-value">{{ skill.invokeFormat }}</span>
@@ -54,18 +54,18 @@
 
       <!-- Agents -->
       <div v-if="plugin.agents?.length" class="component-section">
-        <div class="section-title">Agents</div>
+        <div class="section-title">{{ t('agents') }}</div>
         <div v-for="agent in plugin.agents" :key="agent.name" class="component-item" :class="{ expanded: expandedAgents[agent.name] }">
           <div class="item-header" @click="toggleAgentDetail(agent.name)">
             <img class="item-expand-icon" :class="{ expanded: expandedAgents[agent.name] }" src="@/assets/icons/chevron.svg" alt="Toggle" />
             <span class="item-name">{{ agent.name }}</span>
-            <button class="item-use-btn" @click.stop="useAgent(agent.invokeFormat)" title="Use this agent">
-              <img src="@/assets/icons/agents.svg" alt="Agents" class="item-icon" />
+            <button class="item-use-btn" @click.stop="useAgent(agent.invokeFormat)" :title="t('useThisAgent')">
+              <img src="@/assets/icons/agents.svg" :alt="t('agents')" class="item-icon" />
             </button>
           </div>
           <div v-if="expandedAgents[agent.name]" class="item-detail">
             <div v-if="agent.description" class="item-desc-full">{{ agent.description }}</div>
-            <div v-else class="item-desc-empty">No description</div>
+            <div v-else class="item-desc-empty">{{ t('noDescription') }}</div>
             <div class="item-invoke-format">
               <span class="invoke-label">Invoke:</span>
               <span class="invoke-value">{{ agent.invokeFormat }}</span>
@@ -76,7 +76,7 @@
 
       <!-- MCP Servers -->
       <div v-if="plugin.mcpServers && Object.keys(plugin.mcpServers).length > 0" class="component-section">
-        <div class="section-title">MCP Servers</div>
+        <div class="section-title">{{ t('mcpServers') }}</div>
         <div v-for="(serverConfig, serverName) in plugin.mcpServers" :key="serverName" class="component-item mcp-server">
           <span class="item-name">{{ serverName }}</span>
           <span v-if="serverConfig.type" class="item-type">{{ serverConfig.type }}</span>
@@ -85,7 +85,7 @@
 
       <!-- Empty state -->
       <div v-if="!hasComponents" class="no-components">
-        No skills or agents in this plugin
+        {{ t('noDescription') }}
       </div>
     </div>
   </div>
@@ -93,9 +93,11 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { PluginInfo } from '@/types'
 import { sendTerminalCommand } from '@/composables/useTerminalCommand'
 
+const { t } = useI18n()
 const props = defineProps<{
   plugin: PluginInfo
 }>()

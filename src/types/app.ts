@@ -26,6 +26,7 @@ export interface AppConfig {
   lastOpenedProject?: string
   windowSize?: { width: number; height: number }
   claudeEnvVars?: Record<string, string>
+  language?: string
 }
 
 export interface DefaultClaudeOptions {

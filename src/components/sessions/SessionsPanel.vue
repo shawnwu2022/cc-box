@@ -1,10 +1,10 @@
 <template>
   <div class="sessions-panel">
     <!-- Header -->
-    <PanelHeader title="Sessions" @close="$emit('close')">
+    <PanelHeader :title="t('sessions')" @close="$emit('close')">
       <template #actions>
-        <button class="action-btn" @click="handleRefresh" title="Refresh sessions">
-          <img src="@/assets/icons/refresh.svg" alt="Refresh" />
+        <button class="action-btn" @click="handleRefresh" :title="t('refreshSessions')">
+          <img src="@/assets/icons/refresh.svg" :alt="t('refreshSessions')" />
         </button>
       </template>
     </PanelHeader>
@@ -15,7 +15,7 @@
       <input
         v-model="searchQuery"
         type="text"
-        placeholder="Search sessions..."
+        :placeholder="t('searchSessions')"
         class="search-input"
       />
     </div>
@@ -24,7 +24,7 @@
     <div class="panel-content" ref="scrollContainer">
       <!-- Open Tabs -->
       <div v-if="projectTabs.length > 0" class="section">
-        <div class="section-title">Open Tabs</div>
+        <div class="section-title">{{ t('openTabs') }}</div>
         <SessionList
           :tabs="projectTabs"
           :active-id="sessionStore.activeTabId"
@@ -38,7 +38,7 @@
 
       <!-- History -->
       <div v-if="filteredHistory.length > 0 || sessionStore.isLoading" class="section">
-        <div class="section-title">History</div>
+        <div class="section-title">{{ t('history') }}</div>
         <SessionList
           :history="filteredHistory"
           :active-id="null"
@@ -49,15 +49,15 @@
 
       <!-- 空状态 -->
       <div v-if="projectTabs.length === 0 && filteredHistory.length === 0 && !sessionStore.isLoading" class="empty-hint">
-        No sessions found
+        {{ t('noSessionsFound') }}
       </div>
 
       <div v-if="sessionStore.isLoading" class="loading-indicator">
-        Loading...
+        {{ t('loading') }}
       </div>
 
       <div v-if="sessionStore.isLoadingMore" class="loading-indicator">
-        Loading more...
+        {{ t('loadingMore') }}
       </div>
     </div>
 
@@ -67,11 +67,11 @@
         <button
           class="action-btn with-hint"
           @click="$emit('newSession')"
-          title="New session (Alt+N)"
+          :title="t('newSessionTitle')"
         >
           <div class="btn-content">
-            <img src="@/assets/icons/plus.svg" alt="New session" />
-            <span class="btn-label">New</span>
+            <img src="@/assets/icons/plus.svg" :alt="t('newBtn')" />
+            <span class="btn-label">{{ t('newBtn') }}</span>
           </div>
           <span class="btn-hint">{{ alt }}+N</span>
         </button>
@@ -79,11 +79,11 @@
           class="action-btn with-hint"
           @click="$emit('restartSession')"
           :disabled="!sessionStore.activeTab"
-          title="Restart session (Alt+R)"
+          :title="t('restartSessionTitle')"
         >
           <div class="btn-content">
-            <img src="@/assets/icons/refresh.svg" alt="Restart" />
-            <span class="btn-label">Restart</span>
+            <img src="@/assets/icons/refresh.svg" :alt="t('restartBtn')" />
+            <span class="btn-label">{{ t('restartBtn') }}</span>
           </div>
           <span class="btn-hint">{{ alt }}+R</span>
         </button>
@@ -92,12 +92,12 @@
       <div class="options-content">
         <label class="option-item">
           <input type="checkbox" v-model="appStore.claudeOptions.skipPermissions" />
-          <span class="option-label">Allow</span>
+          <span class="option-label">{{ t('allow') }}</span>
           <code class="option-flag warning">skip-permissions</code>
         </label>
 
         <div class="option-item text-option">
-          <span class="option-label">Custom args</span>
+          <span class="option-label">{{ t('customArgs') }}</span>
           <input type="text" v-model="appStore.claudeOptions.customArgs" placeholder="--model sonnet" />
         </div>
       </div>
@@ -107,8 +107,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSessionStore } from '@/stores/session'
 import { useAppStore } from '@/stores/app'
+
+const { t } = useI18n()
 import { alt } from '@/utils/platform'
 import SessionList from './SessionList.vue'
 import PanelHeader from '../sidebar/PanelHeader.vue'

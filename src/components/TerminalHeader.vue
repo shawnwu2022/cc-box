@@ -4,13 +4,13 @@
       <span v-if="sessionName" class="header-title">{{ sessionName }}</span>
     </div>
     <div class="header-right">
-      <button class="header-btn" @click="snapWindow('left')" :title="`Snap to left half (${ctrl}+Shift+←)`">
+      <button class="header-btn" @click="snapWindow('left')" :title="t('snapLeft', { key: ctrl + '+Shift+←' })">
         <img src="@/assets/icons/half-left.svg" alt="Snap left" />
       </button>
-      <button class="header-btn" @click="snapWindow('right')" :title="`Snap to right half (${ctrl}+Shift+→)`">
+      <button class="header-btn" @click="snapWindow('right')" :title="t('snapRight', { key: ctrl + '+Shift+→' })">
         <img src="@/assets/icons/half-right.svg" alt="Snap right" />
       </button>
-      <button class="header-btn home-btn" @click="$emit('back')" :title="`Back to projects (${ctrl}+Shift+H)`">
+      <button class="header-btn home-btn" @click="$emit('back')" :title="t('backToProjects', { key: ctrl + '+Shift+H' })">
         <img src="@/assets/icons/home.svg" alt="Home" />
       </button>
     </div>
@@ -19,9 +19,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { snapWindow } from '@/composables/useAppShortcuts'
 import { useSessionStore } from '@/stores/session'
 import { ctrl } from '@/utils/platform'
+
+const { t } = useI18n()
 
 defineProps<{
   projectName: string
