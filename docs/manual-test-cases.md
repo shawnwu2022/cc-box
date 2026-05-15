@@ -127,3 +127,304 @@
 - 快捷键分组标题为中文（应用快捷键、会话管理等）
 - 快捷键描述为中文
 - 弹窗标题为中文
+
+---
+
+## PTY 环境变量注入
+
+环境变量从 PTY 启动时注入进程，不写入 `~/.claude/settings.json`。以下测试验证注入行为、设置面板交互、与 Provider 的兼容性。
+
+### EnvVars_PtyInject_001 — 新建 Claude 终端默认环境变量已注入
+
+**目标**：验证默认的 6 个环境变量在新建 Claude 终端时正确注入
+
+**前置条件**：应用已启动，环境变量为默认值（未修改过）
+
+**操作步骤**：
+1. 选择一个项目，新建 Claude 终端
+2. 等待终端出现输入提示符
+3. 在终端中逐个输入以下命令查看值：
+   - `echo $LANG`
+   - `echo $LC_ALL`
+   - `echo $PYTHONUTF8`
+   - `echo $CLAUDE_CODE_SCROLL_SPEED`
+   - `echo $PYTHONIOENCODING`
+   - `echo $CLAUDE_CODE_NO_FLICKER`
+
+**预期结果**：
+- `LANG` → `en_US.UTF-8`
+- `LC_ALL` → `en_US.UTF-8`
+- `PYTHONUTF8` → `1`
+- `CLAUDE_CODE_SCROLL_SPEED` → `5`
+- `PYTHONIOENCODING` → `utf-8`
+- `CLAUDE_CODE_NO_FLICKER` → `1`
+
+### EnvVars_PtyInject_002 — 新建 Shell 终端环境变量已注入
+
+**目标**：验证环境变量在 Shell 终端（非 Claude）中同样注入
+
+**前置条件**：应用已启动
+
+**操作步骤**：
+1. 选择一个项目，新建 Shell 终端（通过终端标题栏的 `+` 按钮下拉选择 Shell）
+2. 在终端中输入 `echo $CLAUDE_CODE_NO_FLICKER`
+3. 输入 `echo $PYTHONUTF8`
+
+**预期结果**：
+- `CLAUDE_CODE_NO_FLICKER` → `1`
+- `PYTHONUTF8` → `1`
+
+### EnvVars_SettingsEdit_003 — 设置面板修改值后新终端生效
+
+**目标**：在设置面板修改环境变量的值，新建终端后生效
+
+**前置条件**：应用已启动
+
+**操作步骤**：
+1. 打开 Settings → Startup → Environment Variables
+2. 将 `PYTHONUTF8` 的值从 `1` 改为 `0`
+3. 关闭设置，回到终端
+4. 新建一个 Claude 终端
+5. 输入 `echo $PYTHONUTF8`
+
+**预期结果**：
+- 新终端输出 `0`
+- 已运行的终端不受影响（仍为旧值）
+
+### EnvVars_SettingsAddRemove_004 — 设置面板新增/删除环境变量
+
+**目标**：验证新增和删除环境变量后，新终端正确反映变更
+
+**前置条件**：应用已启动
+
+**操作步骤**：
+1. 打开 Settings → Startup → Environment Variables
+2. 点击 `+` 按钮，添加 `MY_TEST_VAR` = `hello`
+3. 关闭设置，新建 Claude 终端
+4. 输入 `echo $MY_TEST_VAR`
+5. 回到设置，删除 `MY_TEST_VAR` 这一行
+6. 再新建一个 Claude 终端
+7. 输入 `echo $MY_TEST_VAR`
+
+**预期结果**：
+- 第一个新终端输出 `hello`
+- 第二个新终端输出空（变量不存在）
+
+### EnvVars_SettingsRename_005 — 设置面板重命名 key
+
+**目标**：验证修改 key 名称后，旧 key 不再注入，新 key 注入
+
+**前置条件**：应用已启动
+
+**操作步骤**：
+1. 打开 Settings → Startup → Environment Variables
+2. 新增一行 `TEST_OLD_KEY` = `test_value`
+3. 关闭设置，新建终端验证 `echo $TEST_OLD_KEY` → `test_value`
+4. 回到设置，将 `TEST_OLD_KEY` 的 key 改为 `TEST_NEW_KEY`（点击 key 名编辑）
+5. 关闭设置，新建终端
+6. 输入 `echo $TEST_OLD_KEY`
+7. 输入 `echo $TEST_NEW_KEY`
+
+**预期结果**：
+- `TEST_OLD_KEY` 输出空
+- `TEST_NEW_KEY` → `test_value`
+
+### EnvVars_NoSettingsJsonWrite_006 — 不写入 ~/.claude/settings.json
+
+**目标**：验证环境变量的修改不再写入 Claude Code 的 settings.json
+
+**前置条件**：应用已启动
+
+**操作步骤**：
+1. 先记录 `~/.claude/settings.json` 当前内容（若文件存在）
+2. 在 cc-box 设置中修改 `PYTHONUTF8` 为 `0`，新增 `MY_TEST` = `val`
+3. 新建终端（触发 PTY 注入）
+4. 重新打开 `~/.claude/settings.json` 查看内容
+5. 检查 `env` 字段中是否包含 `PYTHONUTF8` 或 `MY_TEST`
+
+**预期结果**：
+- `settings.json` 的 `env` 字段中**没有** `PYTHONUTF8` 或 `MY_TEST`（如果 `env` 字段存在的话）
+- 如果之前通过旧版 cc-box 写入过这些 key，它们可能仍残留，但本次修改不会更新它们
+
+### EnvVars_ProviderNoConflict_007 — Provider 激活后环境变量仍生效
+
+**目标**：验证激活 Provider 后，cc-box 环境变量注入不受影响
+
+**前置条件**：至少配置了一个 Provider
+
+**操作步骤**：
+1. 激活一个 Provider（在 Settings → Providers 中点击「Use」）
+2. 新建 Claude 终端
+3. 输入 `echo $CLAUDE_CODE_NO_FLICKER`
+4. 输入 `echo $PYTHONUTF8`
+
+**预期结果**：
+- `CLAUDE_CODE_NO_FLICKER` → `1`
+- `PYTHONUTF8` → `1`
+- 两者均不受 Provider 激活影响（Provider 写 settings.json，cc-box 注入 PTY 进程，互不干扰）
+
+### EnvVars_PersistAcrossRestart_008 — 重启后环境变量配置保持
+
+**目标**：验证环境变量配置在重启应用后保持不变
+
+**前置条件**：应用已启动
+
+**操作步骤**：
+1. 打开 Settings → Startup → Environment Variables
+2. 新增 `PERSIST_TEST` = `survived`
+3. 关闭应用
+4. 重新启动应用
+5. 打开 Settings → Startup → Environment Variables，查看列表
+6. 新建终端，输入 `echo $PERSIST_TEST`
+
+**预期结果**：
+- 设置面板中 `PERSIST_TEST` = `survived` 仍在
+- 新终端输出 `survived`
+- `~/.cc-box/config.json` 中 `claudeEnvVars` 包含 `PERSIST_TEST`
+
+---
+
+## 应用更新
+
+### Update_OneClick_001 — 一键更新完整流程
+
+**目标**：验证有新版本时，点击"下载并安装"能完成下载→安装→重启
+
+**前置条件**：当前版本低于远程最新版本（可在 tauri.conf.json 中临时降低 version 触发）
+
+**操作步骤**：
+1. 启动应用，等待自动检查更新
+2. 观察图标栏设置图标是否出现红色角标
+3. 点击设置图标，确认自动跳转到"更新"设置页
+4. 查看新版本号、release notes 内容
+5. 点击「下载并安装」按钮
+6. 观察进度条从 0% 推进到 100%
+7. 观察状态从"下载中"变为"安装中"
+8. 等待应用自动重启
+
+**预期结果**：
+- 设置图标右上角出现红色小圆点（脉冲动画）
+- 点击设置图标直接跳转到更新 section
+- 进度条正常推进，显示百分比和已下载/总大小
+- 安装阶段显示脉冲动画文字和"将自动重启"提示
+- 应用自动重启后版本号已更新
+
+### Update_ConfirmActivePtys_002 — 有活跃 PTY 时更新确认提示
+
+**目标**：有终端在运行时点击更新，弹出确认对话框
+
+**前置条件**：应用已启动，至少有一个 Claude 终端在运行
+
+**操作步骤**：
+1. 打开一个项目，新建 Claude 终端，等待 Claude CLI 启动
+2. 设置图标应显示红色更新角标
+3. 点击设置图标进入更新页
+4. 点击「下载并安装」
+
+**预期结果**：
+- 弹出系统确认对话框，内容提示"有正在运行的终端会话，更新将重启应用并关闭所有会话"
+- 点击「取消」→ 不执行更新，停留在更新页面
+- 再次点击「下载并安装」→ 点击「确定」→ 正常进入下载流程
+
+### Update_ConfirmNoPtys_003 — 无活跃 PTY 时不弹确认
+
+**目标**：没有终端运行时点击更新，直接进入下载流程
+
+**前置条件**：应用已启动，未打开任何项目/终端
+
+**操作步骤**：
+1. 在项目选择页（或欢迎页），不打开任何终端
+2. 点击设置图标（有红色角标时）进入更新页
+3. 点击「下载并安装」
+
+**预期结果**：
+- 不弹出任何确认对话框
+- 直接进入下载进度界面
+
+### Update_ManualDownload_004 — 手动下载按钮打开 GitHub
+
+**目标**：验证"手动下载"按钮在浏览器中打开正确的 Releases 页面
+
+**前置条件**：应用已启动，检测到有新版本
+
+**操作步骤**：
+1. 进入设置 > 更新页
+2. 找到「手动下载」按钮
+3. 点击该按钮
+
+**预期结果**：
+- 系统默认浏览器打开 `https://github.com/orczh-hj/cc-box/releases`
+- 页面正常加载，能看到各版本的 Release 列表
+- 按钮样式为边框按钮（非主按钮），与"下载并安装"并排
+
+### Update_ErrorRetry_005 — 更新失败后重试
+
+**目标**：验证下载失败时显示错误信息，重试能重新下载
+
+**前置条件**：当前版本低于远程最新版本
+
+**操作步骤**：
+1. 进入更新页，点击「下载并安装」
+2. 下载过程中断开网络（或模拟网络故障）
+3. 等待下载失败
+4. 查看错误信息显示
+5. 恢复网络，点击「重试」链接
+
+**预期结果**：
+- 显示红色错误提示区域，包含具体错误信息
+- 出现「重试」链接按钮
+- 点击重试后重新开始下载流程（进度归零重新推进）
+
+### Update_UpToDate_006 — 已是最新版本时的反馈
+
+**目标**：验证没有新版本时，检查更新给出正确反馈
+
+**前置条件**：当前版本等于远程最新版本
+
+**操作步骤**：
+1. 进入设置 > 更新页
+2. 点击「检查更新」按钮
+
+**预期结果**：
+- 按钮显示旋转图标 + "检查中..."文字
+- 检查完成后显示绿色提示"已是最新版本！"
+- 不显示"下载并安装"按钮
+
+### Update_ManualDownloadI18n_007 — 更新页文本随语言切换
+
+**目标**：验证更新页所有文本随语言切换正确变化
+
+**前置条件**：应用已启动，检测到有新版本
+
+**操作步骤**：
+1. 设置 > 外观中切换为中文
+2. 进入更新页查看所有文本
+3. 切换回 English
+4. 再次查看更新页
+
+**预期结果**：
+- 中文时：软件更新、当前版本、检查更新、版本可用、更新内容、下载并安装、手动下载、已是最新版本
+- 英文时：Software Update、Current Version、Check for Updates、is available、What's New、Download & Install、Manual Download、You're up to date!
+- 有 PTY 时确认对话框文本也随语言切换
+
+---
+
+## 时间格式显示
+
+### TimeFormat_TimeAgo_001 — 会话列表时间显示正确
+
+**目标**：验证侧边栏会话列表中的相对时间文本正确
+
+**前置条件**：应用已启动，有历史会话
+
+**操作步骤**：
+1. 打开一个项目，查看侧边栏会话列表
+2. 观察 1 分钟内的会话显示"刚刚"（中文）或"Now"（英文）
+3. 观察 5 分钟前的会话显示"5 分钟前"或"5 minutes ago"
+4. 观察 2 小时前的会话显示"2 小时前"或"2 hours ago"
+5. 观察 3 天前的会话显示"3 天前"或"3 days ago"
+
+**预期结果**：
+- 时间文本随当前语言正确显示
+- 各时间段使用正确的格式（刚刚/N分钟前/N小时前/N天前）
+- 切换语言后时间文本立即更新

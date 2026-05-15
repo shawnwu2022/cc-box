@@ -159,7 +159,6 @@ pub fn run() {
             commands::get_app_path,
             commands::spawn_new_instance,
             commands::log_message,
-            commands::sync_claude_env,
             installer::get_latest_versions,
             installer::check_installed_versions,
             installer::download_and_install_claude,

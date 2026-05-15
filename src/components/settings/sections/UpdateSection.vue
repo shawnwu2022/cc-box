@@ -49,6 +49,9 @@
                 <button class="action-btn primary" @click="handleDownloadAndInstall">
                   {{ t('downloadAndInstall') }}
                 </button>
+                <button class="action-btn secondary" @click="openReleases">
+                  {{ t('manualDownload') }}
+                </button>
               </div>
             </template>
 
@@ -89,6 +92,17 @@
         </div>
       </template>
     </div>
+
+    <!-- 更新确认对话框 -->
+    <div v-if="showConfirm" class="confirm-overlay" @click.self="showConfirm = false">
+      <div class="confirm-dialog">
+        <p class="confirm-text">{{ t('updateConfirmActivePtys') }}</p>
+        <div class="confirm-actions">
+          <button class="btn-cancel" @click="showConfirm = false">{{ t('cancel') }}</button>
+          <button class="btn-primary" @click="confirmUpdate">{{ t('downloadAndInstall') }}</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -97,16 +111,20 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { check, relaunch } from '@/api/tauri'
 import { checkForUpdates } from '@/api/tauri'
+import { open } from '@tauri-apps/plugin-shell'
 import { useSidebarStore } from '@/stores/sidebar'
+import { useSessionStore } from '@/stores/session'
 import { useUpdateStore } from '@/stores/update'
 
 const { t } = useI18n()
 const sidebarStore = useSidebarStore()
+const sessionStore = useSessionStore()
 const updateStore = useUpdateStore()
 const currentVersion = __APP_VERSION__
 const checking = ref(false)
 const error = ref(false)
 const errorMessage = ref('')
+const showConfirm = ref(false)
 
 const renderedNotes = computed(() => {
   if (!updateStore.updateInfo?.releaseNotes) return ''
@@ -140,7 +158,28 @@ async function handleCheckUpdate() {
   }
 }
 
+function hasActivePtys(): boolean {
+  return sessionStore.runningTabIds.length > 0
+}
+
+function openReleases() {
+  open('https://github.com/orczh-hj/cc-box/releases')
+}
+
 async function handleDownloadAndInstall() {
+  if (hasActivePtys()) {
+    showConfirm.value = true
+    return
+  }
+  startDownload()
+}
+
+async function confirmUpdate() {
+  showConfirm.value = false
+  await startDownload()
+}
+
+async function startDownload() {
   updateStore.setDownloadState('downloading')
   updateStore.clearError()
   updateStore.setDownloadProgress({ downloaded: 0, total: 0, percent: 0 })
@@ -182,7 +221,7 @@ async function handleDownloadAndInstall() {
 
 async function handleRetry() {
   updateStore.resetDownload()
-  await handleDownloadAndInstall()
+  await startDownload()
 }
 </script>
 
@@ -372,6 +411,17 @@ async function handleRetry() {
   color: white;
 }
 
+.action-btn.secondary {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.action-btn.secondary:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
 .progress-section {
   display: flex;
   flex-direction: column;
@@ -453,5 +503,67 @@ async function handleRetry() {
   font-size: 13px;
   text-decoration: underline;
   padding: 0;
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+}
+
+.confirm-dialog {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  min-width: 320px;
+  box-shadow: var(--shadow-xl);
+}
+
+.confirm-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 0 0 20px 0;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.confirm-actions .btn-cancel {
+  padding: 7px 18px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.confirm-actions .btn-cancel:hover {
+  background: var(--hover-bg);
+}
+
+.confirm-actions .btn-primary {
+  padding: 7px 18px;
+  background: var(--accent-color);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.confirm-actions .btn-primary:hover {
+  opacity: 0.9;
 }
 </style>

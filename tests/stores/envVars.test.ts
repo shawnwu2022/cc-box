@@ -1,6 +1,6 @@
 import { setActivePinia, createPinia } from 'pinia'
 import { mockIPC } from '@tauri-apps/api/mocks'
-import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect } from 'vitest'
 import { useAppStore, DEFAULT_CLAUDE_ENV_VARS } from '@/stores/app'
 
 // 记录 invoke 调用参数
@@ -44,9 +44,11 @@ describe('resetClaudeEnvVars', () => {
     // 验证：LANG 恢复为默认值，MY_CUSTOM_VAR 保留
     expect(store.claudeEnvVars.LANG).toBe('en_US.UTF-8')
     expect(store.claudeEnvVars.MY_CUSTOM_VAR).toBe('custom_value')
-    // 验证：调用 syncClaudeEnv
+    // 验证：调用 update_app_config（不再调用 sync_claude_env）
+    const updateCall = invokeCalls.find(c => c.cmd === 'update_app_config')
+    expect(updateCall).toBeDefined()
     const syncCall = invokeCalls.find(c => c.cmd === 'sync_claude_env')
-    expect(syncCall).toBeDefined()
+    expect(syncCall).toBeUndefined()
   })
 
   // resetClaudeEnvVars 覆盖已存在的默认变量值
@@ -76,7 +78,7 @@ describe('resetClaudeEnvVars', () => {
 })
 
 describe('setClaudeEnvVars', () => {
-  // setClaudeEnvVars 更新 claudeEnvVars 并调用 syncClaudeEnv
+  // setClaudeEnvVars 更新 claudeEnvVars 并持久化到 cc-box config
   it('EnvVars_Set_001', async () => {
     const store = useAppStore()
     const newVars = {
@@ -88,26 +90,10 @@ describe('setClaudeEnvVars', () => {
     await store.setClaudeEnvVars(newVars)
 
     expect(store.claudeEnvVars).toEqual(newVars)
+    // 验证：只调用 update_app_config，不调用 sync_claude_env
+    const updateCall = invokeCalls.find(c => c.cmd === 'update_app_config')
+    expect(updateCall).toBeDefined()
     const syncCall = invokeCalls.find(c => c.cmd === 'sync_claude_env')
-    expect(syncCall).toBeDefined()
-    expect(syncCall?.args.userEnv).toEqual(newVars)
-    expect(syncCall?.args.removedKeys).toEqual([])
-  })
-
-  // setClaudeEnvVars 传递 removedKeys 到 syncClaudeEnv
-  it('EnvVars_SetWithRemoved_001', async () => {
-    const store = useAppStore()
-    const newVars = {
-      PYTHONUTF8: '1',
-    }
-    const removedKeys = ['OLD_KEY']
-    invokeCalls = []
-
-    await store.setClaudeEnvVars(newVars, removedKeys)
-
-    expect(store.claudeEnvVars).toEqual(newVars)
-    const syncCall = invokeCalls.find(c => c.cmd === 'sync_claude_env')
-    expect(syncCall).toBeDefined()
-    expect(syncCall?.args.removedKeys).toEqual(removedKeys)
+    expect(syncCall).toBeUndefined()
   })
 })

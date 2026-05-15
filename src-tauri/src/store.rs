@@ -202,59 +202,6 @@ fn get_gui_config_path() -> Result<PathBuf> {
     get_gui_config_dir().map(|d| d.join("config.json"))
 }
 
-// ==================== Claude 环境变量注入 ====================
-
-/// 将 cc-box 管理的环境变量合并写入 ~/.claude/settings.json
-/// user_env: 要写入的键值对
-/// removed_keys: 需要从 Claude settings env 中删除的 key（用户改名/删除操作产生）
-pub fn sync_claude_env(
-    user_env: std::collections::HashMap<String, String>,
-    removed_keys: Vec<String>,
-) -> Result<()> {
-    let home = dirs::home_dir().context("Home directory not found")?;
-    let settings_path = home.join(".claude").join("settings.json");
-
-    let mut settings: serde_json::Value = if settings_path.exists() {
-        let content = fs::read_to_string(&settings_path)?;
-        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
-    } else {
-        if let Some(parent) = settings_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        serde_json::json!({})
-    };
-
-    if settings.is_null() || !settings.is_object() {
-        settings = serde_json::json!({});
-    }
-    let settings_obj = settings
-        .as_object_mut()
-        .context("settings.json is not an object")?;
-
-    if !settings_obj.contains_key("env") {
-        settings_obj.insert("env".to_string(), serde_json::json!({}));
-    }
-    let env_obj = settings_obj
-        .get_mut("env")
-        .and_then(|v| v.as_object_mut())
-        .context("settings.json env is not an object")?;
-
-    // 删除不再管理的 key
-    for key in &removed_keys {
-        env_obj.remove(key);
-    }
-
-    // 写入/更新 key
-    for (key, value) in &user_env {
-        env_obj.insert(key.clone(), serde_json::Value::String(value.clone()));
-    }
-
-    let content = serde_json::to_string_pretty(&settings)?;
-    fs::write(&settings_path, content)?;
-
-    Ok(())
-}
-
 /// 扫描 ~/.claude/projects/ 构建真实路径到项目目录的映射
 /// 每个目录通过读取 JSONL 中的 cwd 字段获取真实项目路径
 fn build_project_path_mapping() -> HashMap<String, Vec<PathBuf>> {

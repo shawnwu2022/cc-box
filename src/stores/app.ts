@@ -9,7 +9,6 @@ import {
   getProjects,
   getCheckResults,
   runChecks,
-  syncClaudeEnv
 } from '@/api/tauri'
 import i18n from '@/i18n'
 
@@ -92,7 +91,7 @@ export const useAppStore = defineStore('app', () => {
         ? config.claudeEnvVars!
         : { ...DEFAULT_CLAUDE_ENV_VARS }
 
-      // 启动时写入 ~/.claude/settings.json
+      // 启动时持久化到 cc-box config
       await doSyncEnv()
 
       defaultClaudeOptions.value = {
@@ -197,16 +196,15 @@ export const useAppStore = defineStore('app', () => {
     i18n.global.locale.value = lang
   }
 
-  /** 同步当前 claudeEnvVars 到 cc-box config + ~/.claude/settings.json */
-  async function doSyncEnv(removedKeys: string[] = []) {
-    updateAppConfig({ claudeEnvVars: claudeEnvVars.value })
-    await syncClaudeEnv(claudeEnvVars.value, removedKeys)
+  /** 同步当前 claudeEnvVars 到 cc-box config */
+  async function doSyncEnv() {
+    await updateAppConfig({ claudeEnvVars: claudeEnvVars.value })
   }
 
   /** 更新环境变量并同步 */
-  async function setClaudeEnvVars(vars: Record<string, string>, removedKeys: string[] = []) {
+  async function setClaudeEnvVars(vars: Record<string, string>) {
     claudeEnvVars.value = vars
-    await doSyncEnv(removedKeys)
+    await doSyncEnv()
   }
 
   /** 将默认变量恢复为代码默认值，保留用户添加的变量 */

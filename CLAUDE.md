@@ -207,7 +207,7 @@ npm run release -- --oss-only v0.5.1
 | [docs/interaction.md](docs/interaction.md)                   | **快捷键处理架构**、三场景输入处理、DOM 捕获期监听                         |
 | [docs/capabilities.md](docs/capabilities.md)                 | **Tauri 权限管理**、查询/确认/添加 capabilities 权限的方法            |
 | [docs/data-persistence.md](docs/data-persistence.md)         | 数据存储架构、文件路径、JSON 结构                                   |
-| [docs/env-injection.md](docs/env-injection.md)               | **环境变量注入**：Claude settings env 管理、启动同步、优先级、扩展方式       |
+| [docs/env-injection.md](docs/env-injection.md)               | **环境变量注入**：PTY 启动时注入环境变量、注入顺序、扩展方式       |
 | [docs/startup-checks.md](docs/startup-checks.md)             | 启动先决条件检查、路径检测与自动保存                                    |
 | [docs/roadmap.md](docs/roadmap.md)                           | 开发路线图、进度跟踪、待办事项                                       |
 | [docs/logging.md](docs/logging.md)                           | 日志文件路径、级别策略、轮转与清理机制                                   |
@@ -228,7 +228,8 @@ npm run release -- --oss-only v0.5.1
 
 - **开发必须搭配测试**：新增功能、修改逻辑、修复 bug 时，同步编写或更新对应测试。遵循 [测试编写原则](docs/测试编写原则.md)
 - **Bug 修复必须先写测试**：修复 bug 时，先编写测试复现问题，确认测试失败，然后修复代码直至测试通过
-- **手动测试条目**：自动化测试无法覆盖的场景（如 UI 交互、视觉表现、端到端流程），必须以明确的条目形式记录到 `docs/manual-test-cases.md`，每个条目包含：测试目标、前置条件、操作步骤、预期结果
+- **自动测试优先**：能用自动测试覆盖的场景，必须写成自动测试，不要写入手动测试文档
+- **手动测试条目**：仅记录自动化测试无法覆盖的场景（如真实 PTY 进程环境、跨组件端到端交互、视觉表现），记录到 `docs/manual-test-cases.md`，每个条目包含：测试目标、前置条件、操作步骤、预期结果
 - **测试文件独立存放**：
   - 前端：项目根目录 `tests/` 文件夹，运行 `npm test`
   - 后端：`src-tauri/src/tests/` 文件夹，运行 `cd src-tauri && cargo test`

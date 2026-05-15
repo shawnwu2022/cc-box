@@ -120,7 +120,7 @@ function handleKeyChange(oldKey: string, newKeyVal: string) {
   const value = envVars[oldKey]
   delete envVars[oldKey]
   envVars[trimmed] = value
-  appStore.setClaudeEnvVars({ ...envVars }, [oldKey])
+  appStore.setClaudeEnvVars({ ...envVars })
 }
 
 function handleValueChange(key: string, val: string) {
@@ -130,7 +130,7 @@ function handleValueChange(key: string, val: string) {
 
 function handleRemove(key: string) {
   delete envVars[key]
-  appStore.setClaudeEnvVars({ ...envVars }, [key])
+  appStore.setClaudeEnvVars({ ...envVars })
 }
 
 function handleAdd() {
