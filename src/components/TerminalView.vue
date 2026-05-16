@@ -85,9 +85,6 @@ const { isFocused } = useWindowAttention()
 const isTerminalVisible = computed(() => props.visible ?? false)
 useStatusMonitor({ isFocused, isTerminalVisible })
 
-// 标记是否已启动 PTY
-let hasStartedPty = false
-
 // 空状态：当前项目没有任何 tab
 const showEmptyState = computed(() => {
   const cwd = appStore.cwd
@@ -101,6 +98,19 @@ function updateWindowTitle(cwd: string) {
   const folderName = parts[parts.length - 1] || 'CC-Box'
   getCurrentWindow().setTitle(folderName).catch(() => {})
 }
+
+async function startResumeSession(projectPath: string, sessionId: string, sessionName?: string) {
+  const tabId = sessionStore.createTab(projectPath, { sessionId, name: sessionName })
+  sessionStore.setActiveTab(tabId)
+  await nextTick()
+  if (terminalRef.value?.startTab) {
+    terminalRef.value.startTab(tabId)
+  }
+}
+
+defineExpose({
+  startResumeSession
+})
 
 // 初始化
 onMounted(async () => {
@@ -120,20 +130,12 @@ onMounted(async () => {
     // 检查是否已有该项目的运行中 Tab
     const runningTab = sessionStore.getRunningTabForProject(cwd)
 
-    if (runningTab) {
-      sessionStore.setActiveTab(runningTab.tabId)
-    } else if (appStore.pendingResume) {
-      // 从 ProjectSelectView 点击会话恢复 — 直接创建带 sessionId 和 name 的 tab
-      hasStartedPty = true
+    if (appStore.pendingResume) {
       const { sessionId, sessionName } = appStore.pendingResume
       appStore.clearPendingResume()
-      await nextTick()
-
-      const tabId = sessionStore.createTab(cwd, { sessionId, name: sessionName })
-      sessionStore.setActiveTab(tabId)
-      if (terminalRef.value?.startTab) {
-        terminalRef.value.startTab(tabId)
-      }
+      await startResumeSession(cwd, sessionId, sessionName)
+    } else if (runningTab) {
+      sessionStore.setActiveTab(runningTab.tabId)
     }
   } catch (err) {
     console.error('[TerminalView] onMounted ERROR:', err)
@@ -153,26 +155,7 @@ watch(() => props.visible, async (isVisible) => {
       updateWindowTitle(cwd)
       await nextTick()
       terminalRef.value?.fitCurrentTerminal?.()
-      sessionStore.loadHistorySessions(cwd)
       configStore.loadProjectConfig(cwd)
-
-      const runningTab = sessionStore.getRunningTabForProject(cwd)
-      if (runningTab) {
-        if (sessionStore.activeTabId !== runningTab.tabId) {
-          sessionStore.setActiveTab(runningTab.tabId)
-        }
-      } else if (appStore.pendingResume) {
-        hasStartedPty = true
-        const { sessionId, sessionName } = appStore.pendingResume
-        appStore.clearPendingResume()
-        await nextTick()
-
-        const tabId = sessionStore.createTab(cwd, { sessionId, name: sessionName })
-        sessionStore.setActiveTab(tabId)
-        if (terminalRef.value?.startTab) {
-          terminalRef.value.startTab(tabId)
-        }
-      }
     }
   }
 })
@@ -180,28 +163,11 @@ watch(() => props.visible, async (isVisible) => {
 // 监听 cwd 变化
 watch(() => appStore.cwd, async (newCwd, oldCwd) => {
   if (newCwd && newCwd !== oldCwd) {
-    hasStartedPty = false
     updateWindowTitle(newCwd)
 
     try {
       await sessionStore.loadHistorySessions(newCwd)
       configStore.loadProjectConfig(newCwd)
-
-      const runningTab = sessionStore.getRunningTabForProject(newCwd)
-      if (runningTab) {
-        sessionStore.setActiveTab(runningTab.tabId)
-      } else if (appStore.pendingResume) {
-        hasStartedPty = true
-        const { sessionId, sessionName } = appStore.pendingResume
-        appStore.clearPendingResume()
-        await nextTick()
-
-        const tabId = sessionStore.createTab(newCwd, { sessionId, name: sessionName })
-        sessionStore.setActiveTab(tabId)
-        if (terminalRef.value?.startTab) {
-          terminalRef.value.startTab(tabId)
-        }
-      }
     } catch (err) {
       console.error('[TerminalView] cwd watch ERROR:', err)
     }
@@ -283,7 +249,7 @@ function handlePtyStarted(tabId: string, _ptyId: string) {
     // 恢复历史会话时不需要重载（claimedSessionIds 已自动过滤），仅新建会话时刷新
     const tab = sessionStore.tabs.get(tabId)
     if (!tab?.isResume) {
-      sessionStore.loadHistorySessions(cwd)
+      sessionStore.loadHistorySessions(cwd, true)
     }
   }
 }

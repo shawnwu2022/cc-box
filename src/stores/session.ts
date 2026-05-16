@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, reactive } from 'vue'
 import {
-  getSessionCount,
   getSessions,
   ptyKill,
   searchSessionMessages
@@ -49,8 +48,12 @@ export const useSessionStore = defineStore('session', () => {
   // ---- State ----
   const tabs = reactive(new Map<string, TerminalTab>())
   const activeTabId = ref<string | null>(null)
-  /** 完整历史会话缓存（不含 Tab 占用的，由 computed 过滤） */
-  const allHistoryCache = ref<HistorySession[]>([])
+  /** 项目级历史会话缓存 Map */
+  const historyCacheMap = reactive(new Map<string, HistorySession[]>())
+  /** 当前展示历史会话的项目路径 */
+  const currentHistoryProject = ref<string>('')
+  /** 正在加载的项目路径（去重用） */
+  const inflightLoadProject = ref<string | null>(null)
   const searchQuery = ref<string>('')
   const isLoading = ref<boolean>(false)
   const isLoadingMore = ref<boolean>(false)
@@ -88,9 +91,10 @@ export const useSessionStore = defineStore('session', () => {
 
   /** 未被 Tab 占用的历史会话（去重 + 过滤） */
   const historySessions = computed<HistorySession[]>(() => {
+    const cached = historyCacheMap.get(currentHistoryProject.value) ?? []
     const claimed = claimedSessionIds.value
     const seen = new Set<string>()
-    return allHistoryCache.value.filter(s => {
+    return cached.filter(s => {
       if (claimed.has(s.sessionId) || seen.has(s.sessionId)) return false
       seen.add(s.sessionId)
       return true
@@ -262,20 +266,31 @@ export const useSessionStore = defineStore('session', () => {
 
   // ---- 历史会话 ----
 
+  const BATCH_SIZE = 20
+
   /**
-   * 加载历史会话（分批加载，首批立即显示）
+   * 加载历史会话（项目级缓存 + 去重 + 不提前清空）
    */
-  async function loadHistorySessions(projectPath: string) {
+  async function loadHistorySessions(projectPath: string, force = false) {
+    // 切换当前展示项目（即使还在加载中也立即切换，让 computed 指向正确项目）
+    currentHistoryProject.value = projectPath
+
+    // 缓存命中且非强制刷新，直接返回
+    if (!force && historyCacheMap.has(projectPath)) return
+    // 去重：已在加载同一项目
+    if (inflightLoadProject.value === projectPath) return
+
+    inflightLoadProject.value = projectPath
     isLoading.value = true
     isLoadingMore.value = false
-    allHistoryCache.value = []
-    try {
-      const batchSize = 20
-      const count = await getSessionCount(projectPath)
 
-      // 首批立即加载并显示
-      const firstBatch = await getSessions(projectPath, Math.min(batchSize, count), 0)
-      allHistoryCache.value = firstBatch
+    try {
+      // 请求 BATCH_SIZE + 1 条来判断是否有更多
+      const firstBatch = await getSessions(projectPath, BATCH_SIZE + 1, 0)
+      const hasMore = firstBatch.length > BATCH_SIZE
+      const firstPage = hasMore ? firstBatch.slice(0, BATCH_SIZE) : firstBatch
+
+      const mapped = firstPage
         .map(s => ({
           sessionId: s.sessionId,
           name: s.name,
@@ -283,28 +298,48 @@ export const useSessionStore = defineStore('session', () => {
           lastActiveAt: s.lastActiveAt,
         }))
         .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
+
+      // 数据就绪后才写入缓存（不提前清空）
+      historyCacheMap.set(projectPath, mapped)
       isLoading.value = false
 
-      // 如果还有更多，继续加载
-      if (count > batchSize) {
+      if (hasMore) {
         isLoadingMore.value = true
-        const remaining = await getSessions(projectPath, count - batchSize, batchSize)
-        const more = remaining
-          .map(s => ({
-            sessionId: s.sessionId,
-            name: s.name,
-            projectPath: s.projectPath,
-            lastActiveAt: s.lastActiveAt,
-          }))
-          .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
-        allHistoryCache.value = [...allHistoryCache.value, ...more]
-          .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
+        let offset = BATCH_SIZE
+        let allSessions = [...mapped]
+        while (true) {
+          const batch = await getSessions(projectPath, BATCH_SIZE, offset)
+          if (batch.length === 0) break
+          const more = batch
+            .map(s => ({
+              sessionId: s.sessionId,
+              name: s.name,
+              projectPath: s.projectPath,
+              lastActiveAt: s.lastActiveAt,
+            }))
+          allSessions = [...allSessions, ...more]
+            .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
+          offset += batch.length
+          if (batch.length < BATCH_SIZE) break
+        }
+        historyCacheMap.set(projectPath, allSessions)
         isLoadingMore.value = false
       }
     } catch (err) {
       console.error('[SessionStore] loadHistorySessions failed:', err)
       isLoading.value = false
       isLoadingMore.value = false
+    } finally {
+      inflightLoadProject.value = null
+    }
+  }
+
+  /** 清除指定项目或全部历史缓存 */
+  function invalidateHistoryCache(projectPath?: string) {
+    if (projectPath) {
+      historyCacheMap.delete(projectPath)
+    } else {
+      historyCacheMap.clear()
     }
   }
 
@@ -341,7 +376,9 @@ export const useSessionStore = defineStore('session', () => {
       try { await ptyKill(id) } catch {}
     }
     tabs.clear()
-    allHistoryCache.value = []
+    historyCacheMap.clear()
+    currentHistoryProject.value = ''
+    inflightLoadProject.value = null
   }
 
   function getProjectTabs(projectPath: string): TerminalTab[] {
@@ -386,6 +423,7 @@ export const useSessionStore = defineStore('session', () => {
 
     // History
     loadHistorySessions,
+    invalidateHistoryCache,
 
     // Search
     setSearchQuery,

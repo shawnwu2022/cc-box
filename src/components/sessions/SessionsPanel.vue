@@ -169,12 +169,6 @@ const snippetMap = computed(() => {
   return map
 })
 
-watch(() => appStore.cwd, (newCwd) => {
-  if (newCwd) {
-    sessionStore.loadHistorySessions(newCwd)
-  }
-}, { immediate: true })
-
 watch(searchQuery, (query) => {
   if (appStore.cwd) {
     sessionStore.debouncedSearchMessages(appStore.cwd, query)
@@ -183,7 +177,7 @@ watch(searchQuery, (query) => {
 
 function handleRefresh() {
   if (appStore.cwd) {
-    sessionStore.loadHistorySessions(appStore.cwd)
+    sessionStore.loadHistorySessions(appStore.cwd, true)
   }
 }
 

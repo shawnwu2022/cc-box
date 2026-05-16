@@ -54,6 +54,7 @@
 
   <!-- 终端视图常驻 DOM，保持所有 PTY 和终端实例不销毁 -->
   <TerminalView
+    ref="terminalViewRef"
     v-show="currentView === 'terminal'"
     :visible="currentView === 'terminal'"
     @back="handleBack"
@@ -80,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onUnmounted, defineAsyncComponent, nextTick } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useHookStore } from '@/stores/hook'
 import { useSessionStore } from '@/stores/session'
@@ -117,6 +118,7 @@ const updateStore = useUpdateStore()
 const { t } = useI18n()
 const { setupShortcutListeners } = useAppShortcuts()
 const currentView = ref<ViewType>('welcome')
+const terminalViewRef = ref()
 
 // 自动安装状态
 const isInstalling = ref(false)
@@ -187,9 +189,19 @@ async function handleOpenProject(path: string) {
   currentView.value = 'terminal'
   // 启动时自动加载 sidebar 数据
   sidebarStore.loadAllSidebarData(path)
+
+  // 当前激活 tab 属于该项目则保持，否则切换到运行中 Tab
+  const activeTab = sessionStore.activeTab
+  if (activeTab && activeTab.projectPath === path) return
+
+  await nextTick()
+  const runningTab = sessionStore.getRunningTabForProject(path)
+  if (runningTab) {
+    sessionStore.setActiveTab(runningTab.tabId)
+  }
 }
 
-function handleResumeSession(projectPath: string, sessionId: string, sessionName?: string) {
+async function handleResumeSession(projectPath: string, sessionId: string, sessionName?: string) {
   appStore.setCwd(projectPath)
 
   // 如果该 session 已在运行，直接切换到对应 tab
@@ -201,10 +213,18 @@ function handleResumeSession(projectPath: string, sessionId: string, sessionName
     return
   }
 
-  appStore.setClaudeOptions({ resume: sessionId })
-  appStore.setPendingResume(sessionId, sessionName)
   currentView.value = 'terminal'
   sidebarStore.loadAllSidebarData(projectPath)
+
+  // 直接调用 TerminalView 方法恢复会话（不再依赖 watch）
+  await nextTick()
+  if (terminalViewRef.value?.startResumeSession) {
+    terminalViewRef.value.startResumeSession(projectPath, sessionId, sessionName)
+  } else {
+    // 异步组件尚未加载的 fallback
+    appStore.setClaudeOptions({ resume: sessionId })
+    appStore.setPendingResume(sessionId, sessionName)
+  }
 }
 
 function handleBack() {
