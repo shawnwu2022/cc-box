@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.9.2] - 2026-05-17
+
+### Features
+- Add always-on-top toggle with pin button in terminal header (Ctrl+Shift+T / Cmd+Shift+T)
+
 ## [0.9.1] - 2026-05-16
 
 ### Fixed
