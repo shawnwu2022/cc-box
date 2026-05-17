@@ -53,6 +53,7 @@ const groups = computed(() => [
       { key: `${cmd}+Shift+H`, desc: t('shortcut_toggleHome') },
       { key: `${cmd}+Shift+/`, desc: t('shortcut_showShortcuts') },
       { key: `${cmd}+Shift+S`, desc: t('shortcut_toggleSessions') },
+      { key: `${cmd}+Shift+T`, desc: t('shortcut_toggleAlwaysOnTop') },
       { key: `${cmd},`, desc: t('shortcut_toggleSettings') },
       { key: `${cmd}+Plus / −`, desc: t('shortcut_fontSize') },
       { key: `${cmd}+0`, desc: t('shortcut_resetFontSize') },

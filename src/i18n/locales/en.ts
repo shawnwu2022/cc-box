@@ -95,6 +95,7 @@ export default {
   shortcut_toggleHome: 'Toggle home / terminal',
   shortcut_showShortcuts: 'Show keyboard shortcuts',
   shortcut_toggleSessions: 'Toggle sessions panel',
+  shortcut_toggleAlwaysOnTop: 'Toggle always on top',
   shortcut_toggleSettings: 'Toggle settings',
   shortcut_fontSize: 'Increase / decrease font size',
   shortcut_resetFontSize: 'Reset font size',
@@ -179,6 +180,7 @@ export default {
   newSession: 'New Session',
   snapLeft: 'Snap to left half ({key})',
   snapRight: 'Snap to right half ({key})',
+  toggleAlwaysOnTop: 'Always on top ({key})',
   backToProjects: 'Back to projects ({key})',
 
   // IconBar

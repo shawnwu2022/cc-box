@@ -95,6 +95,7 @@ export default {
   shortcut_toggleHome: '切换主页/终端',
   shortcut_showShortcuts: '显示快捷键',
   shortcut_toggleSessions: '切换会话面板',
+  shortcut_toggleAlwaysOnTop: '切换窗口置顶',
   shortcut_toggleSettings: '切换设置',
   shortcut_fontSize: '增大/减小字体大小',
   shortcut_resetFontSize: '重置字体大小',
@@ -179,6 +180,7 @@ export default {
   newSession: '新会话',
   snapLeft: '吸附到左半屏 ({key})',
   snapRight: '吸附到右半屏 ({key})',
+  toggleAlwaysOnTop: '置顶窗口 ({key})',
   backToProjects: '返回项目列表 ({key})',
 
   // IconBar

@@ -164,6 +164,14 @@ export function useAppShortcuts() {
       return
     }
 
+    // Mod + Shift + T => toggle always on top
+    if (mod && e.shiftKey && e.code === 'KeyT') {
+      e.preventDefault()
+      e.stopPropagation()
+      appStore.toggleAlwaysOnTop()
+      return
+    }
+
     // --- 会话与标签管理（全局生效） ---
 
     // Alt+N => new session

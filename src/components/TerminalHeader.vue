@@ -4,6 +4,10 @@
       <span v-if="sessionName" class="header-title">{{ sessionName }}</span>
     </div>
     <div class="header-right">
+      <button class="header-btn" :class="{ active: appStore.alwaysOnTop }" @click="appStore.toggleAlwaysOnTop()" :title="t('toggleAlwaysOnTop', { key: cmd + '+Shift+T' })">
+        <img v-if="appStore.alwaysOnTop" src="@/assets/icons/pin-active.svg" alt="Pin" />
+        <img v-else src="@/assets/icons/pin.svg" alt="Pin" />
+      </button>
       <button class="header-btn" @click="snapWindow('left')" :title="t('snapLeft', { key: ctrl + '+Shift+←' })">
         <img src="@/assets/icons/half-left.svg" alt="Snap left" />
       </button>
@@ -22,7 +26,8 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { snapWindow } from '@/composables/useAppShortcuts'
 import { useSessionStore } from '@/stores/session'
-import { ctrl } from '@/utils/platform'
+import { useAppStore } from '@/stores/app'
+import { ctrl, cmd } from '@/utils/platform'
 
 const { t } = useI18n()
 
@@ -36,6 +41,7 @@ defineEmits<{
 }>()
 
 const sessionStore = useSessionStore()
+const appStore = useAppStore()
 
 const sessionName = computed(() => sessionStore.activeTab?.name || '')
 </script>
@@ -97,5 +103,9 @@ const sessionName = computed(() => sessionStore.activeTab?.name || '')
 .header-btn:hover {
   background: var(--hover-bg);
   color: var(--text-primary);
+}
+
+.header-btn.active {
+  color: var(--accent-color);
 }
 </style>

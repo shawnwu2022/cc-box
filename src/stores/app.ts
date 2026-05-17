@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
   getAppConfig,
   updateAppConfig,
@@ -38,6 +39,7 @@ export const useAppStore = defineStore('app', () => {
   const theme = ref<string>('light')
   const fontSize = ref<number>(12)
   const language = ref<string>('en')
+  const alwaysOnTop = ref<boolean>(false)
   const claudeEnvVars = ref<Record<string, string>>({})
 
   // 启动控制
@@ -280,6 +282,17 @@ export const useAppStore = defineStore('app', () => {
     shouldAutoOpenSessions.value = val
   }
 
+  async function toggleAlwaysOnTop() {
+    try {
+      const win = getCurrentWindow()
+      const newState = !alwaysOnTop.value
+      await win.setAlwaysOnTop(newState)
+      alwaysOnTop.value = newState
+    } catch (err) {
+      console.error('Failed to toggle always on top:', err)
+    }
+  }
+
   return {
     cwd,
     theme,
@@ -320,6 +333,8 @@ export const useAppStore = defineStore('app', () => {
     getClaudeArgs,
     setPendingResume,
     clearPendingResume,
-    setAutoOpenSessions
+    setAutoOpenSessions,
+    alwaysOnTop,
+    toggleAlwaysOnTop
   }
 })
