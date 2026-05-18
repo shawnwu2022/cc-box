@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3] - 2026-05-18
+
+### Fixed
+- Fix working status not restoring after permission grant or plan confirmation
+- Add missing always-on-top shortcut in settings shortcuts section
+- Remove unused ShortcutsModal component
+
 ## [0.9.2] - 2026-05-17
 
 ### Features

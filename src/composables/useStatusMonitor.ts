@@ -7,11 +7,25 @@ import type { HookEventPayload } from '@/types/hook'
 const STATUS_EVENTS: HookEventType[] = [
   'sessionStart',
   'userPromptSubmit',
+  'preToolUse',
+  'postToolUse',
+  'postToolUseFailure',
+  'subagentStart',
+  'subagentStop',
   'stop',
   'stopFailure',
   'notification',
   'sessionEnd',
 ]
+
+/** 表示 Claude 正在主动工作的事件 */
+const ACTIVITY_EVENTS: Set<HookEventType> = new Set([
+  'preToolUse',
+  'postToolUse',
+  'postToolUseFailure',
+  'subagentStart',
+  'subagentStop',
+])
 
 export function useStatusMonitor(options: { isFocused: Ref<boolean>; isTerminalVisible: Ref<boolean> }) {
   const hookStore = useHookStore()
@@ -45,6 +59,13 @@ export function useStatusMonitor(options: { isFocused: Ref<boolean>; isTerminalV
           sessionStore.updateTabName(tab.tabId, prompt.length > 50 ? prompt.slice(0, 50) + '…' : prompt)
         }
       }
+      return
+    }
+
+    // 活跃事件（工具使用/子代理）→ 恢复 working 状态
+    if (ACTIVITY_EVENTS.has(payload.detail.type)) {
+      tab.working = true
+      tab.pending = false
       return
     }
 
