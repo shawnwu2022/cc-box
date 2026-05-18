@@ -428,3 +428,142 @@
 - 时间文本随当前语言正确显示
 - 各时间段使用正确的格式（刚刚/N分钟前/N小时前/N天前）
 - 切换语言后时间文本立即更新
+
+---
+
+## 资源管理器右键菜单
+
+### ContextMenu_FolderRightClick_001 — 右键文件夹显示"使用 CC-Box 打开"
+
+**目标**：验证在 Windows 资源管理器中右键文件夹时出现"使用 CC-Box 打开"菜单项
+
+**前置条件**：CC-Box 已通过 NSIS 安装包安装（非 portable/开发模式）
+
+**操作步骤**：
+1. 打开 Windows 资源管理器
+2. 右键点击任意文件夹
+
+**预期结果**：
+- 右键菜单中出现"使用 CC-Box 打开"
+- 菜单项左侧显示 CC-Box 图标
+
+### ContextMenu_BackgroundRightClick_002 — 右键空白处显示"在此处打开 CC-Box"
+
+**目标**：验证在文件夹内空白区域右键时出现"在此处打开 CC-Box"菜单项
+
+**前置条件**：CC-Box 已通过 NSIS 安装包安装
+
+**操作步骤**：
+1. 打开 Windows 资源管理器
+2. 进入一个文件夹（如 `D:\projects`）
+3. 在文件列表的空白区域右键
+
+**预期结果**：
+- 右键菜单中出现"在此处打开 CC-Box"
+- 菜单项左侧显示 CC-Box 图标
+
+### ContextMenu_OpenExistingProject_003 — 右键打开已有项目
+
+**目标**：右键点击一个 CC-Box 中已有缓存的项目文件夹，CC-Box 启动后直接打开该项目
+
+**前置条件**：CC-Box 已安装，`~/.claude/projects/` 中存在该项目的会话记录
+
+**操作步骤**：
+1. 确认 CC-Box 未运行
+2. 在资源管理器中右键一个之前使用过的项目文件夹
+3. 点击"使用 CC-Box 打开"
+4. 等待 CC-Box 启动
+
+**预期结果**：
+- CC-Box 启动后直接进入终端视图（不显示欢迎页或项目选择页）
+- 终端工作目录为右键点击的文件夹
+- 侧边栏显示该项目的会话数据
+
+### ContextMenu_OpenNewProject_004 — 右键打开新项目
+
+**目标**：右键点击一个 CC-Box 中没有缓存记录的文件夹，作为新项目打开
+
+**前置条件**：CC-Box 已安装，目标文件夹不在 `~/.claude/projects/` 中
+
+**操作步骤**：
+1. 确认 CC-Box 未运行
+2. 创建一个新文件夹（如 `D:\test-new-project`）
+3. 右键该文件夹，点击"使用 CC-Box 打开"
+4. 等待 CC-Box 启动
+
+**预期结果**：
+- CC-Box 启动后直接进入终端视图
+- 终端工作目录为 `D:\test-new-project`
+- Claude CLI 在该目录下启动新会话（不尝试 resume）
+
+### ContextMenu_PathWithSpaces_005 — 路径含空格时正确打开
+
+**目标**：验证路径中包含空格时右键菜单能正确传递目录
+
+**前置条件**：CC-Box 已安装
+
+**操作步骤**：
+1. 创建一个名称含空格的文件夹（如 `D:\My Projects\web app`）
+2. 右键该文件夹，点击"使用 CC-Box 打开"
+
+**预期结果**：
+- CC-Box 启动后工作目录为 `D:\My Projects\web app`
+- 路径完整无误，未截断
+
+### ContextMenu_ChinesePath_006 — 中文路径正确打开
+
+**目标**：验证路径中包含中文字符时右键菜单能正确传递目录
+
+**前置条件**：CC-Box 已安装
+
+**操作步骤**：
+1. 创建一个中文名称的文件夹（如 `D:\项目\前端开发`）
+2. 右键该文件夹，点击"使用 CC-Box 打开"
+
+**预期结果**：
+- CC-Box 启动后工作目录为中文路径
+- Claude CLI 正常启动，路径无乱码
+
+### ContextMenu_UninstallCleanup_007 — 卸载后右键菜单项消失
+
+**目标**：验证通过 NSIS 卸载 CC-Box 后，右键菜单项被清除
+
+**前置条件**：CC-Box 已安装且右键菜单正常工作
+
+**操作步骤**：
+1. 通过系统"设置 > 应用"或卸载程序卸载 CC-Box
+2. 在资源管理器中右键文件夹
+3. 在文件夹空白区域右键
+
+**预期结果**：
+- 右键菜单中不再出现"使用 CC-Box 打开"和"在此处打开 CC-Box"
+- 注册表 `HKCU\Software\Classes\Directory\shell\cc-box` 和 `HKCU\Software\Classes\Directory\Background\shell\cc-box` 不存在
+
+### ContextMenu_BackgroundDir_008 — 右键空白处传入当前目录
+
+**目标**：验证右键文件夹空白处时，传入的是当前目录而非空值
+
+**前置条件**：CC-Box 已安装
+
+**操作步骤**：
+1. 在资源管理器中进入 `D:\projects\my-app` 目录
+2. 在文件列表空白区域右键
+3. 点击"在此处打开 CC-Box"
+
+**预期结果**：
+- CC-Box 启动后工作目录为 `D:\projects\my-app`
+- 不是父目录 `D:\projects`
+
+### ContextMenu_CliDirectInvoke_009 — 命令行直接传入目录路径
+
+**目标**：验证通过命令行直接调用 `cc-box.exe <dir>` 也能正确打开（无需右键菜单）
+
+**前置条件**：CC-Box 已安装，`cc-box.exe` 在 PATH 中或使用完整路径
+
+**操作步骤**：
+1. 打开命令提示符或 PowerShell
+2. 执行 `"C:\Program Files\CC-Box\cc-box.exe" "D:\projects\test"`
+
+**预期结果**：
+- CC-Box 启动后工作目录为 `D:\projects\test`
+- 行为与右键菜单打开一致

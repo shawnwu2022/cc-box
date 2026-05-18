@@ -13,6 +13,7 @@ mod providers;
 mod tests;
 
 use tauri::Manager;
+use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri::menu::MenuBuilder;
 
@@ -50,7 +51,7 @@ pub fn rerun_checks() -> Vec<checks::CheckResult> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+pub fn run(initial_dir: Option<String>) {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -122,7 +123,13 @@ pub fn run() {
                     log::warn!("Failed to create plugin files: {}. Hook monitoring may not work.", e);
                 }
                 // Hook HTTP 服务器
-                hook_server::init(handle).await;
+                hook_server::init(handle.clone()).await;
+
+                // 如果通过命令行参数传入了目录（右键菜单打开），延迟 emit 事件给前端
+                if let Some(dir) = initial_dir {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    let _ = handle.emit("open-directory", dir);
+                }
             });
 
             Ok(())

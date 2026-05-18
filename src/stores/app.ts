@@ -167,6 +167,13 @@ export const useAppStore = defineStore('app', () => {
     })
   }
 
+  /** 检查路径是否为已知项目（归一化后匹配 cachedProjects） */
+  function isKnownProject(projectPath: string): boolean {
+    const normalize = (p: string) => p.replace(/\\/g, '/').toLowerCase()
+    const normalized = normalize(projectPath)
+    return cachedProjects.value.some(p => normalize(p.path) === normalized)
+  }
+
   function refreshRecentSessions(sessions: SessionInfo[]) {
     cachedRecentSessions.value = sessions
   }
@@ -319,6 +326,7 @@ export const useAppStore = defineStore('app', () => {
     loadMoreProjects,
     refreshCache,
     ensureProjectInList,
+    isKnownProject,
     refreshRecentSessions,
     setCwd,
     setTheme,

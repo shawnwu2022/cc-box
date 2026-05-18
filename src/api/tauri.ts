@@ -306,3 +306,7 @@ export const downloadAndInstallGit = (): Promise<void> =>
 
 export const onInstallProgress = (callback: (progress: InstallProgress) => void): Promise<Unlisten> =>
   listen<InstallProgress>('download-progress', (event) => callback(event.payload));
+
+// 右键菜单打开目录
+export const onOpenDirectory = (callback: (dir: string) => void): Promise<Unlisten> =>
+  listen<string>('open-directory', (event) => callback(event.payload));

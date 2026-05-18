@@ -99,7 +99,8 @@ import {
   checkForUpdates,
   downloadAndInstallClaude,
   downloadAndInstallGit,
-  onInstallProgress
+  onInstallProgress,
+  onOpenDirectory
 } from '@/api/tauri'
 import { useAppShortcuts } from '@/composables/useAppShortcuts'
 import WelcomeView from '@/components/WelcomeView.vue'
@@ -134,6 +135,7 @@ interface InstallTask {
 const installTasks = ref<InstallTask[]>([])
 
 let unlistenInstallProgress: (() => void) | null = null
+let unlistenOpenDir: (() => void) | null = null
 
 // Unlisten functions for cleanup
 let unlistenSettings: (() => void) | null = null
@@ -157,6 +159,7 @@ onUnmounted(() => {
   unlistenFontSize?.()
   unlistenRestart?.()
   unlistenInstallProgress?.()
+  unlistenOpenDir?.()
   shortcutUnlisteners.forEach(fn => fn())
   window.removeEventListener('app:toggleHome', handleToggleHome)
 })
@@ -288,6 +291,18 @@ function initAfterChecks() {
       updateStore.setUpdateInfo(info)
     }
   }).catch(() => {})
+
+  // 监听右键菜单传入的目录
+  onOpenDirectory((dir) => {
+    if (appStore.isKnownProject(dir)) {
+      handleOpenProject(dir)
+    } else {
+      appStore.setCwd(dir)
+      appStore.setClaudeOptions({ resume: '' })
+      currentView.value = 'terminal'
+      sidebarStore.loadAllSidebarData(dir)
+    }
+  }).then(fn => { unlistenOpenDir = fn })
 }
 
 // 自动安装（并发执行）
