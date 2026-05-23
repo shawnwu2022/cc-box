@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.6] - 2026-05-23
+
+### Fixed
+- Fix macOS terminal blank content caused by non-monospace CJK font in xterm fontFamily
+- Fix macOS update relaunch blocked by ACL (add process plugin permission)
+- Fix macOS ARM64 auto-update platform key (darwin-aarch64)
+
 ## [0.10.5] - 2026-05-23
 
 ### Fixed
