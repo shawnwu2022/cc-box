@@ -422,6 +422,10 @@ function generateLatestJson({ version, releaseNotes, files, bucketName, endpoint
   const linuxFile = files.find(f => /\.AppImage$/i.test(f.name))
   const linuxSigFile = files.find(f => /\.AppImage\.sig$/i.test(f.name))
 
+  // 从 DMG 文件名推断 macOS 架构（Tauri 构建的 tar.gz 不含架构信息）
+  const macArch = macDmgFile?.name?.includes('aarch64') ? 'aarch64' : 'x86_64'
+  const macPlatformKey = `darwin-${macArch}`
+
   const versionWithoutV = version.replace(/^v/, '')
   const makeUrl = (file) => `https://${bucketName}.${endpoint}/cc-box/${version}/${file?.name || ''}`
 
@@ -435,7 +439,7 @@ function generateLatestJson({ version, releaseNotes, files, bucketName, endpoint
         signature: readFileContent(winSigFile?.path),
         url: makeUrl(winFile)
       },
-      "darwin-x86_64": {
+      [macPlatformKey]: {
         signature: readFileContent(macTarGzSigFile?.path),
         url: makeUrl(macTarGzFile)
       },
