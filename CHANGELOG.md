@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.10.5] - 2026-05-23
+
+### Fixed
+- Fix macOS update relaunch blocked by ACL (add process plugin permission)
+- Fix macOS ARM64 platform key in auto-update (darwin-aarch64 instead of darwin-x86_64)
+
 ## [0.10.4] - 2026-05-23
 
 ### Fixed
