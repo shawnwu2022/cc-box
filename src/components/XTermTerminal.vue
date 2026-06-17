@@ -33,6 +33,7 @@ import {
   logMessage,
 } from '@/api/tauri'
 import { registerTerminalCommand } from '@/composables/useTerminalCommand'
+import { safeDispose } from '@/utils/dispose'
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
@@ -555,10 +556,10 @@ async function restartTab(tabId: string) {
       hookStore.clearSession(tab.ptyId)
     }
 
-    // 清理旧 Terminal 实例
+    // 清理旧 Terminal 实例（dispose 失败不阻断重启流程，仍需清理 Map 引用）
     const oldInstance = terminalInstances.get(tabId)
     if (oldInstance) {
-      oldInstance.term.dispose()
+      await safeDispose(oldInstance.term, `restartTab(old term, tabId=${tabId})`)
       terminalInstances.delete(tabId)
       terminalEls.delete(tabId)
     }
@@ -660,8 +661,8 @@ async function startNewSession(cwd: string) {
 
 // 清理所有 PTY
 async function cleanup() {
-  for (const instance of terminalInstances.values()) {
-    instance.term.dispose()
+  for (const [tabId, instance] of terminalInstances.entries()) {
+    await safeDispose(instance.term, `cleanup(tabId=${tabId})`)
   }
   terminalInstances.clear()
   terminalEls.clear()
@@ -702,8 +703,8 @@ onUnmounted(() => {
   unlistenPtyExit?.()
   unlistenDragDrop?.()
   unlistenWindowResized?.()
-  for (const instance of terminalInstances.values()) {
-    instance.term.dispose()
+  for (const [tabId, instance] of terminalInstances.entries()) {
+    void safeDispose(instance.term, `onUnmounted(tabId=${tabId})`)
   }
 })
 
