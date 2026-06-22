@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.12.2] - 2026-06-22
+
+### Fixed
+- Fix terminal mojibake: PTY output now decodes via UTF-8 with GBK fallback, resolving black-block (U+FFFD) garble from Windows Chinese subprocesses (cmd.exe, git)
+
 ## [0.12.1] - 2026-06-17
 
 ### Fixed

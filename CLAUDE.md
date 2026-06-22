@@ -101,7 +101,7 @@ xterm.js ←→ Tauri invoke/listen ←→ pty.rs (Rust) ←→ portable-pty ←
 ```
 
 - 用户输入 → `onData` → `invoke('pty_input')` → PTY writer → Claude CLI
-- CLI 输出 → PTY reader → `emit('pty-output')` → `term.write()` → xterm.js
+- CLI 输出 → PTY reader → `decode_output()`（UTF-8 优先，失败回退 GBK，兼容 Windows 中文子进程）→ `emit('pty-output')` → `term.write()` → xterm.js
 
 ### Hook 监控数据流
 

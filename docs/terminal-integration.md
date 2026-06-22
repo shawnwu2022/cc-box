@@ -79,9 +79,20 @@ PTY 启动时优先从配置读取，无值时检测并保存。
 ### 数据流
 
 ```
-PTY reader → emit('pty-output', { id, data }) → frontend
+PTY reader → utf8_complete_boundary() 截断保护 → decode_output()（UTF-8 优先，失败回退 GBK）→ emit('pty-output', { id, data }) → frontend
 PTY exit → emit('pty-exit', { id, exit_code }) → frontend
 ```
+
+**输出编码处理**（`src-tauri/src/pty.rs::read_output_loop`）：
+
+PTY 是字节流，子进程可能输出 UTF-8 或 GBK（Windows 中文 cmd.exe、某些 git 输出）。处理流程：
+
+1. `reader.read()` 读到 `[u8; 4096]` 缓冲区，追加到 `carry: Vec<u8>`
+2. `utf8_complete_boundary(&carry)` 从末尾扫描续字节，找到最后一个完整 UTF-8 序列的边界，避免多字节字符跨 chunk 被切断（也对部分 GBK 前导字节巧合生效）
+3. `decode_output(&carry)`（`src-tauri/src/platform.rs:117`）解码：UTF-8 优先，失败时回退 GBK，避免 `String::from_utf8_lossy` 把 GBK 字节替换为 `U+FFFD` 导致乱码
+4. emit `PtyOutputPayload { id, data: String }` 到前端
+
+历史教训：曾长期使用 `String::from_utf8_lossy`，导致 Windows 中文子进程输出的 GBK 字节变成黑色方块乱码。回归测试：`src-tauri/src/tests/pty.rs::PtyDecode_*`。
 
 ## IPC 通道 (Tauri Commands)
 

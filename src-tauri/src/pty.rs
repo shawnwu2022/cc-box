@@ -365,7 +365,8 @@ impl PtyManager {
                 Ok(0) => {
                     // 刷出残留字节后退出
                     if !carry.is_empty() {
-                        let output = String::from_utf8_lossy(&carry).to_string();
+                        // UTF-8 优先，失败回退 GBK（Windows 中文子进程兼容）
+                        let output = crate::platform::decode_output(&carry);
                         let _ = app_handle.emit(
                             "pty-output",
                             PtyOutputPayload {
@@ -397,7 +398,8 @@ impl PtyManager {
                     }
 
                     let remaining = carry.split_off(boundary);
-                    let output = String::from_utf8_lossy(&carry).to_string();
+                    // UTF-8 优先，失败回退 GBK（Windows 中文子进程兼容）
+                    let output = crate::platform::decode_output(&carry);
                     carry = remaining;
 
                     let _ = app_handle.emit(
