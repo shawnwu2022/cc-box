@@ -43,6 +43,41 @@ fn DecodeOutput_Mixed_001() {
     assert_eq!(result, "hello 你好 world 世界");
 }
 
+// UTF-8 中文 + GBK 中文混合：两段各自正确解码（核心新场景，防止整体 GBK 回退污染）
+#[test]
+fn DecodeOutput_MixedUtf8Gbk_001() {
+    let mut bytes = "前".as_bytes().to_vec(); // UTF-8: E5 89 8D
+    let (gbk_cow, _, _) = encoding_rs::GBK.encode("后");
+    bytes.extend_from_slice(&gbk_cow); // GBK: BA F3
+    let result = decode_output(&bytes);
+    assert_eq!(result, "前后");
+}
+
+// GBK 编码字节全平台正确解码（不再限定 Windows，新实现统一处理）
+#[test]
+fn DecodeOutput_Gbk_AnyPlatform_001() {
+    let (cow, _, _) = encoding_rs::GBK.encode("你好");
+    let gbk_bytes = cow.into_owned();
+    let result = decode_output(&gbk_bytes);
+    assert_eq!(result, "你好");
+}
+
+// 孤立非法字节（0x80）被 U+FFFD 替换，前后 ASCII 不被 GBK 污染
+#[test]
+fn DecodeOutput_IsolatedInvalid_001() {
+    let bytes = [b'A', 0x80, b'B'];
+    let result = decode_output(&bytes);
+    assert_eq!(result, "A\u{FFFD}B");
+}
+
+// 4 字节 UTF-8 emoji 正确解码（验证多字节 UTF-8 路径）
+#[test]
+fn DecodeOutput_FourByteUtf8_001() {
+    let bytes = "🎉".as_bytes();
+    let result = decode_output(bytes);
+    assert_eq!(result, "🎉");
+}
+
 // ---- configure_command / new_command ----
 
 // new_command 返回的 Command 包含正确的 program

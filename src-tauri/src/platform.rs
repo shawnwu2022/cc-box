@@ -111,20 +111,72 @@ fn run_locate(name: &str) -> Option<std::process::Output> {
 
 /// 解码子进程输出为 UTF-8 字符串
 ///
-/// Windows 上 cmd.exe 输出使用系统 OEM 代码页（中文系统为 GBK），
-/// 先尝试 UTF-8，失败后回退 GBK。Unix 上使用 from_utf8_lossy。
-#[cfg(target_os = "windows")]
+/// 贪心扫描：每个位置优先尝试 UTF-8 多字节序列，失败再尝试 GBK 双字节，
+/// 都不合法才用 U+FFFD 替换。这样 UTF-8 与 GBK 混合输出（如 Claude CLI
+/// UTF-8 + Windows cmd.exe GBK）能各自正确解码，互不污染。
+/// 全平台统一实现（GBK 在 Unix 也无害，UTF-8 字节流不会被误判）。
 pub(crate) fn decode_output(bytes: &[u8]) -> String {
-    if let Ok(s) = String::from_utf8(bytes.to_vec()) {
-        return s;
+    let mut result = String::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+
+        // ASCII 快速路径
+        if b < 0x80 {
+            result.push(b as char);
+            i += 1;
+            continue;
+        }
+
+        // 多字节 UTF-8 前导？尝试按 UTF-8 解码
+        let utf8_len = utf8_expected_len(b);
+        if utf8_len >= 2
+            && i + utf8_len <= bytes.len()
+            && std::str::from_utf8(&bytes[i..i + utf8_len]).is_ok()
+        {
+            // SAFETY: 已通过 from_utf8 校验
+            let s = std::str::from_utf8(&bytes[i..i + utf8_len]).unwrap();
+            result.push_str(s);
+            i += utf8_len;
+            continue;
+        }
+
+        // UTF-8 不合法，尝试 GBK 双字节
+        if i + 2 <= bytes.len() && is_gbk_lead(b) && is_gbk_trail(bytes[i + 1]) {
+            let (cow, _, _) = encoding_rs::GBK.decode(&bytes[i..i + 2]);
+            result.push_str(&cow);
+            i += 2;
+            continue;
+        }
+
+        // 兜底：单字节替换为 U+FFFD
+        result.push('\u{FFFD}');
+        i += 1;
     }
-    let (cow, _, _) = encoding_rs::GBK.decode(bytes);
-    cow.into_owned()
+    result
 }
 
-#[cfg(not(target_os = "windows"))]
-pub(crate) fn decode_output(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).to_string()
+/// 根据 UTF-8 前导字节判断序列期望长度（0 表示非前导：续字节或非法字节）
+fn utf8_expected_len(byte: u8) -> usize {
+    if byte & 0xE0 == 0xC0 {
+        2
+    } else if byte & 0xF0 == 0xE0 {
+        3
+    } else if byte & 0xF8 == 0xF0 {
+        4
+    } else {
+        0
+    }
+}
+
+/// GBK 双字节字符的首字节范围
+fn is_gbk_lead(b: u8) -> bool {
+    (0x81..=0xFE).contains(&b)
+}
+
+/// GBK 双字节字符的次字节范围
+fn is_gbk_trail(b: u8) -> bool {
+    (0x40..=0x7E).contains(&b) || (0x80..=0xFE).contains(&b)
 }
 
 // ---- 4. 文件管理器 ----
