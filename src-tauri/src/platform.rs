@@ -157,7 +157,7 @@ pub(crate) fn decode_output(bytes: &[u8]) -> String {
 }
 
 /// 根据 UTF-8 前导字节判断序列期望长度（0 表示非前导：续字节或非法字节）
-fn utf8_expected_len(byte: u8) -> usize {
+pub(crate) fn utf8_expected_len(byte: u8) -> usize {
     if byte & 0xE0 == 0xC0 {
         2
     } else if byte & 0xF0 == 0xE0 {
@@ -170,12 +170,12 @@ fn utf8_expected_len(byte: u8) -> usize {
 }
 
 /// GBK 双字节字符的首字节范围
-fn is_gbk_lead(b: u8) -> bool {
+pub(crate) fn is_gbk_lead(b: u8) -> bool {
     (0x81..=0xFE).contains(&b)
 }
 
 /// GBK 双字节字符的次字节范围
-fn is_gbk_trail(b: u8) -> bool {
+pub(crate) fn is_gbk_trail(b: u8) -> bool {
     (0x40..=0x7E).contains(&b) || (0x80..=0xFE).contains(&b)
 }
 

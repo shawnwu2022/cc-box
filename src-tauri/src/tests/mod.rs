@@ -9,6 +9,8 @@ mod checks;
 #[cfg(test)]
 mod pty;
 #[cfg(test)]
+mod pty_decoder;
+#[cfg(test)]
 mod mcp;
 #[cfg(test)]
 mod env;

@@ -1,4 +1,5 @@
 mod pty;
+mod pty_decoder;
 mod commands;
 mod store;
 mod checks;
