@@ -735,7 +735,6 @@ defineExpose({
 .xterm-container {
   width: 100%;
   height: 100%;
-  padding: 8px;
   box-sizing: border-box;
   background: var(--terminal-bg);
   border-radius: 8px;
@@ -754,7 +753,7 @@ defineExpose({
   left: 0;
   width: 100%;
   height: 100%;
-  padding: 12px;
+  padding: 0 12px;
   box-sizing: border-box;
   display: none;
 }
@@ -764,9 +763,7 @@ defineExpose({
 }
 
 .terminal-wrapper :deep(.xterm) {
-  /* 减少 6px：让 fit 计算的 clientHeight 比实际容器小，
-     floor 后的行数留出最后一行的渲染余量，避免被 viewport 裁掉 */
-  height: calc(100% - 6px);
+  height: 100%;
 }
 
 .terminal-wrapper :deep(.xterm-viewport) {
