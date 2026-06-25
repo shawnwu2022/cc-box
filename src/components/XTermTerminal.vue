@@ -17,6 +17,7 @@ import { ref, reactive, watch, onMounted, onUnmounted, nextTick, type ComponentP
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { debounce } from 'lodash-es'
 import '@xterm/xterm/css/xterm.css'
 import { useAppStore } from '@/stores/app'
@@ -173,7 +174,7 @@ function setTerminalEl(tabId: string, el: HTMLElement | null) {
     const instance = terminalInstances.get(tabId)
     if (instance && !instance.term.element) {
       instance.term.open(el)
-      loadWebglAddon(instance.term)
+      loadRendererAddons(instance.term)
       if (tabId === currentDisplayTabId.value) {
         requestAnimationFrame(() => instance.fitAddon.fit())
       }
@@ -190,17 +191,26 @@ const fitCurrentTerminal = debounce(() => {
   }
 }, 50)
 
-// 按平台选择字体：macOS 保留纯英文避免 PingFang SC 等 proportional 字体破坏 cell 宽度；
-// Windows/Linux 显式声明等宽 CJK 字体，避免中文回退到非等宽字体导致字符错位
+// 按平台选择字体：CJK 用等宽字体（Microsoft YaHei / Noto Sans CJK），
+// emoji 在主字体中缺失时回退到系统 emoji 字体。把 emoji 字体放在 monospace 前，
+// 确保渲染层能找到 emoji 字形（实际宽度由 Unicode 11 wcwidth 决定，与字体回退无关）
 function pickFontFamily(): string {
   if (isMac) {
-    return 'Cascadia Code, Fira Code, JetBrains Mono, Consolas, monospace'
+    return '"Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, "Apple Color Emoji", monospace'
   }
-  return '"Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, "Microsoft YaHei", "Noto Sans CJK SC", monospace'
+  return '"Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI Emoji", monospace'
 }
 
-// 在 term.open(el) 之后加载 WebGL addon，失败时静默回退到默认 DOM 渲染器
-function loadWebglAddon(term: Terminal) {
+// 在 term.open(el) 之后加载 WebGL addon + Unicode 11
+function loadRendererAddons(term: Terminal) {
+  try {
+    const unicode11 = new Unicode11Addon()
+    term.loadAddon(unicode11)
+    term.unicode.activeVersion = '11'
+  } catch (err) {
+    console.warn('[XTerm] Unicode 11 addon unavailable, fallback to default:', err)
+  }
+
   try {
     const addon = new WebglAddon()
     addon.onContextLoss(() => addon.dispose())
@@ -461,7 +471,7 @@ async function createTerminalForTab(tabId: string, ptyId: string) {
     if (!isActive) el.style.display = 'block'
 
     term.open(el)
-    loadWebglAddon(term)
+    loadRendererAddons(term)
 
     if (!isActive) {
       requestAnimationFrame(() => {
@@ -526,7 +536,7 @@ async function startTab(tabId: string) {
       const el = await waitForElement(tabId)
       if (el) {
         term.open(el)
-        loadWebglAddon(term)
+        loadRendererAddons(term)
         requestAnimationFrame(() => fitAddon.fit())
       }
 
@@ -588,7 +598,7 @@ async function restartTab(tabId: string) {
       const el = await waitForElement(tabId)
       if (el) {
         term.open(el)
-        loadWebglAddon(term)
+        loadRendererAddons(term)
         requestAnimationFrame(() => fitAddon.fit())
       }
 
