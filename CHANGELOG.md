@@ -16,6 +16,19 @@
 ## [0.12.4] - 2026-06-25
 
 ### Fixed
+- Fix terminal mojibake on long sessions via stateful PtyDecoder (UTF-8 priority + GBK per-segment scan)
+- Fix multi-byte character corruption across PTY read boundaries (incomplete UTF-8 / GBK lead bytes)
+- Fix xterm.js mixed CJK/emoji rendering: enable Unicode 11 width table, add emoji font fallback
+- Fix terminal bottom row clipping caused by non-integer line height (fit precision)
+
+### Changed
+- ProviderCard always shows activate button (reactivate when already active) to reapply modified config
+- Simplify read_output_loop from ~100 to ~50 lines using PtyDecoder
+- Remove obsolete utf8_complete_boundary and utf8_seq_len helpers
+
+## [0.12.4] - 2026-06-25
+
+### Fixed
 - Fix terminal mojibake on long sessions: replace whole-buffer GBK fallback with greedy per-character scan (UTF-8 priority + GBK per-segment), so mixed UTF-8/GBK output no longer corrupts UTF-8 content
 - Fix multi-byte character corruption across PTY read boundaries via stateful PtyDecoder
 - Fix utf8_complete_boundary missing mid-buffer invalid bytes that triggered spurious GBK fallback
