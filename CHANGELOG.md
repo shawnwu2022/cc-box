@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.12.4] - 2026-06-25
+
+### Fixed
+- Fix terminal mojibake on long sessions: replace whole-buffer GBK fallback with greedy per-character scan (UTF-8 priority + GBK per-segment), so mixed UTF-8/GBK output no longer corrupts UTF-8 content
+- Fix multi-byte character corruption across PTY read boundaries via stateful PtyDecoder
+- Fix utf8_complete_boundary missing mid-buffer invalid bytes that triggered spurious GBK fallback
+
+### Changed
+- Introduce stateful PtyDecoder replacing carry buffer + boundary + decode_output triplet
+- Rewrite decode_output with greedy scan: ASCII fast path, UTF-8 multibyte priority, GBK double-byte fallback, U+FFFD last resort
+- Simplify read_output_loop from ~100 to ~50 lines
+- Remove obsolete utf8_complete_boundary and utf8_seq_len helpers
+
 ## [0.12.3] - 2026-06-25
 
 ### Fixed
