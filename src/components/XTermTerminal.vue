@@ -736,6 +736,9 @@ defineExpose({
   width: 100%;
   height: 100%;
   padding: 8px;
+  /* 底部余量：xterm 行高 14.4px 非整数时，最后一行可能被裁。
+     额外 4px 余量确保整数行 fit 后仍能完整渲染 */
+  padding-bottom: 12px;
   box-sizing: border-box;
   background: var(--terminal-bg);
   border-radius: 8px;
@@ -754,7 +757,7 @@ defineExpose({
   left: 0;
   width: 100%;
   height: 100%;
-  padding: 12px;
+  padding: 0;
   box-sizing: border-box;
   display: none;
 }

@@ -378,6 +378,7 @@ export default {
   // Provider card
   dragToSort: 'Drag to sort',
   useBtn: 'Use',
+  reactivateBtn: 'Reactivate',
   activeBadge: 'Active',
   editBtn: 'Edit',
   testBtn: 'Test',

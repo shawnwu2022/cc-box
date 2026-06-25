@@ -9,10 +9,14 @@
       <span class="provider-notes" v-if="provider.notes">{{ provider.notes }}</span>
     </div>
     <div class="card-actions">
-      <button class="action-btn primary" @click.stop="$emit('activate')" v-if="!isActive">
-        {{ t('useBtn') }}
+      <span class="active-badge" v-if="isActive">{{ t('activeBadge') }}</span>
+      <button
+        class="action-btn primary"
+        @click.stop="$emit('activate')"
+        :title="isActive ? t('reactivateBtn') : t('useBtn')"
+      >
+        {{ isActive ? t('reactivateBtn') : t('useBtn') }}
       </button>
-      <span class="active-badge" v-else>{{ t('activeBadge') }}</span>
       <button class="action-btn" @click.stop="$emit('edit')">{{ t('editBtn') }}</button>
       <button class="action-btn" @click.stop="$emit('test')" :disabled="isTesting">
         {{ isTesting ? t('testingBtn') : t('testBtn') }}

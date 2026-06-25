@@ -378,6 +378,7 @@ export default {
   // Provider card
   dragToSort: '拖拽排序',
   useBtn: '使用',
+  reactivateBtn: '重新激活',
   activeBadge: '使用中',
   editBtn: '编辑',
   testBtn: '测试',
