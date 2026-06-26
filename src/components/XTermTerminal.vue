@@ -201,7 +201,13 @@ function pickFontFamily(): string {
   return '"Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI Emoji", monospace'
 }
 
-// 在 term.open(el) 之后加载 WebGL addon + Unicode 11
+// 在 term.open(el) 之后加载 Unicode 11 + WebGL addon
+//
+// WebGL renderer 的 glyph atlas 在长会话累积大量字符后会出现 race condition
+// 导致 glyph 错位（@xterm/addon-webgl@0.19.0 已知 bug，见 xtermjs/xterm.js#4325）。
+// 规避方法：每 5 分钟主动调用 clearTextureAtlas() 重建 atlas，防止 corruption
+// 累积。重建只清空 GPU 贴图缓存并重绘当前可见行，不影响 PTY 进程、字节流、
+// buffer 滚动历史，瞬间完成（<100ms）。
 function loadRendererAddons(term: Terminal) {
   try {
     const unicode11 = new Unicode11Addon()
@@ -215,9 +221,31 @@ function loadRendererAddons(term: Terminal) {
     const addon = new WebglAddon()
     addon.onContextLoss(() => addon.dispose())
     term.loadAddon(addon)
+
+    const timer = setInterval(() => {
+      try {
+        addon.clearTextureAtlas()
+      } catch (err) {
+        console.warn('[XTerm] Atlas cleanup failed:', err)
+      }
+    }, 5 * 60 * 1000)
+    atlasTimers.set(term, timer)
   } catch (err) {
     console.warn('[XTerm] WebGL addon unavailable, using DOM renderer:', err)
   }
+}
+
+// 跟踪每个 Terminal 实例的 atlas cleanup timer
+const atlasTimers = new WeakMap<Terminal, ReturnType<typeof setInterval>>()
+
+// 统一清理 terminal：先停 atlas timer，再 dispose
+async function disposeTerminal(term: Terminal, context: string) {
+  const timer = atlasTimers.get(term)
+  if (timer) {
+    clearInterval(timer)
+    atlasTimers.delete(term)
+  }
+  await safeDispose(term, context)
 }
 
 // 创建新的 Terminal 实例
@@ -393,7 +421,7 @@ async function setupEventListeners() {
         hookStore.clearSession(id)
 
         // 销毁 Terminal 实例（释放资源）
-        instance.term.dispose()
+        void disposeTerminal(instance.term, `onPtyExit(tabId=${tabId})`)
         terminalInstances.delete(tabId)
         terminalEls.delete(tabId)
         break
@@ -569,7 +597,7 @@ async function restartTab(tabId: string) {
     // 清理旧 Terminal 实例（dispose 失败不阻断重启流程，仍需清理 Map 引用）
     const oldInstance = terminalInstances.get(tabId)
     if (oldInstance) {
-      await safeDispose(oldInstance.term, `restartTab(old term, tabId=${tabId})`)
+      await disposeTerminal(oldInstance.term, `restartTab(old term, tabId=${tabId})`)
       terminalInstances.delete(tabId)
       terminalEls.delete(tabId)
     }
@@ -672,7 +700,7 @@ async function startNewSession(cwd: string) {
 // 清理所有 PTY
 async function cleanup() {
   for (const [tabId, instance] of terminalInstances.entries()) {
-    await safeDispose(instance.term, `cleanup(tabId=${tabId})`)
+    await disposeTerminal(instance.term, `cleanup(tabId=${tabId})`)
   }
   terminalInstances.clear()
   terminalEls.clear()
@@ -714,7 +742,7 @@ onUnmounted(() => {
   unlistenDragDrop?.()
   unlistenWindowResized?.()
   for (const [tabId, instance] of terminalInstances.entries()) {
-    void safeDispose(instance.term, `onUnmounted(tabId=${tabId})`)
+    void disposeTerminal(instance.term, `onUnmounted(tabId=${tabId})`)
   }
 })
 
