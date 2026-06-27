@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.7] - 2026-06-27
+
+### Fixed
+- Fix WebGL glyph corruption after long sessions: trigger real term.resize (rows-1 then restore) every 5 minutes to force full renderer rebuild. This matches the user-verified resize recovery path (clearTextureAtlas + refresh was unreliable and caused page distortion).
+- Restore WebGL renderer for table/box-drawing continuity (revert v0.12.4 DOM renderer that showed visible cell gaps)
+- Unify terminal disposal via disposeTerminal helper to prevent timer leaks
+
 ## [0.12.6] - 2026-06-26
 
 ### Fixed
