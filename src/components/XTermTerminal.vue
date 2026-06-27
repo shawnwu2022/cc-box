@@ -206,13 +206,17 @@ function pickFontFamily(): string {
 // @xterm/addon-webgl@0.19.0 的 glyph atlas 在长会话累积大量字符后会出现 race
 // condition 导致 glyph 错位（xtermjs/xterm.js#4325）。
 //
-// 规避方法：每 5 分钟主动触发一次真正的 resize 流程（rows 减 1 再恢复），
-// 强制 xterm.js 重建整个 renderer 状态。这与用户手动 resize 窗口的刷新路径
-// 完全一致（用户验证 resize 可稳定恢复 corruption），不影响 PTY 进程、字节流、
-// buffer 滚动历史。rows 变化只影响 viewport 显示行数，buffer 内容不变。
+// 规避方法：每 5 分钟 dispose + reload 整个 WebGL addon。这是 xterm.js 设计内
+// 的"renderer 切换"路径：
+//   - dispose 触发 setRenderer 回退到 DOM renderer（buffer / cols / rows 不动）
+//   - 新建并 loadAddon 再次 setRenderer 到新 WebGL renderer（atlas 全新重建）
 //
-// 曾尝试 clearTextureAtlas + term.refresh，但触发的 redraw 不可靠，反而导致
-// 渲染状态错乱，已弃用。
+// 关键点：
+//   1. 完全不触碰 buffer，避免 v0.12.7 resize(rows-1)+resize(rows) 导致的最后
+//      两行重复（xterm.js Buffer.resize 在 rows round-trip 时不是无损的）
+//   2. onContextLoss 也走 reload（不再只 dispose），修复 GPU context 丢失后
+//      黑屏隐患
+//   3. 副作用：dispose → DOM 渲染 1-2 帧 → WebGL 接管，闪烁 < 50ms
 function loadRendererAddons(term: Terminal) {
   try {
     const unicode11 = new Unicode11Addon()
@@ -222,29 +226,34 @@ function loadRendererAddons(term: Terminal) {
     console.warn('[XTerm] Unicode 11 addon unavailable, fallback to default:', err)
   }
 
-  try {
-    const addon = new WebglAddon()
-    addon.onContextLoss(() => addon.dispose())
-    term.loadAddon(addon)
+  let webglAddon: WebglAddon | null = null
 
-    const timer = setInterval(() => {
-      try {
-        const cols = term.cols
-        const rows = term.rows
-        // 强制触发两次 resize = 强制 renderer 完整重建（等同用户主动 resize）
-        term.resize(cols, Math.max(1, rows - 1))
-        term.resize(cols, rows)
-      } catch (err) {
-        console.warn('[XTerm] Resize refresh failed:', err)
-      }
-    }, 5 * 60 * 1000)
+  const reloadWebgl = () => {
+    if (webglAddon) {
+      try { webglAddon.dispose() } catch { /* 已 dispose */ }
+      webglAddon = null
+    }
+    try {
+      webglAddon = new WebglAddon()
+      // context loss 也走 reload（修复之前只 dispose 导致的黑屏隐患）
+      webglAddon.onContextLoss(() => reloadWebgl())
+      term.loadAddon(webglAddon)
+    } catch (err) {
+      console.warn('[XTerm] WebGL reload failed, fallback to DOM renderer:', err)
+      webglAddon = null
+    }
+  }
+
+  try {
+    reloadWebgl()
+    const timer = setInterval(reloadWebgl, 5 * 60 * 1000)
     atlasTimers.set(term, timer)
   } catch (err) {
-    console.warn('[XTerm] WebGL addon unavailable, using DOM renderer:', err)
+    console.warn('[XTerm] WebGL init failed:', err)
   }
 }
 
-// 跟踪每个 Terminal 实例的定时 resize timer
+// 跟踪每个 Terminal 实例的 WebGL reload timer
 const atlasTimers = new WeakMap<Terminal, ReturnType<typeof setInterval>>()
 
 // 统一清理 terminal：先停 timer，再 dispose
