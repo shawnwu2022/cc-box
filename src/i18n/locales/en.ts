@@ -384,6 +384,10 @@ export default {
   // Provider card
   dragToSort: 'Drag to sort',
   useBtn: 'Use',
+  enable: 'Enable',
+  disable: 'Disable',
+  userLevelOnly: 'User level only',
+  toggleStatusFailed: 'Failed to toggle status',
   reactivateBtn: 'Reactivate',
   activeBadge: 'Active',
   editBtn: 'Edit',

@@ -1,10 +1,40 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+
+// Mock sidebar API（含 load 与 set 两类）
+const mockGetAllSkills = vi.fn()
+const mockGetAllAgents = vi.fn()
+const mockGetAllMcpServers = vi.fn()
+const mockGetAllPlugins = vi.fn()
+const mockSetSkillEnabled = vi.fn()
+const mockSetAgentEnabled = vi.fn()
+const mockSetMcpServerEnabled = vi.fn()
+const mockSetPluginEnabled = vi.fn()
+
+vi.mock('@/api/tauri', () => ({
+  getAllSkills: (...args: unknown[]) => mockGetAllSkills(...args),
+  getAllAgents: (...args: unknown[]) => mockGetAllAgents(...args),
+  getAllMcpServers: (...args: unknown[]) => mockGetAllMcpServers(...args),
+  getAllPlugins: (...args: unknown[]) => mockGetAllPlugins(...args),
+  setSkillEnabled: (...args: unknown[]) => mockSetSkillEnabled(...args),
+  setAgentEnabled: (...args: unknown[]) => mockSetAgentEnabled(...args),
+  setMcpServerEnabled: (...args: unknown[]) => mockSetMcpServerEnabled(...args),
+  setPluginEnabled: (...args: unknown[]) => mockSetPluginEnabled(...args),
+}))
+
 import { useSidebarStore } from '@/stores/sidebar'
 
 describe('sidebar store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    mockGetAllSkills.mockReset()
+    mockGetAllAgents.mockReset()
+    mockGetAllMcpServers.mockReset()
+    mockGetAllPlugins.mockReset()
+    mockSetSkillEnabled.mockReset()
+    mockSetAgentEnabled.mockReset()
+    mockSetMcpServerEnabled.mockReset()
+    mockSetPluginEnabled.mockReset()
   })
 
   describe('togglePanel', () => {
@@ -95,6 +125,88 @@ describe('sidebar store', () => {
       store.setUpdateInfo({ version: '0.7.0', currentVersion: '0.7.0', hasUpdate: false, releaseNotes: '', downloadUrl: '', platformAsset: null })
       store.setClaudeCliUpdateInfo({ installedVersion: '1.0.33', latestVersion: '1.0.33', hasUpdate: false, notInstalled: false })
       expect(store.updateAvailable).toBe(false)
+    })
+  })
+
+  describe('用户级资源开关 toggle 方法（乐观更新，不调 loadXxx）', () => {
+    // 成功时：直接更新 store.skills 对应项的 enabled，不调 getAllSkills
+    it('ToggleSkill_Success_OptimisticUpdate_001', async () => {
+      const store = useSidebarStore()
+      store.skills = [
+        { name: 'deploy', displayName: 'deploy', sourceType: 'user', sourceLabel: 'User', invokeFormat: '/deploy', enabled: true },
+      ]
+      mockSetSkillEnabled.mockResolvedValue(undefined)
+
+      await store.toggleSkillEnabled('deploy', false)
+
+      expect(mockSetSkillEnabled).toHaveBeenCalledWith('deploy', false)
+      expect(mockGetAllSkills).not.toHaveBeenCalled()
+      expect(store.skills[0].enabled).toBe(false)
+    })
+
+    // 其他三个 toggle 同样不调 loadXxx
+    it('ToggleAgent_NoLoad_001', async () => {
+      const store = useSidebarStore()
+      store.agents = [
+        { name: 'reviewer', displayName: 'reviewer', sourceType: 'user', sourceLabel: 'User', invokeFormat: '@reviewer', enabled: true },
+      ]
+      mockSetAgentEnabled.mockResolvedValue(undefined)
+
+      await store.toggleAgentEnabled('reviewer', false)
+
+      expect(mockGetAllAgents).not.toHaveBeenCalled()
+      expect(store.agents[0].enabled).toBe(false)
+    })
+
+    it('ToggleMcp_NoLoad_001', async () => {
+      const store = useSidebarStore()
+      store.mcpServers = [
+        { name: 'zread', displayName: 'zread', sourceType: 'user', sourceLabel: 'User', prompts: [], enabled: true },
+      ]
+      mockSetMcpServerEnabled.mockResolvedValue(undefined)
+
+      await store.toggleMcpServerEnabled('zread', false)
+
+      expect(mockGetAllMcpServers).not.toHaveBeenCalled()
+      expect(store.mcpServers[0].enabled).toBe(false)
+    })
+
+    it('TogglePlugin_NoLoad_001', async () => {
+      const store = useSidebarStore()
+      store.plugins = [
+        { id: 'paper-tool@orczh', name: 'paper-tool', version: '1.0', scope: 'user', enabled: true, installPath: '/x' },
+      ]
+      mockSetPluginEnabled.mockResolvedValue(undefined)
+
+      await store.togglePluginEnabled('paper-tool@orczh', false)
+
+      expect(mockGetAllPlugins).not.toHaveBeenCalled()
+      expect(store.plugins[0].enabled).toBe(false)
+    })
+
+    // 失败时：store 数据回滚到原值，错误向上抛
+    it('ToggleSkill_Failure_Rollback_001', async () => {
+      const store = useSidebarStore()
+      store.skills = [
+        { name: 'deploy', displayName: 'deploy', sourceType: 'user', sourceLabel: 'User', invokeFormat: '/deploy', enabled: true },
+      ]
+      mockSetSkillEnabled.mockRejectedValue(new Error('active skill not found'))
+
+      await expect(store.toggleSkillEnabled('deploy', false)).rejects.toThrow('active skill not found')
+
+      expect(mockGetAllSkills).not.toHaveBeenCalled()
+      expect(store.skills[0].enabled).toBe(true) // 回滚
+    })
+
+    // 不存在的项：findIndex 返回 -1，still 调用 API（让后端错误反馈给用户）
+    it('ToggleSkill_NotInStore_001', async () => {
+      const store = useSidebarStore()
+      store.skills = []
+      mockSetSkillEnabled.mockResolvedValue(undefined)
+
+      await store.toggleSkillEnabled('ghost', false)
+
+      expect(mockSetSkillEnabled).toHaveBeenCalledWith('ghost', false)
     })
   })
 })

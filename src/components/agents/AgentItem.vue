@@ -1,5 +1,5 @@
 <template>
-  <div class="agent-item" :class="{ expanded: isExpanded }">
+  <div class="agent-item" :class="{ expanded: isExpanded, disabled: isDisabled }">
     <!-- Agent Header -->
     <div class="agent-header" @click="toggleExpand">
       <img
@@ -13,7 +13,13 @@
         <span v-if="agent.sourceType === 'plugin'" class="agent-full-name">{{ agent.name }}</span>
       </div>
       <span v-if="agent.model" class="agent-model">{{ agent.model }}</span>
-      <button class="use-btn" @click.stop="emitUseAgent" :title="t('useThisAgent')">
+      <ToggleSwitch
+        v-if="agent.sourceType === 'user'"
+        :modelValue="!isDisabled"
+        :title="isDisabled ? t('enable') : t('disable')"
+        @update:modelValue="onToggle"
+      />
+      <button class="use-btn" :disabled="isDisabled" @click.stop="emitUseAgent" :title="t('useThisAgent')">
         <img src="@/assets/icons/use.svg" :alt="t('useBtn')" />
       </button>
     </div>
@@ -35,24 +41,38 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AgentInfo } from '@/types'
 import { sendTerminalCommand } from '@/composables/useTerminalCommand'
+import { useSidebarStore } from '@/stores/sidebar'
+import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 
 const { t } = useI18n()
 const props = defineProps<{
   agent: AgentInfo
 }>()
 
+const sidebarStore = useSidebarStore()
+
 const isExpanded = ref(false)
+const isDisabled = computed(() => props.agent.enabled === false)
 
 function toggleExpand() {
   isExpanded.value = !isExpanded.value
 }
 
 function emitUseAgent() {
+  if (isDisabled.value) return
   sendTerminalCommand(props.agent.invokeFormat)
+}
+
+async function onToggle(newValue: boolean) {
+  try {
+    await sidebarStore.toggleAgentEnabled(props.agent.name, newValue)
+  } catch (err) {
+    console.error('[AgentItem] toggle failed:', err)
+  }
 }
 </script>
 
@@ -66,6 +86,20 @@ function emitUseAgent() {
 
 .agent-item:hover {
   background: var(--hover-bg);
+}
+
+.agent-item.disabled {
+  opacity: 0.55;
+}
+
+.agent-item.disabled .agent-name {
+  text-decoration: line-through;
+  color: var(--text-tertiary);
+}
+
+.agent-item.disabled .use-btn {
+  pointer-events: none;
+  opacity: 0.4;
 }
 
 .agent-header {

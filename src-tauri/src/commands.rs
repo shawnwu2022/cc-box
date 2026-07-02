@@ -260,6 +260,30 @@ pub async fn get_all_plugins(project_path: String) -> Result<Vec<PluginInfo>, St
     crate::store::get_all_plugins(&project_path).map_err(|e| e.to_string())
 }
 
+/// 切换用户级 Skill 启用状态（移动目录到 ~/.cc-box/disabled/skills/）
+#[tauri::command]
+pub async fn set_skill_enabled(name: String, enabled: bool) -> Result<(), String> {
+    crate::store::set_skill_enabled(&name, enabled).map_err(|e| e.to_string())
+}
+
+/// 切换用户级 Agent 启用状态（移动文件到 ~/.cc-box/disabled/agents/）
+#[tauri::command]
+pub async fn set_agent_enabled(name: String, enabled: bool) -> Result<(), String> {
+    crate::store::set_agent_enabled(&name, enabled).map_err(|e| e.to_string())
+}
+
+/// 切换用户级 MCP Server 启用状态（剪切 ~/.claude.json::mcpServers.<name> 条目）
+#[tauri::command]
+pub async fn set_mcp_server_enabled(name: String, enabled: bool) -> Result<(), String> {
+    crate::store::set_mcp_server_enabled(&name, enabled).map_err(|e| e.to_string())
+}
+
+/// 切换 Plugin 启用状态（调用 claude plugin enable/disable）
+#[tauri::command]
+pub async fn set_plugin_enabled(plugin_id: String, enabled: bool) -> Result<(), String> {
+    crate::store::set_plugin_enabled(&plugin_id, enabled).map_err(|e| e.to_string())
+}
+
 /// 获取 MCP Server 详情（通过 MCP 协议）
 #[tauri::command]
 pub async fn get_mcp_server_detail(

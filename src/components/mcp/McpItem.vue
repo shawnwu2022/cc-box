@@ -1,8 +1,14 @@
 <template>
-  <div class="mcp-item" :class="{ expanded: isExpanded }">
+  <div class="mcp-item" :class="{ expanded: isExpanded, disabled: isDisabled }">
     <!-- Server Header -->
     <div class="server-header" @click="handleClick">
       <span class="server-name">{{ server.displayName }}</span>
+      <ToggleSwitch
+        v-if="server.sourceType === 'user'"
+        :modelValue="!isDisabled"
+        :title="isDisabled ? t('enable') : t('disable')"
+        @update:modelValue="onToggle"
+      />
       <button class="expand-btn" :class="{ rotated: isExpanded }" :title="t('toggleDetails')">
         <img src="@/assets/icons/chevron.svg" alt="Toggle" />
       </button>
@@ -123,7 +129,9 @@ import { useI18n } from 'vue-i18n'
 import type { McpServerInfo, McpServerDetail } from '@/types'
 import { getMcpServerDetail } from '@/api/tauri'
 import { useAppStore } from '@/stores/app'
+import { useSidebarStore } from '@/stores/sidebar'
 import McpSubItem from './McpSubItem.vue'
+import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 
 const { t } = useI18n()
 
@@ -132,14 +140,25 @@ const props = defineProps<{
 }>()
 
 const appStore = useAppStore()
+const sidebarStore = useSidebarStore()
 
 const isExpanded = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const detail = ref<McpServerDetail | null>(null)
 
+const isDisabled = computed(() => props.server.enabled === false)
+
 // 缓存注入（从父组件）
 const detailCache = inject<Map<string, McpServerDetail>>('mcpDetailCache', new Map())
+
+async function onToggle(newValue: boolean) {
+  try {
+    await sidebarStore.toggleMcpServerEnabled(props.server.name, newValue)
+  } catch (err) {
+    console.error('[McpItem] toggle failed:', err)
+  }
+}
 
 // 是否已连接
 const isConnected = computed(() => props.server.status?.includes('Connected'))
@@ -201,6 +220,15 @@ async function fetchDetail(force: boolean) {
 
 .mcp-item:hover {
   background: var(--hover-bg);
+}
+
+.mcp-item.disabled {
+  opacity: 0.55;
+}
+
+.mcp-item.disabled .server-name {
+  text-decoration: line-through;
+  color: var(--text-tertiary);
 }
 
 .mcp-item.expanded {

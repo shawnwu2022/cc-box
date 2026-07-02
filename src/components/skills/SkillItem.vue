@@ -1,5 +1,5 @@
 <template>
-  <div class="skill-item" :class="{ expanded: isExpanded }">
+  <div class="skill-item" :class="{ expanded: isExpanded, disabled: isDisabled }">
     <!-- Skill Header -->
     <div class="skill-header" @click="toggleExpand">
       <img
@@ -12,7 +12,13 @@
         <span class="skill-name">{{ skill.displayName }}</span>
         <span v-if="skill.sourceType === 'plugin'" class="skill-full-name">{{ skill.name }}</span>
       </div>
-      <button class="use-btn" @click.stop="emitUseSkill" :title="t('useThisSkill')">
+      <ToggleSwitch
+        v-if="skill.sourceType === 'user'"
+        :modelValue="!isDisabled"
+        :title="isDisabled ? t('enable') : t('disable')"
+        @update:modelValue="onToggle"
+      />
+      <button class="use-btn" :disabled="isDisabled" @click.stop="emitUseSkill" :title="t('useThisSkill')">
         <img src="@/assets/icons/use.svg" :alt="t('useBtn')" />
       </button>
     </div>
@@ -34,24 +40,38 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SkillInfo } from '@/types'
 import { sendTerminalCommand } from '@/composables/useTerminalCommand'
+import { useSidebarStore } from '@/stores/sidebar'
+import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 
 const { t } = useI18n()
 const props = defineProps<{
   skill: SkillInfo
 }>()
 
+const sidebarStore = useSidebarStore()
+
 const isExpanded = ref(false)
+const isDisabled = computed(() => props.skill.enabled === false)
 
 function toggleExpand() {
   isExpanded.value = !isExpanded.value
 }
 
 function emitUseSkill() {
+  if (isDisabled.value) return
   sendTerminalCommand(props.skill.invokeFormat)
+}
+
+async function onToggle(newValue: boolean) {
+  try {
+    await sidebarStore.toggleSkillEnabled(props.skill.name, newValue)
+  } catch (err) {
+    console.error('[SkillItem] toggle failed:', err)
+  }
 }
 </script>
 
@@ -65,6 +85,20 @@ function emitUseSkill() {
 
 .skill-item:hover {
   background: var(--hover-bg);
+}
+
+.skill-item.disabled {
+  opacity: 0.55;
+}
+
+.skill-item.disabled .skill-name {
+  text-decoration: line-through;
+  color: var(--text-tertiary);
+}
+
+.skill-item.disabled .use-btn {
+  pointer-events: none;
+  opacity: 0.4;
 }
 
 .skill-header {

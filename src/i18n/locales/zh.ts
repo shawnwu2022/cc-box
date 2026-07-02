@@ -384,6 +384,10 @@ export default {
   // Provider card
   dragToSort: '拖拽排序',
   useBtn: '使用',
+  enable: '启用',
+  disable: '禁用',
+  userLevelOnly: '仅用户级',
+  toggleStatusFailed: '切换状态失败',
   reactivateBtn: '重新激活',
   activeBadge: '使用中',
   editBtn: '编辑',

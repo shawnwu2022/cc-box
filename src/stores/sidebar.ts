@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getAllAgents, getAllSkills, getAllMcpServers, getAllPlugins } from '@/api/tauri'
+import { getAllAgents, getAllSkills, getAllMcpServers, getAllPlugins, setSkillEnabled, setAgentEnabled, setMcpServerEnabled, setPluginEnabled } from '@/api/tauri'
 import type { AgentInfo, SkillInfo, McpServerInfo, PluginInfo, UpdateInfo, ClaudeCliUpdateInfo } from '@/types'
 
 export type SidebarPanelType = 'sessions' | 'skills' | 'agents' | 'mcp' | 'plugins' | null
@@ -131,6 +131,77 @@ export const useSidebarStore = defineStore('sidebar', () => {
     }
   }
 
+  // ========== 用户级资源开关 ==========
+  // 设计要点：
+  // - 多窗口之间不同步（不监听焦点、不调 loadXxx），避免效率低/闪烁/延迟
+  // - 乐观更新：直接改 store 中对应项的 enabled 字段，Vue 响应式刷新单项 ToggleSwitch 视觉
+  // - 失败回滚：API 失败时还原 enabled，错误向上抛由组件 catch（仅 console.error）
+  // - 数据安全由后端原子操作 + 冲突检测保证（同名检测、路径穿越防御）
+  // - 多窗口 stale 场景：B 操作已被 A 改过的项时后端返回错误，store 回滚，B 的 UI 短暂闪回原状态
+
+  async function toggleSkillEnabled(name: string, enabled: boolean) {
+    const idx = skills.value.findIndex(s => s.name === name)
+    const old = idx >= 0 ? { ...skills.value[idx] } : null
+    if (idx >= 0) skills.value[idx] = { ...skills.value[idx], enabled }
+    try {
+      await setSkillEnabled(name, enabled)
+    } catch (err) {
+      if (idx >= 0 && old) skills.value[idx] = old
+      throw err
+    }
+  }
+
+  async function toggleAgentEnabled(name: string, enabled: boolean) {
+    const idx = agents.value.findIndex(a => a.name === name)
+    const old = idx >= 0 ? { ...agents.value[idx] } : null
+    if (idx >= 0) agents.value[idx] = { ...agents.value[idx], enabled }
+    try {
+      await setAgentEnabled(name, enabled)
+    } catch (err) {
+      if (idx >= 0 && old) agents.value[idx] = old
+      throw err
+    }
+  }
+
+  async function toggleMcpServerEnabled(name: string, enabled: boolean) {
+    const idx = mcpServers.value.findIndex(m => m.name === name)
+    const old = idx >= 0 ? { ...mcpServers.value[idx] } : null
+    if (idx >= 0) mcpServers.value[idx] = { ...mcpServers.value[idx], enabled }
+    try {
+      await setMcpServerEnabled(name, enabled)
+    } catch (err) {
+      if (idx >= 0 && old) mcpServers.value[idx] = old
+      throw err
+    }
+  }
+
+  async function togglePluginEnabled(pluginId: string, enabled: boolean) {
+    const idx = plugins.value.findIndex(p => p.id === pluginId)
+    const old = idx >= 0 ? { ...plugins.value[idx] } : null
+    if (idx >= 0) plugins.value[idx] = { ...plugins.value[idx], enabled }
+    try {
+      await setPluginEnabled(pluginId, enabled)
+    } catch (err) {
+      if (idx >= 0 && old) plugins.value[idx] = old
+      throw err
+    }
+  }
+
+  // 强制重新加载所有 sidebar 数据（多窗口同步：他窗口修改后，本窗口聚焦时调用）
+  // 带 2 秒节流，避免焦点抖动导致频繁刷新
+  async function reloadAll(cwd: string, force = false) {
+    const now = Date.now()
+    if (!force && now - lastReloadAt.value < 2000) return
+    lastReloadAt.value = now
+
+    await Promise.all([
+      loadSkills(cwd),
+      loadAgents(cwd),
+      loadMcpServers(cwd),
+      loadPlugins(cwd),
+    ])
+  }
+
   // 切换面板
   function togglePanel(panel: SidebarPanelType) {
     // 如果设置打开，先关闭设置再打开面板
@@ -235,6 +306,11 @@ export const useSidebarStore = defineStore('sidebar', () => {
     toggleSkillGroup,
     toggleAgentGroup,
     toggleMcpGroup,
-    togglePluginGroup
+    togglePluginGroup,
+    // 用户级资源开关
+    toggleSkillEnabled,
+    toggleAgentEnabled,
+    toggleMcpServerEnabled,
+    togglePluginEnabled
   }
 })

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.13.0] - 2026-07-02
+
+### Features
+- Add user-level enable/disable toggle for skills / agents / mcp / plugins in sidebar (move to ~/.cc-box/disabled/ for skill/agent/mcp, claude plugin enable/disable for plugin)
+- Add ToggleSwitch component with disabled state greyscale rendering
+- Add multi-window safety: atomic file ops + conflict detection, optimistic update with rollback on failure
+
+### Fixed
+- Fix plugins panel filtering out disabled plugins, making them impossible to re-enable from UI
+- Fix plugin toggle alignment in plugin header
+
 ## [0.12.8] - 2026-06-27
 
 ### Fixed

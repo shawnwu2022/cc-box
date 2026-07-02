@@ -1,5 +1,5 @@
 <template>
-  <div class="plugin-item" :class="{ expanded: isExpanded }">
+  <div class="plugin-item" :class="{ expanded: isExpanded, disabled: isDisabled }">
     <!-- Plugin Header -->
     <div class="plugin-header" @click="toggleExpand">
       <img
@@ -9,6 +9,12 @@
         alt="Toggle"
       />
       <span class="plugin-name">{{ plugin.name }}</span>
+      <ToggleSwitch
+        v-if="plugin.scope === 'user'"
+        :modelValue="!isDisabled"
+        :title="isDisabled ? t('enable') : t('disable')"
+        @update:modelValue="onToggle"
+      />
     </div>
 
     <!-- Plugin Version -->
@@ -98,15 +104,21 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PluginInfo } from '@/types'
 import { sendTerminalCommand } from '@/composables/useTerminalCommand'
+import { useSidebarStore } from '@/stores/sidebar'
+import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 
 const { t } = useI18n()
 const props = defineProps<{
   plugin: PluginInfo
 }>()
 
+const sidebarStore = useSidebarStore()
+
 const isExpanded = ref(false)
 const expandedSkills = ref<Record<string, boolean>>({})
 const expandedAgents = ref<Record<string, boolean>>({})
+
+const isDisabled = computed(() => props.plugin.enabled === false)
 
 const hasComponents = computed(() => {
   return (props.plugin.skills && props.plugin.skills.length > 0) ||
@@ -127,11 +139,21 @@ function toggleAgentDetail(name: string) {
 }
 
 function useSkill(invokeFormat: string) {
+  if (isDisabled.value) return
   sendTerminalCommand(invokeFormat)
 }
 
 function useAgent(invokeFormat: string) {
+  if (isDisabled.value) return
   sendTerminalCommand(invokeFormat)
+}
+
+async function onToggle(newValue: boolean) {
+  try {
+    await sidebarStore.togglePluginEnabled(props.plugin.id, newValue)
+  } catch (err) {
+    console.error('[PluginItem] toggle failed:', err)
+  }
 }
 </script>
 
@@ -145,6 +167,20 @@ function useAgent(invokeFormat: string) {
 
 .plugin-item:hover {
   background: var(--hover-bg);
+}
+
+.plugin-item.disabled {
+  opacity: 0.55;
+}
+
+.plugin-item.disabled .plugin-name {
+  text-decoration: line-through;
+  color: var(--text-tertiary);
+}
+
+.plugin-item.disabled .item-use-btn {
+  pointer-events: none;
+  opacity: 0.4;
 }
 
 .plugin-header {
@@ -171,6 +207,9 @@ function useAgent(invokeFormat: string) {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  line-height: 1;
 }
 
 .plugin-version {

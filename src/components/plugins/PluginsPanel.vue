@@ -75,13 +75,13 @@ const error = ref<string | null>(null)
 const plugins = computed(() => sidebarStore.plugins)
 const loading = computed(() => sidebarStore.pluginsLoading)
 
-// 按 scope 分组
+// 按 scope 分组（保留 disabled 项，由 PluginItem 原位灰显 + ToggleSwitch 切换启用）
 const userPlugins = computed(() => {
-  return plugins.value.filter(p => p.scope === 'user' && p.enabled)
+  return plugins.value.filter(p => p.scope === 'user')
 })
 
 const projectPlugins = computed(() => {
-  return plugins.value.filter(p => p.scope === 'project' && p.enabled)
+  return plugins.value.filter(p => p.scope === 'project')
 })
 
 function handleRefresh() {

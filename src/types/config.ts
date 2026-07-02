@@ -67,6 +67,7 @@ export interface SkillInfo {
   sourceType: 'project' | 'user' | 'plugin'
   sourceLabel: string
   invokeFormat: string   // 调用格式: /skill 或 /plugin:skill
+  enabled?: boolean      // 是否启用（仅 user 源可能为 false）
 }
 
 // Agent 信息（用于面板显示）
@@ -78,6 +79,7 @@ export interface AgentInfo {
   sourceLabel: string
   model?: string
   invokeFormat: string
+  enabled?: boolean      // 是否启用（仅 user 源可能为 false）
 }
 
 // MCP Server 信息（用于面板显示）
@@ -95,6 +97,7 @@ export interface McpServerInfo {
   env?: Record<string, string>  // stdio server environment variables
   headers?: Record<string, string>  // HTTP headers for authentication
   prompts: McpPromptInfo[]
+  enabled?: boolean      // 是否启用（仅 user 源可能为 false）
 }
 
 // MCP Server 详情（通过 MCP 协议获取）
