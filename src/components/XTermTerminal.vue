@@ -24,6 +24,7 @@ import { useAppStore } from '@/stores/app'
 import { useSessionStore } from '@/stores/session'
 import { useHookStore } from '@/stores/hook'
 import { isMac } from '@/utils/platform'
+import { getTerminalTheme } from '@/config/terminalThemes'
 import {
   ptySpawn,
   ptyInput,
@@ -115,58 +116,6 @@ let resizeObserver: ResizeObserver | null = null
 
 // 窗口最小化状态（最小化期间跳过 fit，恢复后主动刷新）
 let isMinimized = false
-
-// 浅色终端主题
-const lightTheme = {
-  background: '#f8f9fa',
-  foreground: '#1a1a2e',
-  cursor: '#6c5ce7',
-  cursorAccent: '#f8f9fa',
-  selectionBackground: '#ede9fe',
-  selectionForeground: '#1a1a2e',
-  black: '#1a1a2e',
-  red: '#e74c3c',
-  green: '#27ae60',
-  yellow: '#f39c12',
-  blue: '#3498db',
-  magenta: '#9b59b6',
-  cyan: '#1abc9c',
-  white: '#ecf0f1',
-  brightBlack: '#2c3e50',
-  brightRed: '#e74c3c',
-  brightGreen: '#27ae60',
-  brightYellow: '#f39c12',
-  brightBlue: '#3498db',
-  brightMagenta: '#9b59b6',
-  brightCyan: '#1abc9c',
-  brightWhite: '#ffffff'
-}
-
-// 暗色终端主题
-const darkTheme = {
-  background: '#1e1e1e',
-  foreground: '#d4d4d4',
-  cursor: '#f0d4a8',
-  cursorAccent: '#1e1e1e',
-  selectionBackground: '#4a7aad40',
-  selectionForeground: '#d4d4d4',
-  black: '#1c1a17',
-  red: '#e8705a',
-  green: '#5dad8e',
-  yellow: '#f0b460',
-  blue: '#4a7aad',
-  magenta: '#b8956a',
-  cyan: '#5dad8e',
-  white: '#c4c0b8',
-  brightBlack: '#3a3734',
-  brightRed: '#f0886e',
-  brightGreen: '#7abd9e',
-  brightYellow: '#f8ca80',
-  brightBlue: '#6a9acd',
-  brightMagenta: '#d0a87e',
-  brightCyan: '#7abd9e',
-  brightWhite: '#f8f6f3'
-}
 
 // 设置 Terminal DOM 元素引用
 function setTerminalEl(tabId: string, el: HTMLElement | null) {
@@ -275,7 +224,7 @@ function createTerminal(tabId: string): Terminal {
     lineHeight: 1.2,
     cursorBlink: true,
     cursorStyle: 'bar',
-    theme: appStore.theme === 'dark' ? darkTheme : lightTheme,
+    theme: getTerminalTheme(appStore.terminalTheme),
     allowProposedApi: true,
     macOptionIsMeta: true,
     scrollback: 10000,
@@ -464,9 +413,9 @@ watch(() => props.fontSize, (newSize) => {
   }
 })
 
-// 监听主题变化，更新所有终端实例
-watch(() => appStore.theme, (newTheme) => {
-  const themeConfig = newTheme === 'dark' ? darkTheme : lightTheme
+// 监听终端主题变化，更新所有终端实例（与 GUI 浅/暗独立）
+watch(() => appStore.terminalTheme, (newId) => {
+  const themeConfig = getTerminalTheme(newId)
   for (const instance of terminalInstances.values()) {
     instance.term.options.theme = themeConfig
   }
@@ -788,7 +737,7 @@ defineExpose({
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  background: var(--terminal-bg);
+  background: var(--terminal-surface-bg);
   border-radius: 8px;
   position: relative;
   overflow: hidden;
@@ -827,7 +776,7 @@ defineExpose({
 }
 
 .terminal-wrapper :deep(.xterm-viewport::-webkit-scrollbar-thumb) {
-  background: var(--border-dark);
+  background: var(--terminal-scrollbar);
   border-radius: 4px;
 }
 
