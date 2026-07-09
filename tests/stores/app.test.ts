@@ -1,6 +1,6 @@
 import { setActivePinia, createPinia } from 'pinia'
 import { mockIPC } from '@tauri-apps/api/mocks'
-import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect } from 'vitest'
 import { useAppStore } from '@/stores/app'
 import i18n from '@/i18n'
 
@@ -145,7 +145,6 @@ describe('detectSystemLocale', () => {
   it('DetectLocale_ZhCN_001', () => {
     const original = navigator.language
     Object.defineProperty(navigator, 'language', { value: 'zh-CN', configurable: true })
-    const store = useAppStore()
     // detectSystemLocale 是内部函数，通过 loadAppConfig 间接触发
     // 直接验证初始 language 默认值逻辑
     const lang = navigator.language.startsWith('zh') ? 'zh' : 'en'

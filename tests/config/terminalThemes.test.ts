@@ -75,7 +75,7 @@ describe('TERMINAL_THEMES integrity', () => {
   // 每条 colors 必含 background/foreground/cursor + 完整 16 色（防新增主题漏字段）
   it('TerminalThemes_AllEntriesHaveCompleteColors_001', () => {
     for (const t of TERMINAL_THEMES) {
-      const colors = t.colors as Record<string, string>
+      const colors = t.colors as unknown as Record<string, string>
       for (const key of REQUIRED_KEYS) {
         expect(colors[key], `${t.id} 缺少 ${key}`).toBeTruthy()
       }
