@@ -88,6 +88,11 @@ describe('TERMINAL_THEMES integrity', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
+  // 共 16 条预设（CC-Box 2 + 第三方 14）
+  it('TerminalThemes_CountIs16_001', () => {
+    expect(TERMINAL_THEMES.length).toBe(16)
+  })
+
   // 默认 id 必须在表中
   it('DefaultTerminalThemeId_ExistsInTable_001', () => {
     expect(TERMINAL_THEMES.some(t => t.id === DEFAULT_TERMINAL_THEME_ID)).toBe(true)
