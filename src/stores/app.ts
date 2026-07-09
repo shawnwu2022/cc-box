@@ -11,6 +11,7 @@ import {
   getCheckResults,
   runChecks,
 } from '@/api/tauri'
+import { normalizeTerminalThemeId } from '@/config/terminalThemes'
 import i18n from '@/i18n'
 
 import type { ClaudeOptions, DefaultClaudeOptions, CheckResult, Project, SessionInfo } from '@/types'
@@ -37,6 +38,7 @@ export interface PendingResume {
 export const useAppStore = defineStore('app', () => {
   const cwd = ref<string>('')
   const theme = ref<string>('light')
+  const terminalTheme = ref<string>('cc-box-light')
   const fontSize = ref<number>(12)
   const language = ref<string>('en')
   const alwaysOnTop = ref<boolean>(false)
@@ -88,13 +90,24 @@ export const useAppStore = defineStore('app', () => {
       language.value = config.language || detectSystemLocale()
       i18n.global.locale.value = language.value
 
+      // 终端主题：归一化 + 迁移推断（缺失时按 GUI 映射）
+      const inferredTerminalTheme = config.terminalTheme
+        ? normalizeTerminalThemeId(config.terminalTheme)
+        : (config.theme === 'dark' ? 'cc-box-dark' : 'cc-box-light')
+      terminalTheme.value = inferredTerminalTheme
+
       // 加载环境变量（首次使用默认值）
       claudeEnvVars.value = Object.keys(config.claudeEnvVars ?? {}).length > 0
         ? config.claudeEnvVars!
         : { ...DEFAULT_CLAUDE_ENV_VARS }
 
-      // 启动时持久化到 cc-box config
-      await doSyncEnv()
+      // 启动持久化：env + terminalTheme（仅当需修正/迁移时写 terminalTheme）合并为一次调用，
+      // 避免多次读-改-写加剧既有竞态（见 spec「已知限制」）
+      const needWriteTheme = inferredTerminalTheme !== config.terminalTheme
+      await updateAppConfig({
+        claudeEnvVars: claudeEnvVars.value,
+        ...(needWriteTheme ? { terminalTheme: inferredTerminalTheme } : {}),
+      })
 
       defaultClaudeOptions.value = {
         skipPermissions: config.defaultSkipPermissions ?? false,
@@ -193,6 +206,12 @@ export const useAppStore = defineStore('app', () => {
     html.classList.add(newTheme)
     // 持久化
     updateAppConfig({ theme: newTheme })
+  }
+
+  function setTerminalTheme(id: string) {
+    const normalized = normalizeTerminalThemeId(id)
+    terminalTheme.value = normalized
+    updateAppConfig({ terminalTheme: normalized })
   }
 
   function setFontSize(size: number) {
@@ -309,6 +328,7 @@ export const useAppStore = defineStore('app', () => {
   return {
     cwd,
     theme,
+    terminalTheme,
     fontSize,
     language,
     claudeEnvVars,
@@ -336,6 +356,7 @@ export const useAppStore = defineStore('app', () => {
     refreshRecentSessions,
     setCwd,
     setTheme,
+    setTerminalTheme,
     setFontSize,
     setLanguage,
     setClaudeEnvVars,

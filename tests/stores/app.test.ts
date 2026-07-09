@@ -162,3 +162,90 @@ describe('detectSystemLocale', () => {
     Object.defineProperty(navigator, 'language', { value: original, configurable: true })
   })
 })
+
+describe('loadAppConfig terminalTheme', () => {
+  // config 有合法 terminalTheme 时直接加载
+  it('LoadAppConfig_HasTerminalTheme_LoadsIt_001', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'get_app_config') return { theme: 'light', terminalTheme: 'cc-box-light' }
+    })
+    const store = useAppStore()
+    await store.loadAppConfig()
+    expect(store.terminalTheme).toBe('cc-box-light')
+  })
+
+  // terminalTheme 缺失 + GUI dark → 映射 cc-box-dark
+  it('LoadAppConfig_MissingTerminalTheme_DarkGui_MapsToCcBoxDark_001', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'get_app_config') return { theme: 'dark' }
+    })
+    const store = useAppStore()
+    await store.loadAppConfig()
+    expect(store.terminalTheme).toBe('cc-box-dark')
+  })
+
+  // terminalTheme 缺失 + GUI light → 映射 cc-box-light
+  it('LoadAppConfig_MissingTerminalTheme_LightGui_MapsToCcBoxLight_001', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'get_app_config') return { theme: 'light' }
+    })
+    const store = useAppStore()
+    await store.loadAppConfig()
+    expect(store.terminalTheme).toBe('cc-box-light')
+  })
+
+  // terminalTheme 缺失时持久化写回推断值（合并进同一次 updateAppConfig）
+  it('LoadAppConfig_MissingTerminalTheme_PersistsInferredValue_001', async () => {
+    const updates: Array<Record<string, unknown>> = []
+    mockIPC((cmd, args) => {
+      if (cmd === 'get_app_config') return { theme: 'dark' }
+      if (cmd === 'update_app_config') {
+        updates.push((args as { updates: Record<string, unknown> }).updates)
+        return null
+      }
+    })
+    const store = useAppStore()
+    await store.loadAppConfig()
+    expect(updates.some(u => u.terminalTheme === 'cc-box-dark')).toBe(true)
+  })
+
+  // terminalTheme 非法时归一化为默认并写回
+  it('LoadAppConfig_InvalidTerminalTheme_NormalizesToDefault_001', async () => {
+    const updates: Array<Record<string, unknown>> = []
+    mockIPC((cmd, args) => {
+      if (cmd === 'get_app_config') return { theme: 'light', terminalTheme: 'bogus' }
+      if (cmd === 'update_app_config') {
+        updates.push((args as { updates: Record<string, unknown> }).updates)
+        return null
+      }
+    })
+    const store = useAppStore()
+    await store.loadAppConfig()
+    expect(store.terminalTheme).toBe('cc-box-dark')
+    expect(updates.some(u => u.terminalTheme === 'cc-box-dark')).toBe(true)
+  })
+})
+
+describe('setTerminalTheme', () => {
+  // 设置合法 id 更新 store 并持久化
+  it('SetTerminalTheme_UpdatesValueAndPersists_001', () => {
+    const updates: Array<Record<string, unknown>> = []
+    mockIPC((cmd, args) => {
+      if (cmd === 'update_app_config') {
+        updates.push((args as { updates: Record<string, unknown> }).updates)
+        return null
+      }
+    })
+    const store = useAppStore()
+    store.setTerminalTheme('cc-box-light')
+    expect(store.terminalTheme).toBe('cc-box-light')
+    expect(updates.some(u => u.terminalTheme === 'cc-box-light')).toBe(true)
+  })
+
+  // 设置非法 id 归一化为默认
+  it('SetTerminalTheme_InvalidId_Normalizes_001', () => {
+    const store = useAppStore()
+    store.setTerminalTheme('nope')
+    expect(store.terminalTheme).toBe('cc-box-dark')
+  })
+})
