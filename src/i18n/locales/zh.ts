@@ -34,6 +34,11 @@ export default {
   languageDesc: '界面显示语言',
   languageEn: 'English',
   languageZh: '中文',
+  terminalTheme: '终端主题',
+  terminalThemeDesc: '终端配色方案（独立于界面浅/暗）',
+  terminalThemeBuiltin: 'CC-Box',
+  terminalThemeDark: '暗色',
+  terminalThemeLight: '浅色',
 
   // Startup section
   startupDefaults: '启动默认值',

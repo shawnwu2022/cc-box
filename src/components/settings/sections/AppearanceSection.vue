@@ -52,6 +52,38 @@
     <div class="setting-group">
       <div class="setting-row">
         <div class="setting-info">
+          <span class="setting-label">{{ t('terminalTheme') }}</span>
+          <span class="setting-desc">{{ t('terminalThemeDesc') }}</span>
+        </div>
+      </div>
+      <div class="terminal-theme-row">
+        <select
+          class="terminal-theme-select"
+          v-model="terminalTheme"
+          :style="{ color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)' }"
+        >
+          <optgroup :label="t('terminalThemeBuiltin')">
+            <option v-for="th in builtinThemes" :key="th.id" :value="th.id">{{ th.name }}</option>
+          </optgroup>
+          <optgroup :label="t('terminalThemeDark')">
+            <option v-for="th in darkThemes" :key="th.id" :value="th.id">{{ th.name }}</option>
+          </optgroup>
+          <optgroup :label="t('terminalThemeLight')">
+            <option v-for="th in lightThemes" :key="th.id" :value="th.id">{{ th.name }}</option>
+          </optgroup>
+        </select>
+        <div class="terminal-theme-preview" :style="previewStyle">
+          <div class="preview-line">$ npm test</div>
+          <div class="preview-line" :style="{ color: previewColors.green }">✔ 12 passed</div>
+          <div class="preview-line" :style="{ color: previewColors.yellow }">⠿ building...</div>
+          <div class="preview-line" :style="{ color: previewColors.red }">✖ 1 failed</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <div class="setting-row">
+        <div class="setting-info">
           <span class="setting-label">{{ t('language') }}</span>
           <span class="setting-desc">{{ t('languageDesc') }}</span>
         </div>
@@ -80,11 +112,30 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { TERMINAL_THEMES, getTerminalTheme } from '@/config/terminalThemes'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const fontSize = computed(() => appStore.fontSize)
 const theme = ref(appStore.theme)
+
+// 终端主题：双向绑定到 store（set 时内部归一化）
+const terminalTheme = computed({
+  get: () => appStore.terminalTheme,
+  set: (val: string) => appStore.setTerminalTheme(val),
+})
+
+// 按 category 分组供 optgroup 使用
+const builtinThemes = computed(() => TERMINAL_THEMES.filter(t => t.category === 'builtin'))
+const darkThemes = computed(() => TERMINAL_THEMES.filter(t => t.category === 'dark'))
+const lightThemes = computed(() => TERMINAL_THEMES.filter(t => t.category === 'light'))
+
+// 预览配色：随选中主题实时变化（颜色取值逻辑在 getTerminalTheme，已单测）
+const previewColors = computed(() => getTerminalTheme(appStore.terminalTheme))
+const previewStyle = computed(() => ({
+  backgroundColor: previewColors.value.background,
+  color: previewColors.value.foreground,
+}))
 
 const currentLanguage = computed({
   get: () => appStore.language,
@@ -285,5 +336,46 @@ function decreaseFontSize() { appStore.setFontSize(fontSize.value - 1) }
   font-size: 20px;
   font-weight: 700;
   color: var(--accent-color);
+}
+
+.terminal-theme-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  align-items: stretch;
+}
+
+.terminal-theme-select {
+  flex: 0 0 200px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  /* 自定义箭头（最小美化） */
+  appearance: none;
+  background-image: none;
+}
+
+.terminal-theme-select:focus {
+  border-color: var(--accent-color);
+}
+
+.terminal-theme-preview {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.preview-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

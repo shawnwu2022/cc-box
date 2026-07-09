@@ -34,6 +34,11 @@ export default {
   languageDesc: 'Interface display language',
   languageEn: 'English',
   languageZh: '中文',
+  terminalTheme: 'Terminal Theme',
+  terminalThemeDesc: 'Terminal color scheme (independent of app light/dark)',
+  terminalThemeBuiltin: 'CC-Box',
+  terminalThemeDark: 'Dark',
+  terminalThemeLight: 'Light',
 
   // Startup section
   startupDefaults: 'Startup Defaults',
