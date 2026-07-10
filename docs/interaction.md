@@ -108,6 +108,24 @@ term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
 })
 ```
 
+### 中文 IME Shift 切换中英文（搜狗等）
+
+搜狗等中文输入法用 Shift 切换中英文时，把已输入的拼音作为字母通过 `input` 事件（`inputType=insertText`、`composed=true`）提交到 textarea。xterm.js 的 `_inputEvent`（`node_modules/@xterm/xterm/src/browser/Terminal.ts`）发送条件为 `(!ev.composed || !this._keyDownSeen)`——Shift 的 keydown 已把 `_keyDownSeen` 置 true，于是 `composed=true && _keyDownSeen=true` 时整条 input 被 xterm 丢弃，已输入的字符不进 PTY。
+
+修复（`attachImeInputFix`，在 `term.open` 后绑定）：应用侧镜像 xterm 的 `_keyDownSeen`（keydown 置 true、keyup 置 false），只在精确漏发分支（`composed=true && keyDownSeen=true`）补发 `term.input(data)`，并排除走了真实 composition 生命周期的输入（微软拼音等由 xterm 原生 composition 路径处理）。
+
+```typescript
+// src/components/XTermTerminal.vue
+const onInput = (e: Event) => {
+  const ie = e as InputEvent
+  if (ie.inputType === 'insertText' && ie.composed && ie.data && state.keyDownSeen && !state.compositionSeen) {
+    term.input(ie.data)
+  }
+}
+```
+
+不与 xterm 重复：xterm 自己发送的 composed insertText 必然是 `_keyDownSeen=false`，而本监听器要求镜像的 `keyDownSeen=true`，两者互斥。注意不能靠 `stopPropagation` 区分——xterm 的 `cancel()` 默认无效（`cancelEvents=false`），既不 preventDefault 也不 stopPropagation。详见 [docs/manual-test-cases.md](manual-test-cases.md) 的「终端输入（IME）」条目。
+
 ## 视图切换
 
 | 场景 | 触发 |

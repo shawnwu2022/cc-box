@@ -201,6 +201,9 @@ function loadRendererAddons(term: Terminal) {
   } catch (err) {
     console.warn('[XTerm] WebGL init failed:', err)
   }
+
+  // term.open 后 textarea 已创建，绑定 IME 输入修复（幂等）
+  attachImeInputFix(term)
 }
 
 // 跟踪每个 Terminal 实例的 WebGL reload timer
@@ -213,7 +216,59 @@ async function disposeTerminal(term: Terminal, context: string) {
     clearInterval(timer)
     atlasTimers.delete(term)
   }
+  const imeTa = term.textarea
+  if (imeTa) {
+    imeFixStates.get(imeTa)?.dispose()
+    imeFixStates.delete(imeTa)
+  }
   await safeDispose(term, context)
+}
+
+// 修复：搜狗等中文 IME 用 composed=true 的 insertText 提交候选词/拼音（如 Shift 切换中英文时
+// 把已输入的拼音作为字母提交）。xterm.js 的 _inputEvent 发送条件为
+// `(!ev.composed || !this._keyDownSeen)`，Shift 的 keydown 已把 _keyDownSeen 置 true，
+// 于是 composed=true && _keyDownSeen=true 的 input 被 xterm 丢弃，字符不进 PTY。
+//
+// 注意：xterm 的 cancel() 默认无效（cancelEvents=false），既不 preventDefault 也不
+// stopPropagation，所以不能用「bubble 监听是否触发」判断 xterm 是否已处理。此处镜像 xterm 的
+// _keyDownSeen，只在精确漏发分支（composed=true && keyDownSeen=true）补发，绝不与 xterm 重复；
+// 并排除走了真实 composition 生命周期的输入（微软拼音等，由 xterm 原生 composition 路径处理）。
+interface ImeFixState {
+  keyDownSeen: boolean      // 镜像 xterm _keyDownSeen：keydown 置 true，keyup 置 false
+  compositionSeen: boolean  // 本次输入周期见过 compositionstart（走 composition 的 IME），不补发
+  dispose: () => void
+}
+const imeFixStates = new WeakMap<HTMLTextAreaElement, ImeFixState>()
+
+// term.open 之后调用（textarea 已存在）；幂等。镜像 _keyDownSeen 并在 xterm 漏发分支补发。
+function attachImeInputFix(term: Terminal) {
+  const ta = term.textarea
+  if (!ta) return
+  // 用 textarea（DOM 元素，不被 Vue reactive proxy）作 key，避免 proxy term 与原始 term
+  // 视为不同 key 导致重复绑定（setTerminalEl 的 instance.term 是 proxy，startTab 的 term 是原始）
+  if (imeFixStates.has(ta)) return
+  const state: ImeFixState = { keyDownSeen: false, compositionSeen: false, dispose: () => {} }
+
+  const onKeyDown = () => { state.keyDownSeen = true; state.compositionSeen = false }
+  const onKeyUp = () => { state.keyDownSeen = false }
+  const onCompositionStart = () => { state.compositionSeen = true }
+  const onInput = (e: Event) => {
+    const ie = e as InputEvent
+    if (ie.inputType === 'insertText' && ie.composed && ie.data && state.keyDownSeen && !state.compositionSeen) {
+      term.input(ie.data)
+    }
+  }
+  ta.addEventListener('keydown', onKeyDown)
+  ta.addEventListener('keyup', onKeyUp)
+  ta.addEventListener('compositionstart', onCompositionStart)
+  ta.addEventListener('input', onInput)
+  state.dispose = () => {
+    ta.removeEventListener('keydown', onKeyDown)
+    ta.removeEventListener('keyup', onKeyUp)
+    ta.removeEventListener('compositionstart', onCompositionStart)
+    ta.removeEventListener('input', onInput)
+  }
+  imeFixStates.set(ta, state)
 }
 
 // 创建新的 Terminal 实例
