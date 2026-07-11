@@ -304,7 +304,8 @@ function createTerminal(tabId: string): Terminal {
   term.onData(data => {
     const instance = terminalInstances.get(tabId)
     if (instance) {
-      ptyInput(instance.ptyId, data)
+      // ptyId 空（fit 在 spawn 前发生）时跳过发送；Escape 仍清 working 状态
+      if (instance.ptyId) ptyInput(instance.ptyId, data)
 
       // Escape 按键：Claude 的 Stop hook 不在用户中断时触发，立即清除 working
       if (data === '\x1b') {
@@ -317,7 +318,7 @@ function createTerminal(tabId: string): Terminal {
   // 终端尺寸变化 → resize 对应的 PTY
   term.onResize(({ cols, rows }) => {
     const instance = terminalInstances.get(tabId)
-    if (instance) {
+    if (instance && instance.ptyId) {
       ptyResize(instance.ptyId, cols, rows)
     }
   })
@@ -587,30 +588,43 @@ async function startTab(tabId: string) {
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
 
+    // 先注册实例（ptyId 暂空）+ open + fit 拿实际 cols/rows，再 spawn，
+    // 避免 Claude CLI 按 80 列输出 resume 历史、实际窗口更宽导致历史挤左
+    terminalInstances.set(tabId, { term, fitAddon, ptyId: '' })
+    sessionStore.setActiveTab(tabId)
+    currentDisplayTabId.value = tabId
+
+    let cols = 80
+    let rows = 24
+    const el = await waitForElement(tabId)
+    if (el) {
+      term.open(el)
+      loadRendererAddons(term)
+      fitAddon.fit()
+      cols = term.cols
+      rows = term.rows
+    }
+
     const info = await ptySpawn({
       cwd,
-      cols: 80,
-      rows: 24,
+      cols,
+      rows,
       type: 'claude',
       args,
     })
 
     if (info) {
-      terminalInstances.set(tabId, { term, fitAddon, ptyId: info.id })
+      const instance = terminalInstances.get(tabId)
+      if (instance) instance.ptyId = info.id
       sessionStore.setTabPty(tabId, info.id)
-      sessionStore.setActiveTab(tabId)
-      currentDisplayTabId.value = tabId
-
-      const el = await waitForElement(tabId)
-      if (el) {
-        term.open(el)
-        loadRendererAddons(term)
-        requestAnimationFrame(() => fitAddon.fit())
-      }
-
       emit('ptyStarted', tabId, info.id)
+    } else {
+      // spawn 未返回 id，清理预注册实例
+      terminalInstances.delete(tabId)
     }
   } catch (err) {
+    // 异常时清理预注册实例
+    terminalInstances.delete(tabId)
     console.error('[XTerm] startTab ERROR:', err)
     logMessage('error', `startTab failed, tabId=${tabId}: ${err}`)
   } finally {
@@ -649,32 +663,43 @@ async function restartTab(tabId: string) {
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
 
+    // 先注册实例（ptyId 暂空）+ open + fit 拿实际 cols/rows，再 spawn，
+    // 避免 Claude CLI 按 80 列输出 resume 历史、实际窗口更宽导致历史挤左
+    terminalInstances.set(tabId, { term, fitAddon, ptyId: '' })
+    sessionStore.setActiveTab(tabId)
+    currentDisplayTabId.value = tabId
+
+    let cols = 80
+    let rows = 24
+    const el = await waitForElement(tabId)
+    if (el) {
+      term.open(el)
+      loadRendererAddons(term)
+      fitAddon.fit()
+      cols = term.cols
+      rows = term.rows
+    }
+
     const info = await ptySpawn({
       cwd,
-      cols: 80,
-      rows: 24,
+      cols,
+      rows,
       type: 'claude',
       args,
     })
 
     if (info) {
-      terminalInstances.set(tabId, { term, fitAddon, ptyId: info.id })
+      const instance = terminalInstances.get(tabId)
+      if (instance) instance.ptyId = info.id
       sessionStore.setTabPty(tabId, info.id)
-      sessionStore.setActiveTab(tabId)
-      currentDisplayTabId.value = tabId
-
-      const el = await waitForElement(tabId)
-      if (el) {
-        term.open(el)
-        loadRendererAddons(term)
-        requestAnimationFrame(() => fitAddon.fit())
-      }
-
       emit('ptyStarted', tabId, info.id)
+    } else {
+      terminalInstances.delete(tabId)
     }
 
     appStore.resetClaudeOptions()
   } catch (err) {
+    terminalInstances.delete(tabId)
     console.error('[XTerm] restartTab ERROR:', err)
     logMessage('error', `restartTab failed, tabId=${tabId}: ${err}`)
   } finally {
