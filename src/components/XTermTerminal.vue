@@ -241,6 +241,7 @@ async function disposeTerminal(term: Terminal, context: string) {
 interface ImeFixState {
   keyDownSeen: boolean      // 镜像 xterm _keyDownSeen：keydown 置 true，keyup 置 false
   compositionSeen: boolean  // 本次输入周期见过 compositionstart（走 composition 的 IME），不补发
+  dataSeen: boolean         // 本次 keydown 后 xterm 是否已通过 onData 发送（普通字母已发→不补；IME 漏发→补）
   dispose: () => void
 }
 const imeFixStates = new WeakMap<HTMLTextAreaElement, ImeFixState>()
@@ -252,14 +253,18 @@ function attachImeInputFix(term: Terminal) {
   // 用 textarea（DOM 元素，不被 Vue reactive proxy）作 key，避免 proxy term 与原始 term
   // 视为不同 key 导致重复绑定（setTerminalEl 的 instance.term 是 proxy，startTab 的 term 是原始）
   if (imeFixStates.has(ta)) return
-  const state: ImeFixState = { keyDownSeen: false, compositionSeen: false, dispose: () => {} }
+  const state: ImeFixState = { keyDownSeen: false, compositionSeen: false, dataSeen: false, dispose: () => {} }
 
-  const onKeyDown = () => { state.keyDownSeen = true; state.compositionSeen = false }
+  const onKeyDown = () => { state.keyDownSeen = true; state.compositionSeen = false; state.dataSeen = false }
   const onKeyUp = () => { state.keyDownSeen = false }
   const onCompositionStart = () => { state.compositionSeen = true }
   const onInput = (e: Event) => {
     const ie = e as InputEvent
-    if (ie.inputType === 'insertText' && ie.composed && ie.data && state.keyDownSeen && !state.compositionSeen) {
+    // 仅补发 xterm 真正漏发的：composed insertText、本次 keydown 后、未见 composition、
+    // 且 xterm 自己没通过 onData 发送过。普通字母 xterm keydown 已发 onData（dataSeen=true）→不补，
+    // 避免搜狗英文状态 Shift+I 出现 "II" 重复；搜狗中文 Shift 切换提交拼音时 xterm 因 IME 拦截
+    // keydown 未发 onData（dataSeen=false）→ 补，修复拼音丢失。
+    if (ie.inputType === 'insertText' && ie.composed && ie.data && state.keyDownSeen && !state.compositionSeen && !state.dataSeen) {
       term.input(ie.data)
     }
   }
@@ -267,11 +272,13 @@ function attachImeInputFix(term: Terminal) {
   ta.addEventListener('keyup', onKeyUp)
   ta.addEventListener('compositionstart', onCompositionStart)
   ta.addEventListener('input', onInput)
+  const onDataDisp = term.onData(() => { state.dataSeen = true })
   state.dispose = () => {
     ta.removeEventListener('keydown', onKeyDown)
     ta.removeEventListener('keyup', onKeyUp)
     ta.removeEventListener('compositionstart', onCompositionStart)
     ta.removeEventListener('input', onInput)
+    onDataDisp.dispose()
   }
   imeFixStates.set(ta, state)
 }
