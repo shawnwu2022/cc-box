@@ -154,10 +154,10 @@ historySessions: HistorySession[]     // 未被 Tab 占用的历史会话
 
 **全局项目树相关**（Sessions 面板从扁平列表升级为项目→会话全局树）：
 - `buildProjectGroups`：按项目路径分组 tabs + 历史，无 tab/历史的孤儿项目单独收集
-- `sortProjectGroups(groups, currentCwd)`：排序——当前项目置顶 → 有活跃会话 → 最近时间 → 孤儿项目置底
+- `sortProjectGroups(groups)`：排序——置顶 → 字母序 → 孤儿置底
 - `filterProjectGroups(groups, query)`：搜索——匹配项目名 + 已加载历史会话名（`getHistoryFor`）+ 该组 tabs 的 name/sessionId
 - `getHistoryFor(projectPath)`：多项目历史选择器，按项目路径隔离历史，跨项目切换不串扰
-- `expandOverride` / `toggleExpand(path, opts)` / `isExpanded(path, opts)`：展开状态，默认当前项目 + 有活跃会话项目展开，其余折叠；`opts.hasActive`/`opts.isCurrent` 决定默认值
+- `expandOverride` / `toggleExpand(path)` / `isExpanded(path)`：展开状态，纯手动展开（不自动展开当前/active），其余折叠
 
 ### sidebar.ts — 侧边栏状态
 

@@ -471,6 +471,51 @@ describe('session store - 全局树', () => {
       expect(infos[0].lastActiveAt).toBe(0)
     })
   })
+
+  // ==================== 持久化失败回滚（P1.3：先 persist 新状态再改本地，失败不改本地 + 抛错） ====================
+  describe('persist 失败回滚', () => {
+    // pin 持久化失败时本地 pinnedProjects 不变且抛错
+    it('Pin_PersistFail_NoLocalChange_001', async () => {
+      const { updateProjectsState } = await import('@/api/tauri')
+      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      mockUpdate.mockRejectedValueOnce(new Error('disk full'))
+      const store = useSessionStore()
+      await expect(store.pinProject('/p-a')).rejects.toThrow('disk full')
+      expect(store.isPinned('/p-a')).toBe(false)
+    })
+
+    // unpin 持久化失败时本地仍保持置顶
+    it('Unpin_PersistFail_KeepPinned_001', async () => {
+      const { updateProjectsState } = await import('@/api/tauri')
+      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      const store = useSessionStore()
+      await store.pinProject('/p-a')  // 先成功置顶
+      mockUpdate.mockRejectedValueOnce(new Error('io error'))
+      await expect(store.unpinProject('/p-a')).rejects.toThrow('io error')
+      expect(store.isPinned('/p-a')).toBe(true)
+    })
+
+    // archive 持久化失败时本地存档不变且抛错
+    it('Archive_PersistFail_NoLocalChange_001', async () => {
+      const { updateProjectsState } = await import('@/api/tauri')
+      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      mockUpdate.mockRejectedValueOnce(new Error('io error'))
+      const store = useSessionStore()
+      await expect(store.archiveSession('/p-a', 'sess-1')).rejects.toThrow('io error')
+      expect(store.getArchivedSessions('/p-a')).toEqual([])
+    })
+
+    // restore 持久化失败时本地仍保持存档
+    it('Restore_PersistFail_KeepArchived_001', async () => {
+      const { updateProjectsState } = await import('@/api/tauri')
+      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      const store = useSessionStore()
+      await store.archiveSession('/p-a', 'sess-1')  // 先成功存档
+      mockUpdate.mockRejectedValueOnce(new Error('io error'))
+      await expect(store.restoreSession('/p-a', 'sess-1')).rejects.toThrow('io error')
+      expect(store.getArchivedSessions('/p-a')).toContain('sess-1')
+    })
+  })
 })
 
 // 辅助：loadHistorySessions 的薄封装，便于测试中复用 store 实例

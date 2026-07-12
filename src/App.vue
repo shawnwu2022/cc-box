@@ -273,6 +273,9 @@ function initAfterChecks() {
     }
   })
   appStore.loadAppConfig()
+  // 启动加载置顶/存档状态（projects.json）：必须在用户 pin/archive 前完成，
+  // 否则首次 pin/archive 会把空内存状态写回覆写旧数据（P1.2）。
+  sessionStore.loadProjectsState()
   useHookStore().init()
 
   shortcutUnlisteners.push(...setupShortcutListeners())

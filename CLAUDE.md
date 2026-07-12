@@ -118,14 +118,14 @@ Claude CLI hook 触发 → report-hook.sh → curl POST → hook_server.rs (axum
 ### 全局项目树数据流
 
 ```
-sessionStore（tabs + historySessions）→ buildProjectGroups（分组+孤儿）→ sortProjectGroups（当前→活→时间→孤儿置底）→ filterProjectGroups（搜索）→ SessionsPanel 组装 ProjectNode 树
+sessionStore（tabs + historySessions）→ buildProjectGroups（分组+孤儿）→ sortProjectGroups（置顶→字母序→孤儿置底）→ filterProjectGroups（搜索）→ SessionsPanel 组装 ProjectNode 树
 点节点 → resolveSwitchAction（纯函数，D/E 参数直传无竞态）→ TerminalView handler（切 cwd + 切 tab / --resume）
 ```
 
 - Sessions 面板从「当前项目扁平列表」升级为「项目→会话全局树」：终端视图内跨项目一步切换 + 并行项目状态徽标（`●N` 运行 / 琥珀点 pending）一眼可见，后端零改动
 - `resolveSwitchAction`：纯函数决策切换语义（noop / activate / resume / new），输入全显式参数、不读写全局单值中间态，连续调用互不影响
 - `getHistoryFor(path)`：多项目历史选择器，按项目路径隔离历史，跨项目切换不串扰
-- 展开状态：`expandOverride`/`toggleExpand`/`isExpanded`，默认当前项目 + 有活跃会话项目展开，其余折叠
+- 展开状态：`expandOverride`/`toggleExpand`/`isExpanded`，纯手动展开（不自动展开当前/active），其余折叠
 - 详细架构 → [docs/components.md](docs/components.md)
 
 详细架构 → [docs/terminal-integration.md](docs/terminal-integration.md)

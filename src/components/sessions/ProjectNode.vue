@@ -6,7 +6,7 @@
       <button
         class="expand-arrow"
         :class="{ expanded: expanded }"
-        @click.stop="$emit('toggleExpand', project.projectPath)"
+        @click.stop="onToggle"
         :title="expanded ? t('collapse') : t('expand')"
       >
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
@@ -15,7 +15,7 @@
       </button>
 
       <!-- 项目名区：整行点击展开/折叠 -->
-      <div class="project-main" @click="$emit('toggleExpand', project.projectPath)">
+      <div class="project-main" @click="onToggle">
         <span class="project-name">{{ project.name }}</span>
         <!-- 置顶标记 -->
         <span v-if="project.isPinned" class="pin-mark" :title="t('pinned')">
@@ -113,6 +113,8 @@ const props = defineProps<{
   history: HistorySession[]
   loading?: boolean
   matchedHistoryIds?: string[]
+  /** 禁用整行/箭头点击的展开切换（搜索模式临时展开不污染手动展开状态，spec §4.4） */
+  disableToggle?: boolean
 }>()
 
 // <script setup> 中 defineEmits 只能调用一次；用 const 取得 emit 函数
@@ -166,6 +168,15 @@ function onMenu(action: 'closeAll' | 'openInExplorer' | 'pin' | 'unpin' | 'showA
     emit('showArchived', path)
     archivedOpen.value = true
   }
+}
+
+/**
+ * 整行/箭头点击展开切换。
+ * 搜索模式 disableToggle=true：不触发 toggleExpand，避免污染手动展开状态（spec §4.4）。
+ */
+function onToggle() {
+  if (props.disableToggle) return
+  emit('toggleExpand', props.project.projectPath)
 }
 
 function onRestore(sessionId: string) {

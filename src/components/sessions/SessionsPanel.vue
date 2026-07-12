@@ -40,6 +40,7 @@
           :is-current="g.projectPath === appStore.cwd"
           :active-tab-id="sessionStore.activeTabId"
           :history="matchedHistoryFor(g)"
+          :disable-toggle="true"
           @toggle-expand="(p) => sessionStore.toggleExpand(p)"
           @new-session-in="(p) => $emit('newSessionIn', p)"
           @switch-session="(id) => $emit('switchSession', id)"

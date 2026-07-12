@@ -208,7 +208,16 @@ function handleOpenFolder() {
 }
 
 // 切换到已有 Tab
+// v3 §4.3：跨项目点 running tab = 切 cwd + 切 activeTabId。
+// 否则 header/配置/新建仍用旧项目 cwd，与切换语义不一致。
 function handleSwitchSession(tabId: string) {
+  const tab = sessionStore.tabs.get(tabId)
+  if (tab) {
+    const normalize = (p: string) => p.replace(/\\/g, '/').toLowerCase()
+    if (normalize(tab.projectPath) !== normalize(appStore.cwd)) {
+      appStore.setCwd(tab.projectPath)
+    }
+  }
   sessionStore.setActiveTab(tabId)
 }
 
@@ -314,21 +323,22 @@ function handleCloseAllSessionsIn(projectPath: string) {
 }
 
 // v3 项目置顶（持久化到 projects.json，跨重启保持）
+// P1.3：store 持久化失败会抛错，此处 catch 避免 unhandled rejection（本地状态已由 store 回滚）
 function handlePin(projectPath: string) {
-  sessionStore.pinProject(projectPath)
+  sessionStore.pinProject(projectPath).catch(err => console.error('[TerminalView] pinProject failed:', err))
 }
 
 function handleUnpin(projectPath: string) {
-  sessionStore.unpinProject(projectPath)
+  sessionStore.unpinProject(projectPath).catch(err => console.error('[TerminalView] unpinProject failed:', err))
 }
 
 // v3 会话存档/恢复（archived 会话从历史树隐藏，项目 ⋯ 菜单可查看与恢复）
 function handleArchive(projectPath: string, sessionId: string) {
-  sessionStore.archiveSession(projectPath, sessionId)
+  sessionStore.archiveSession(projectPath, sessionId).catch(err => console.error('[TerminalView] archiveSession failed:', err))
 }
 
 function handleRestore(projectPath: string, sessionId: string) {
-  sessionStore.restoreSession(projectPath, sessionId)
+  sessionStore.restoreSession(projectPath, sessionId).catch(err => console.error('[TerminalView] restoreSession failed:', err))
 }
 
 async function handleOpenInExplorer(projectPath: string) {
