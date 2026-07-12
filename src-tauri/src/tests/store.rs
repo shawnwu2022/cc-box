@@ -1,11 +1,12 @@
 use serde_json::json;
 
 use crate::store::{
-    expand_env_vars, extract_md_description, extract_session_name, find_valid_plugin_path,
-    get_projects_state_at, infer_server_type, merge_json_values, parse_agents_list_output,
-    parse_mcp_server_entry, parse_skill_description, parse_timestamp, resolve_marketplace_plugin_path,
-    search_session_messages_in_dirs, set_agent_enabled_in, set_mcp_server_enabled_in,
-    set_skill_enabled_in, update_projects_state_at, AgentInfo, AppConfig, ProjectsState,
+    compute_project_startup_state, expand_env_vars, extract_md_description, extract_session_name,
+    find_valid_plugin_path, get_projects_state_at, infer_server_type, merge_json_values,
+    parse_agents_list_output, parse_mcp_server_entry, parse_skill_description, parse_timestamp,
+    resolve_marketplace_plugin_path, search_session_messages_in_dirs, set_agent_enabled_in,
+    set_mcp_server_enabled_in, set_skill_enabled_in, update_projects_state_at, AgentInfo,
+    AppConfig, Project, ProjectsState,
 };
 
 use std::collections::HashMap;
@@ -1223,4 +1224,134 @@ fn UpdateProjectsState_FirstWrite_001() {
         state.archived_sessions.get("p").unwrap(),
         &vec!["s1".to_string()]
     );
+}
+
+// ==================== compute_project_startup_state ====================
+
+// 无项目：has_any=false, has_visible=false, last_info=None
+#[test]
+fn ComputeStartup_NoProjects_001() {
+    let state = compute_project_startup_state(&[], "", &[]);
+    assert!(!state.has_any_project);
+    assert!(!state.has_visible_project);
+    assert!(state.last_opened_project_info.is_none());
+}
+
+// 有项目全可见：has_any=true, has_visible=true
+#[test]
+fn ComputeStartup_AllVisible_001() {
+    let projects = vec![Project {
+        path: "/p-a".into(),
+        name: "p-a".into(),
+        last_session_id: None,
+        last_cost: None,
+        last_duration: None,
+    }];
+    let state = compute_project_startup_state(&projects, "", &[]);
+    assert!(state.has_any_project);
+    assert!(state.has_visible_project);
+}
+
+// 有项目但全隐藏：has_any=true, has_visible=false
+#[test]
+fn ComputeStartup_AllHidden_001() {
+    let projects = vec![Project {
+        path: "/p-a".into(),
+        name: "p-a".into(),
+        last_session_id: None,
+        last_cost: None,
+        last_duration: None,
+    }];
+    let state = compute_project_startup_state(&projects, "", &["/p-a".to_string()]);
+    assert!(state.has_any_project);
+    assert!(!state.has_visible_project);
+}
+
+// 部分隐藏：has_visible=true（仍有可见项目）
+#[test]
+fn ComputeStartup_PartialHidden_001() {
+    let projects = vec![
+        Project {
+            path: "/p-a".into(),
+            name: "p-a".into(),
+            last_session_id: None,
+            last_cost: None,
+            last_duration: None,
+        },
+        Project {
+            path: "/p-b".into(),
+            name: "p-b".into(),
+            last_session_id: None,
+            last_cost: None,
+            last_duration: None,
+        },
+    ];
+    let state = compute_project_startup_state(&projects, "", &["/p-a".to_string()]);
+    assert!(state.has_any_project);
+    assert!(state.has_visible_project); // /p-b 仍可见
+}
+
+// lastOpened 命中真实路径（含分页外项目）：last_info 填充 exists=true
+#[test]
+fn ComputeStartup_LastOpenedExists_001() {
+    let projects = vec![Project {
+        path: "/p-deep".into(),
+        name: "p-deep".into(),
+        last_session_id: None,
+        last_cost: None,
+        last_duration: None,
+    }];
+    let state = compute_project_startup_state(&projects, "/p-deep", &[]);
+    let info = state.last_opened_project_info.expect("info should exist");
+    assert_eq!(info.path, "/p-deep");
+    assert_eq!(info.name, "p-deep");
+    assert!(info.exists);
+}
+
+// lastOpened 不在项目集合：exists=false（info 仍填充，供前端提示）
+#[test]
+fn ComputeStartup_LastOpenedMissing_001() {
+    let projects = vec![Project {
+        path: "/p-a".into(),
+        name: "p-a".into(),
+        last_session_id: None,
+        last_cost: None,
+        last_duration: None,
+    }];
+    let state = compute_project_startup_state(&projects, "/p-gone", &[]);
+    let info = state.last_opened_project_info.expect("info should exist");
+    assert!(!info.exists);
+}
+
+// lastOpened 为空：last_info=None（首次启动）
+#[test]
+fn ComputeStartup_LastOpenedEmpty_001() {
+    let projects = vec![Project {
+        path: "/p-a".into(),
+        name: "p-a".into(),
+        last_session_id: None,
+        last_cost: None,
+        last_duration: None,
+    }];
+    let state = compute_project_startup_state(&projects, "", &[]);
+    assert!(state.last_opened_project_info.is_none());
+}
+
+// 规范化比较：Windows 反斜杠 + 大小写差异仍能命中/隐藏
+#[test]
+fn ComputeStartup_NormalizePath_001() {
+    let projects = vec![Project {
+        path: "E:\\source\\Foo".into(),
+        name: "Foo".into(),
+        last_session_id: None,
+        last_cost: None,
+        last_duration: None,
+    }];
+    // lastOpened 用正斜杠小写仍命中
+    let state = compute_project_startup_state(&projects, "e:/source/foo", &[]);
+    let info = state.last_opened_project_info.unwrap();
+    assert!(info.exists);
+    // hidden 用正斜杠小写仍隐藏
+    let state2 = compute_project_startup_state(&projects, "", &["e:/source/foo".to_string()]);
+    assert!(!state2.has_visible_project);
 }

@@ -141,6 +141,15 @@ pub async fn get_project_info(path: String) -> Result<Option<Project>, String> {
     crate::store::get_project_info(&path).map_err(|e| e.to_string())
 }
 
+/// 启动摘要：项目存在性 + 可见性 + lastOpened 信息（供 App.vue 启动决策）
+#[tauri::command]
+pub async fn get_project_startup_state(
+    last_opened: String,
+    hidden: Vec<String>,
+) -> Result<crate::store::ProjectStartupState, String> {
+    crate::store::get_project_startup_state(last_opened, hidden).map_err(|e| e.to_string())
+}
+
 /// 获取会话列表
 #[tauri::command]
 pub async fn get_sessions(

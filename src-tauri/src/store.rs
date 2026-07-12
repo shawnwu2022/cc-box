@@ -507,6 +507,83 @@ pub fn get_project_info(path: &str) -> Result<Option<Project>> {
     Ok(projects.iter().find(|p| p.path == path).cloned())
 }
 
+/// 启动摘要：单个项目信息（注入前端缓存用）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectInfo {
+    pub path: String,
+    pub name: String,
+    pub exists: bool,
+}
+
+/// 启动摘要：项目存在性 + 可见性 + lastOpened 信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectStartupState {
+    pub has_any_project: bool,
+    pub has_visible_project: bool,
+    pub last_opened_project_info: Option<ProjectInfo>,
+}
+
+/// 路径规范化（与前端 normalizePath 一致）：统一正斜杠小写，容忍 Windows 大小写/斜杠差异
+fn normalize_path_str(p: &str) -> String {
+    p.replace('\\', "/").to_lowercase()
+}
+
+/// 启动决策纯函数：基于已提取真实 cwd 的 Vec<Project> 计算 has_any/has_visible/last_info。
+/// 不读文件系统，便于单元测试（测试构造 Vec<Project>）。
+pub(crate) fn compute_project_startup_state(
+    projects: &[Project],
+    last_opened: &str,
+    hidden: &[String],
+) -> ProjectStartupState {
+    let hidden_set: std::collections::HashSet<String> =
+        hidden.iter().map(|p| normalize_path_str(p)).collect();
+
+    let has_any = !projects.is_empty();
+    let has_visible = projects
+        .iter()
+        .any(|p| !hidden_set.contains(&normalize_path_str(&p.path)));
+
+    // lastOpened 为空 -> None（首次启动）；否则填充 info，exists 由规范化比较决定
+    let last_opened_project_info = if last_opened.is_empty() {
+        None
+    } else {
+        let norm = normalize_path_str(last_opened);
+        let exists = projects
+            .iter()
+            .any(|p| normalize_path_str(&p.path) == norm);
+        // name 取 lastOpened 末段（与 get_projects 的 name 推导一致：取 path 末段目录名）
+        let name = last_opened
+            .replace('\\', "/")
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .last()
+            .unwrap_or(last_opened)
+            .to_string();
+        Some(ProjectInfo {
+            path: last_opened.to_string(),
+            name,
+            exists,
+        })
+    };
+
+    ProjectStartupState {
+        has_any_project: has_any,
+        has_visible_project: has_visible,
+        last_opened_project_info,
+    }
+}
+
+/// 启动摘要 command 入口：复用 get_projects 提真实 cwd，再 compute。
+/// 复用 get_projects（已从 JSONL 提真实 cwd 并跳过路径不存在的项目），不分页拿全量。
+pub fn get_project_startup_state(
+    last_opened: String,
+    hidden: Vec<String>,
+) -> Result<ProjectStartupState> {
+    let projects = get_projects(None, None)?;
+    Ok(compute_project_startup_state(&projects, &last_opened, &hidden))
+}
+
 /// 从 JSONL 提取会话名称
 pub(crate) fn extract_session_name(jsonl_path: &Path) -> String {
     if let Ok(content) = fs::read_to_string(jsonl_path) {
