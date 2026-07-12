@@ -117,6 +117,60 @@ describe('session store — 全局树', () => {
       expect(ids).toContain('free-1')
     })
   })
+
+  // ==================== buildProjectGroups（分组 + 孤儿） ====================
+  describe('buildProjectGroups', () => {
+    it('Group_BasicCount_001', () => {
+      const store = useSessionStore()
+      const t1 = store.createTab('/p-a'); store.setTabPty(t1, 'pty-1')
+      const t2 = store.createTab('/p-a'); store.setTabPty(t2, 'pty-2')
+      const groups = store.buildProjectGroups(
+        [{ path: '/p-a', name: 'a', lastDuration: 0 }],
+        '/p-cur'
+      )
+      const a = groups.find(g => g.projectPath === '/p-a')!
+      expect(a.tabs).toHaveLength(2)
+      expect(a.runningCount).toBe(2)
+      expect(a.isOrphan).toBe(false)
+    })
+
+    // pending 计入徽标（hasActive = running 或 pending）
+    it('Group_PendingHasActive_001', () => {
+      const store = useSessionStore()
+      const t1 = store.createTab('/p-a'); store.setTabPty(t1, 'pty-1')
+      store.tabs.get(t1)!.pending = true
+      const groups = store.buildProjectGroups(
+        [{ path: '/p-a', name: 'a', lastDuration: 0 }],
+        '/p-cur'
+      )
+      expect(groups.find(g => g.projectPath === '/p-a')!.hasActive).toBe(true)
+      expect(groups.find(g => g.projectPath === '/p-a')!.pendingCount).toBe(1)
+    })
+
+    // 孤儿：tab 的 projectPath 不在 cachedProjects（对抗审查 C）
+    it('Group_OrphanTab_001', () => {
+      const store = useSessionStore()
+      const t = store.createTab('/tmp-not-saved'); store.setTabPty(t, 'pty-x')
+      const groups = store.buildProjectGroups([], '/p-cur')
+      const orphan = groups.find(g => g.projectPath === '/tmp-not-saved')!
+      expect(orphan).toBeTruthy()
+      expect(orphan.isOrphan).toBe(true)
+      expect(orphan.name).toBe('tmp-not-saved')
+    })
+
+    // 无 tab、无 cwd 命中的项目也出现（折叠态展示），runningCount=0
+    it('Group_EmptyProjectShown_001', () => {
+      const store = useSessionStore()
+      const groups = store.buildProjectGroups(
+        [{ path: '/p-empty', name: 'empty', lastDuration: 0 }],
+        '/p-cur'
+      )
+      const e = groups.find(g => g.projectPath === '/p-empty')!
+      expect(e.tabs).toHaveLength(0)
+      expect(e.runningCount).toBe(0)
+      expect(e.hasActive).toBe(false)
+    })
+  })
 })
 
 // 辅助：loadHistorySessions 的薄封装，便于测试中复用 store 实例

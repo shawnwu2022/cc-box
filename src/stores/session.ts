@@ -42,6 +42,19 @@ export interface HistorySession {
   lastActiveAt: number
 }
 
+/**
+ * 全局树的项目分组
+ */
+export interface ProjectGroup {
+  projectPath: string
+  name: string
+  tabs: TerminalTab[]
+  runningCount: number
+  pendingCount: number
+  hasActive: boolean          // 有 running 或 pending tab
+  isOrphan: boolean           // projectPath 不在 cachedProjects
+}
+
 // ==================== Store ====================
 
 export const useSessionStore = defineStore('session', () => {
@@ -492,6 +505,60 @@ export const useSessionStore = defineStore('session', () => {
       .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
   }
 
+  /**
+   * 构建项目分组（含孤儿）。
+   * @param cachedProjects 来自 appStore.cachedProjects 的项目列表
+   * @param currentCwd      当前 cwd（决定 isCurrent，但 isCurrent 在排序用，这里只标 name/path）
+   */
+  function buildProjectGroups(
+    cachedProjects: { path: string; name: string }[],
+    currentCwd: string,
+  ): ProjectGroup[] {
+    const normalize = (p: string) => p.replace(/\\/g, '/').toLowerCase()
+    const known = new Set(cachedProjects.map(p => normalize(p.path)))
+
+    // 收集所有 projectPath：cachedProjects + tabs 中出现的
+    const pathByName = new Map<string, string>()  // normalized -> 原始 path
+    for (const p of cachedProjects) pathByName.set(normalize(p.path), p.path)
+    for (const tab of tabs.values()) {
+      const n = normalize(tab.projectPath)
+      if (!pathByName.has(n)) {
+        pathByName.set(n, tab.projectPath)
+      }
+    }
+
+    const groups: ProjectGroup[] = []
+    for (const p of cachedProjects) {
+      const n = normalize(p.path)
+      const projTabs = getProjectTabs(p.path)
+      groups.push(makeGroup(p.path, p.name, projTabs, false))
+    }
+    // 孤儿：tabs 中有但 cachedProjects 没有
+    for (const tab of tabs.values()) {
+      const n = normalize(tab.projectPath)
+      if (known.has(n)) continue
+      if (groups.some(g => normalize(g.projectPath) === n)) continue
+      const parts = tab.projectPath.replace(/\\/g, '/').split('/')
+      const name = parts[parts.length - 1] || tab.projectPath
+      groups.push(makeGroup(tab.projectPath, name, getProjectTabs(tab.projectPath), true))
+    }
+    return groups
+
+    function makeGroup(projectPath: string, name: string, projTabs: TerminalTab[], isOrphan: boolean): ProjectGroup {
+      let runningCount = 0, pendingCount = 0
+      for (const t of projTabs) {
+        if (t.status === 'running') runningCount++
+        if (t.pending) pendingCount++
+      }
+      return {
+        projectPath, name, tabs: projTabs,
+        runningCount, pendingCount,
+        hasActive: runningCount > 0 || pendingCount > 0,
+        isOrphan,
+      }
+    }
+  }
+
   return {
     // State
     tabs,
@@ -545,5 +612,8 @@ export const useSessionStore = defineStore('session', () => {
     toggleExpand,
     isExpanded,
     getHistoryFor,
+
+    // 全局树：项目分组
+    buildProjectGroups,
   }
 })
