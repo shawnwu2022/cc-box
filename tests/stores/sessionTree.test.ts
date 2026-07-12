@@ -126,11 +126,11 @@ describe('session store — 全局树', () => {
       const t2 = store.createTab('/p-a'); store.setTabPty(t2, 'pty-2')
       const groups = store.buildProjectGroups(
         [{ path: '/p-a', name: 'a', lastDuration: 0 }],
-        '/p-cur'
       )
       const a = groups.find(g => g.projectPath === '/p-a')!
       expect(a.tabs).toHaveLength(2)
       expect(a.runningCount).toBe(2)
+      expect(a.hasActive).toBe(true)
       expect(a.isOrphan).toBe(false)
     })
 
@@ -141,7 +141,6 @@ describe('session store — 全局树', () => {
       store.tabs.get(t1)!.pending = true
       const groups = store.buildProjectGroups(
         [{ path: '/p-a', name: 'a', lastDuration: 0 }],
-        '/p-cur'
       )
       expect(groups.find(g => g.projectPath === '/p-a')!.hasActive).toBe(true)
       expect(groups.find(g => g.projectPath === '/p-a')!.pendingCount).toBe(1)
@@ -151,7 +150,7 @@ describe('session store — 全局树', () => {
     it('Group_OrphanTab_001', () => {
       const store = useSessionStore()
       const t = store.createTab('/tmp-not-saved'); store.setTabPty(t, 'pty-x')
-      const groups = store.buildProjectGroups([], '/p-cur')
+      const groups = store.buildProjectGroups([])
       const orphan = groups.find(g => g.projectPath === '/tmp-not-saved')!
       expect(orphan).toBeTruthy()
       expect(orphan.isOrphan).toBe(true)
@@ -163,7 +162,6 @@ describe('session store — 全局树', () => {
       const store = useSessionStore()
       const groups = store.buildProjectGroups(
         [{ path: '/p-empty', name: 'empty', lastDuration: 0 }],
-        '/p-cur'
       )
       const e = groups.find(g => g.projectPath === '/p-empty')!
       expect(e.tabs).toHaveLength(0)

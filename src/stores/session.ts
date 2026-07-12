@@ -508,39 +508,38 @@ export const useSessionStore = defineStore('session', () => {
   /**
    * 构建项目分组（含孤儿）。
    * @param cachedProjects 来自 appStore.cachedProjects 的项目列表
-   * @param currentCwd      当前 cwd（决定 isCurrent，但 isCurrent 在排序用，这里只标 name/path）
    */
   function buildProjectGroups(
     cachedProjects: { path: string; name: string }[],
-    currentCwd: string,
   ): ProjectGroup[] {
     const normalize = (p: string) => p.replace(/\\/g, '/').toLowerCase()
     const known = new Set(cachedProjects.map(p => normalize(p.path)))
 
-    // 收集所有 projectPath：cachedProjects + tabs 中出现的
-    const pathByName = new Map<string, string>()  // normalized -> 原始 path
-    for (const p of cachedProjects) pathByName.set(normalize(p.path), p.path)
+    // 按 normalized path 聚合 tabs，避免 Windows 路径大小写/斜杠不一致时
+    // 精确匹配（getProjectTabs）漏 tab：known 判非孤儿却贴不到 tab。
+    const tabsByNorm = new Map<string, { tabs: TerminalTab[]; firstRaw: string }>()
     for (const tab of tabs.values()) {
       const n = normalize(tab.projectPath)
-      if (!pathByName.has(n)) {
-        pathByName.set(n, tab.projectPath)
-      }
+      const entry = tabsByNorm.get(n)
+      if (entry) entry.tabs.push(tab)
+      else tabsByNorm.set(n, { tabs: [tab], firstRaw: tab.projectPath })
+    }
+    // 同一项目内按 lastActiveAt 倒序，保持与 getProjectTabs 一致
+    for (const entry of tabsByNorm.values()) {
+      entry.tabs.sort((a, b) => b.lastActiveAt - a.lastActiveAt)
     }
 
     const groups: ProjectGroup[] = []
     for (const p of cachedProjects) {
-      const n = normalize(p.path)
-      const projTabs = getProjectTabs(p.path)
+      const projTabs = tabsByNorm.get(normalize(p.path))?.tabs ?? []
       groups.push(makeGroup(p.path, p.name, projTabs, false))
     }
-    // 孤儿：tabs 中有但 cachedProjects 没有
-    for (const tab of tabs.values()) {
-      const n = normalize(tab.projectPath)
+    // 孤儿：tabs 中有但 cachedProjects 没有（Map 已按 normalized key 去重）
+    for (const [n, entry] of tabsByNorm) {
       if (known.has(n)) continue
-      if (groups.some(g => normalize(g.projectPath) === n)) continue
-      const parts = tab.projectPath.replace(/\\/g, '/').split('/')
-      const name = parts[parts.length - 1] || tab.projectPath
-      groups.push(makeGroup(tab.projectPath, name, getProjectTabs(tab.projectPath), true))
+      const parts = entry.firstRaw.replace(/\\/g, '/').split('/')
+      const name = parts[parts.length - 1] || entry.firstRaw
+      groups.push(makeGroup(entry.firstRaw, name, entry.tabs, true))
     }
     return groups
 
