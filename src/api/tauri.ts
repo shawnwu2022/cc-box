@@ -30,6 +30,8 @@ import type {
   HomeData,
   CheckResult,
   HookEventPayload,
+  ProjectInfo,
+  ProjectStartupState,
 } from '@/types';
 
 // 重新导出类型（保持兼容性）
@@ -55,6 +57,8 @@ export type {
   ClaudeCliUpdateInfo,
   ClaudeVersionEntry,
   ClaudeVersions,
+  ProjectInfo,
+  ProjectStartupState,
 };
 
 // ============================================
@@ -134,6 +138,12 @@ export const getProjects = (limit?: number, offset?: number): Promise<Project[]>
 
 export const getProjectInfo = (path: string): Promise<Project | null> =>
   invoke<Project | null>('get_project_info', { path });
+
+export const getProjectStartupState = (
+  lastOpened: string,
+  hidden: string[]
+): Promise<ProjectStartupState> =>
+  invoke<ProjectStartupState>('get_project_startup_state', { lastOpened, hidden });
 
 export const getSessions = (projectPath: string, limit?: number, offset?: number): Promise<SessionInfo[]> =>
   invoke<SessionInfo[]>('get_sessions', { projectPath, limit, offset });

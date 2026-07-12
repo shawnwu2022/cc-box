@@ -100,3 +100,17 @@ export interface ClaudeVersions {
   updatedAt: string
   versions: ClaudeVersionEntry[]
 }
+
+/// 启动摘要：单个项目信息（供前端缓存）
+export interface ProjectInfo {
+  path: string
+  name: string
+  exists: boolean
+}
+
+/// 启动摘要：项目存在性 + 可见性 + lastOpened 信息
+export interface ProjectStartupState {
+  hasAnyProject: boolean
+  hasVisibleProject: boolean
+  lastOpenedProjectInfo: ProjectInfo | null
+}
