@@ -214,6 +214,11 @@ export default {
   selectProjectDir: 'Select Project Directory',
   chooseDirHint: 'Choose a directory to start a new session',
 
+  // sessionStart transaction（v6 P1.2/P1.5）
+  claudeStarting: 'Claude is starting...',
+  claudeStartTimeout: 'Claude failed to start (timeout). Check Claude CLI installation and try again.',
+  claudeStartFailed: 'Claude failed to start. Check Claude CLI installation and try again.',
+
   // Project select view
   recentSessions: 'Recent Sessions',
   noRecentSessions: 'No recent sessions',

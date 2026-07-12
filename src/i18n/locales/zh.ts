@@ -214,6 +214,11 @@ export default {
   selectProjectDir: '选择项目目录',
   chooseDirHint: '选择一个目录来开始新会话',
 
+  // sessionStart transaction（v6 P1.2/P1.5）
+  claudeStarting: 'Claude 启动中...',
+  claudeStartTimeout: 'Claude 启动超时，请检查 Claude CLI 是否正确安装后重试。',
+  claudeStartFailed: 'Claude 启动失败，请检查 Claude CLI 是否正确安装后重试。',
+
   // Project select view
   recentSessions: '近期会话',
   noRecentSessions: '暂无近期会话',

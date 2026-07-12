@@ -56,7 +56,10 @@
           ref="terminalRef"
           :font-size="appStore.fontSize"
           @pty-started="handlePtyStarted"
+          @pty-exited="handlePtyExited"
         />
+        <!-- sessionStart 事务进行中提示（非阻塞，允许终端交互） -->
+        <div v-if="sessionStarting" class="session-starting-hint">{{ t('claudeStarting') }}</div>
       </div>
     </div>
   </div>
@@ -75,6 +78,9 @@ import { sendTerminalCommand } from '@/composables/useTerminalCommand'
 import { useWindowAttention } from '@/composables/useWindowAttention'
 import { useStatusMonitor } from '@/composables/useStatusMonitor'
 import { resolveSwitchAction } from '@/composables/useProjectTreeNavigation'
+import { reduceWaiter, type WaiterStatus, type WaiterEvent } from '@/composables/useSessionStartWaiter'
+import { useHookStore, type HookEventHandler } from '@/stores/hook'
+import type { HookEventPayload } from '@/types/hook'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import TerminalHeader from './TerminalHeader.vue'
 import XTermTerminal from './XTermTerminal.vue'
@@ -93,6 +99,7 @@ const appStore = useAppStore()
 const sessionStore = useSessionStore()
 const sidebarStore = useSidebarStore()
 const configStore = useConfigStore()
+const hookStore = useHookStore()
 const terminalRef = ref()
 
 // 终端表面色 CSS 变量：随终端主题变化（与 GUI 浅/暗独立），向下继承给容器/滚动条/空态
@@ -129,8 +136,113 @@ async function startResumeSession(projectPath: string, sessionId: string, sessio
   }
 }
 
+// ==================== sessionStart 事务（v6 P1.2/P1.5）====================
+// per-tabId waiter：spawn 前 register，sessionStart hook 到达 / 超时 / PTY 提前退出 / spawn 失败 / unmount 统一 settle。
+// 抽 reduceWaiter 纯函数（见 useSessionStartWaiter）便于单测；终态吸收后续事件，避免重复 settle。
+interface WaiterEntry {
+  status: WaiterStatus
+  resolve: () => void
+  reject: (e: Error) => void
+  timer: ReturnType<typeof setTimeout> | null
+}
+const sessionStartWaiters = new Map<string, WaiterEntry>()
+const SESSION_START_TIMEOUT_MS = 30000
+/** 事务进行中（pending UI 用，非阻塞——允许用户与终端交互） */
+const sessionStarting = ref(false)
+
+/** 统一 settle：清 timer/Map + 据状态机结果 resolve/reject（超时/提前退出/spawn 失败/unmount 统一入口） */
+function settleWaiter(tabId: string, event: WaiterEvent) {
+  const entry = sessionStartWaiters.get(tabId)
+  if (!entry) return
+  const next = reduceWaiter(entry.status, event)
+  if (next === entry.status) return // 无转换（终态吸收）
+  entry.status = next
+  if (entry.timer) { clearTimeout(entry.timer); entry.timer = null }
+  sessionStartWaiters.delete(tabId)
+  switch (next) {
+    case 'started': entry.resolve(); break
+    case 'timeout': entry.reject(new Error(t('claudeStartTimeout'))); break
+    case 'exited': entry.reject(new Error(t('claudeStartFailed'))); break
+    case 'failed': entry.reject(new Error(t('claudeStartFailed'))); break
+    case 'cancelled': entry.reject(new Error('cancelled')); break
+  }
+}
+
+/**
+ * 注册 waiter（spawn 前调，避免 hook 先到 waiter 后建丢事件）。
+ * 注册后立即检查 tab.sessionId 兜底：若 useStatusMonitor 已通过 sessionStart hook 设过 sessionId，直接 resolve。
+ */
+function registerWaiter(tabId: string): Promise<void> {
+  const tab = sessionStore.tabs.get(tabId)
+  if (tab?.sessionId) return Promise.resolve() // 事件先到，直接 resolve
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => settleWaiter(tabId, { type: 'timeout' }), SESSION_START_TIMEOUT_MS)
+    sessionStartWaiters.set(tabId, { status: 'waiting', resolve, reject, timer })
+  })
+}
+
+/**
+ * 添加项目 = 进入目录 + 创建首会话（v6 P1.2 sessionStart 事务）。
+ * 1. createTab + setActiveTab
+ * 2. registerWaiter（spawn 前，避免丢事件）
+ * 3. startTab（PTY spawn）
+ * 4. spawn 成功后：setCwdLocal + pending UI（暂不持久化 lastOpened）
+ * 5. await waiter（sessionStart hook）
+ * 6. sessionStart 到达 -> setCurrentProject(persist:true) 持久化 lastOpened
+ * - 超时/提前退出/spawn 失败：settleWaiter 统一 reject，不持久化，错误传播给调用方
+ */
+async function startProjectSession(path: string): Promise<void> {
+  const tabId = sessionStore.createTab(path)
+  sessionStore.setActiveTab(tabId)
+  // spawn 前注册 waiter（避免 hook 先到 waiter 后建丢事件）
+  const waiter = registerWaiter(tabId)
+
+  let spawnError: Error | null = null
+  try {
+    if (!terminalRef.value) throw new Error('terminal not ready')
+    const result = await terminalRef.value.startTab(tabId)
+    if (!result.ok) throw new Error(result.error)
+    // spawn 成功后切 cwd（spec：spawn 后切，非 spawn 前）+ pending
+    appStore.setCwdLocal(path)
+    sessionStarting.value = true
+  } catch (e) {
+    spawnError = e instanceof Error ? e : new Error(String(e))
+    settleWaiter(tabId, { type: 'spawnFail' })
+  }
+
+  // 等 waiter（spawn 失败时 waiter 已 reject，await 立即抛出）
+  try {
+    await waiter
+  } catch (e) {
+    sessionStarting.value = false
+    throw spawnError ?? e
+  }
+
+  // sessionStart 到达 -> 持久化 lastOpened（cwd 已在 spawn 后切，此处仅持久化）
+  try {
+    await appStore.setCurrentProject(path, { persist: true })
+  } finally {
+    sessionStarting.value = false
+  }
+}
+
+// PTY 提前退出 -> settle waiter（未 sessionStart 退出 = 启动失败）
+function handlePtyExited(tabId: string, _ptyId: string) {
+  settleWaiter(tabId, { type: 'ptyExit' })
+}
+
+// sessionStart hook -> settle waiter（与 useStatusMonitor 并行，各自处理；hookStore 支持多订阅者）
+const sessionStartHandler: HookEventHandler = (payload: HookEventPayload) => {
+  const ptyId = payload.ptyId
+  if (!ptyId) return
+  const tab = sessionStore.getTabByPtyId(ptyId)
+  if (tab) settleWaiter(tab.tabId, { type: 'sessionStart' })
+}
+let unsubscribeSessionStart: (() => void) | null = null
+
 defineExpose({
-  startResumeSession
+  startResumeSession,
+  startProjectSession,
 })
 
 // 初始化
@@ -138,6 +250,8 @@ onMounted(async () => {
   // 监听快捷键事件（必须在 cwd 检查之前设置）
   window.addEventListener('terminal:newSession', handleNewSession)
   window.addEventListener('terminal:restartSession', handleRestartSession)
+  // sessionStart 订阅：与 useStatusMonitor 并行（各自处理；hookStore 多订阅者互不干扰）
+  unsubscribeSessionStart = hookStore.subscribe(['sessionStart'], sessionStartHandler)
 
   const cwd = appStore.cwd
   if (!cwd) return
@@ -166,6 +280,13 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('terminal:newSession', handleNewSession)
   window.removeEventListener('terminal:restartSession', handleRestartSession)
+  // 取消 sessionStart 订阅
+  unsubscribeSessionStart?.()
+  unsubscribeSessionStart = null
+  // 清理所有未完成 waiter（防泄漏 + 防 unmount 后 Promise 悬挂）
+  for (const tabId of [...sessionStartWaiters.keys()]) {
+    settleWaiter(tabId, { type: 'unmount' })
+  }
 })
 
 // KeepAlive 激活 → 改为 visible watcher（v-show 常驻 DOM）
@@ -432,5 +553,22 @@ function handlePtyStarted(tabId: string, _ptyId: string) {
   background: var(--accent-secondary);
   transform: translateY(-1px);
   box-shadow: var(--shadow-lg);
+}
+
+/* sessionStart 事务进行中提示：右下角非阻塞 toast（pointer-events:none，不拦截终端交互） */
+.session-starting-hint {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  opacity: 0.95;
 }
 </style>
