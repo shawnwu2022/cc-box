@@ -52,8 +52,29 @@ describe('session store — 全局树', () => {
       const store = useSessionStore()
       const tabId = store.createTab('/p-active')
       store.setTabPty(tabId, 'pty-1')
-      store.toggleExpand('/p-active')  // 手动折叠
+      store.toggleExpand('/p-active', { hasActive: true, isCurrent: false })  // 手动折叠
       expect(store.isExpanded('/p-active', { hasActive: true, isCurrent: false })).toBe(false)
+    })
+
+    // 主路径：调用方传 opts 时切换行为正确
+    it('Expand_ToggleWithOpts_001', () => {
+      const store = useSessionStore()
+      // hasActive=true，默认展开，toggle 后变为折叠
+      expect(store.isExpanded('/p-a', { hasActive: true, isCurrent: false })).toBe(true)
+      store.toggleExpand('/p-a', { hasActive: true, isCurrent: false })
+      expect(store.isExpanded('/p-a', { hasActive: true, isCurrent: false })).toBe(false)
+      store.toggleExpand('/p-a', { hasActive: true, isCurrent: false })
+      expect(store.isExpanded('/p-a', { hasActive: true, isCurrent: false })).toBe(true)
+    })
+
+    // override 优先级高于 isCurrent
+    it('Expand_OverridePriority_001', () => {
+      const store = useSessionStore()
+      // 先手动 override=true
+      store.toggleExpand('/p-a', { hasActive: false, isCurrent: false })
+      expect(store.isExpanded('/p-a', { hasActive: false, isCurrent: false })).toBe(true)
+      // 即使 isCurrent=true，override 仍优先
+      expect(store.isExpanded('/p-a', { hasActive: false, isCurrent: true })).toBe(true)
     })
   })
 

@@ -453,12 +453,7 @@ export const useSessionStore = defineStore('session', () => {
 
   /** 切换展开/折叠；opts 传入以判断当前是否展开、决定取反方向 */
   function toggleExpand(projectPath: string, opts?: { hasActive?: boolean; isCurrent?: boolean }) {
-    // 若未提供 opts，自动检测该项目是否有 running/pending tab
-    const finalOpts = opts ?? {
-      hasActive: [...tabs.values()].some(t => t.projectPath === projectPath && (t.status === 'running' || t.status === 'pending')),
-      isCurrent: false,
-    }
-    const cur = isExpanded(projectPath, finalOpts)
+    const cur = isExpanded(projectPath, opts)
     expandOverride.set(projectPath, !cur)
   }
 
