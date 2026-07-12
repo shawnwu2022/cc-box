@@ -16,84 +16,43 @@ function makeTab(overrides: Partial<TerminalTab> & { tabId: string }): TerminalT
 }
 
 describe('resolveSwitchAction', () => {
-  // 点具体会话（sessionId 给定）且该会话是 running tab → activate
+  // 点会话：sessionId 在 tabs 里 -> activate 该 tab
   it('Switch_PointSession_ActivateTab_001', () => {
     const tabs = [makeTab({ tabId: 't1', sessionId: 's1', status: 'running', lastActiveAt: 10 })]
     const out = resolveSwitchAction({
-      projectPath: '/p', sessionId: 's1', isCurrent: false,
-      tabs, history: [], activeTabId: null,
+      projectPath: '/p', sessionId: 's1', tabs, history: [],
     })
     expect(out).toEqual({ type: 'activate', projectPath: '/p', tabId: 't1' })
   })
 
-  // 点具体历史会话（无 running tab）→ resume
-  it('Switch_PointHistory_Resume_001', () => {
+  // 点会话：sessionId 在 history 里 -> resume 历史会话
+  it('Switch_PointSession_ResumeHistory_001', () => {
     const history: HistorySession[] = [
       { sessionId: 'h1', name: 'H1', projectPath: '/p', lastActiveAt: 100 },
     ]
     const out = resolveSwitchAction({
-      projectPath: '/p', sessionId: 'h1', isCurrent: false,
-      tabs: [], history, activeTabId: null,
+      projectPath: '/p', sessionId: 'h1', tabs: [], history,
     })
     expect(out).toEqual({ type: 'resume', projectPath: '/p', sessionId: 'h1', name: 'H1' })
   })
 
-  // 点项目名（无 sessionId）：该项目有 running tab → activate 最近活跃
-  it('Switch_PointProject_ActivateRecent_001', () => {
-    const tabs = [
-      makeTab({ tabId: 't-old', sessionId: 'so', status: 'running', lastActiveAt: 5 }),
-      makeTab({ tabId: 't-new', sessionId: 'sn', status: 'running', lastActiveAt: 99 }),
-    ]
+  // 点会话：sessionId 既不在 tabs 也不在 history -> resume（下游 CLI 报错路径，name 缺省）
+  it('Switch_PointSession_UnknownSession_Resume_001', () => {
     const out = resolveSwitchAction({
-      projectPath: '/p', sessionId: undefined, isCurrent: false,
-      tabs, history: [], activeTabId: null,
+      projectPath: '/p', sessionId: 'ghost', tabs: [], history: [],
     })
-    expect(out).toEqual({ type: 'activate', projectPath: '/p', tabId: 't-new' })
+    expect(out).toEqual({ type: 'resume', projectPath: '/p', sessionId: 'ghost', name: undefined })
   })
 
-  // 点项目名：无 running tab 但有历史 → resume 最近
-  it('Switch_PointProject_ResumeRecent_001', () => {
-    const history: HistorySession[] = [
-      { sessionId: 'old', name: 'Old', projectPath: '/p', lastActiveAt: 1 },
-      { sessionId: 'new', name: 'New', projectPath: '/p', lastActiveAt: 50 },
-    ]
-    const out = resolveSwitchAction({
-      projectPath: '/p', sessionId: undefined, isCurrent: false,
-      tabs: [], history, activeTabId: null,
-    })
-    expect(out).toEqual({ type: 'resume', projectPath: '/p', sessionId: 'new', name: 'New' })
-  })
-
-  // 点项目名：项目全新（无 tab 无历史）→ new
-  it('Switch_PointProject_New_001', () => {
-    const out = resolveSwitchAction({
-      projectPath: '/p', sessionId: undefined, isCurrent: false,
-      tabs: [], history: [], activeTabId: null,
-    })
-    expect(out).toEqual({ type: 'new', projectPath: '/p' })
-  })
-
-  // 点当前项目名且已有 active tab → noop（不打断，对抗审查 F）
-  it('Switch_PointCurrentProjectName_Noop_001', () => {
-    const tabs = [makeTab({ tabId: 't-cur', sessionId: 'sc', status: 'running' })]
-    const out = resolveSwitchAction({
-      projectPath: '/p', sessionId: undefined, isCurrent: true,
-      tabs, history: [], activeTabId: 't-cur',
-    })
-    expect(out.type).toBe('noop')
-  })
-
-  // 竞态固化（D）：连续对两个不同项目解析，各自结果独立、不串
-  it('Switch_ConcurrentProjects_NoCrossTalk_001', () => {
+  // 竞态固化（D/E）：连续对两个不同会话解析，各自结果独立、不串
+  it('Switch_ConcurrentSessions_NoCrossTalk_001', () => {
     const tabsA = [makeTab({ tabId: 'ta', sessionId: 'sa', status: 'running' })]
     const tabsB = [makeTab({ tabId: 'tb', sessionId: 'sb', status: 'running' })]
     const a = resolveSwitchAction({
-      projectPath: '/pa', sessionId: undefined, isCurrent: false,
-      tabs: tabsA, history: [], activeTabId: null,
+      projectPath: '/pa', sessionId: 'sa', tabs: tabsA, history: [],
     })
     const b = resolveSwitchAction({
-      projectPath: '/pb', sessionId: undefined, isCurrent: false,
-      tabs: tabsB, history: [], activeTabId: null,
+      projectPath: '/pb', sessionId: 'sb', tabs: tabsB, history: [],
     })
     expect(a).toEqual({ type: 'activate', projectPath: '/pa', tabId: 'ta' })
     expect(b).toEqual({ type: 'activate', projectPath: '/pb', tabId: 'tb' })
