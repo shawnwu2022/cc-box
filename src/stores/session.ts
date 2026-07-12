@@ -86,6 +86,8 @@ export const useSessionStore = defineStore('session', () => {
   const archivedSessions = reactive(new Map<string, string[]>())
   /** projects.json 是否已加载完成（P1.2 门禁：pin/archive 前须确保加载，否则用空内存覆写旧文件） */
   const projectsStateLoaded = ref(false)
+  /** projects.json 加载是否失败（P1 v-if 门禁：失败时树显示失败提示 + 重试，不读空状态） */
+  const projectsStateError = ref(false)
   /** loadProjectsState 的进行中 Promise（供 ensureProjectsStateLoaded 复用，避免重复加载） */
   let loadPromise: Promise<void> | null = null
   /** pin/unpin/archive/restore 操作锁（P1.3 串行化，避免并发各自基于旧内存算 next 丢更新） */
@@ -625,10 +627,14 @@ export const useSessionStore = defineStore('session', () => {
    * P1.2：不吞失败--失败时 projectsStateLoaded 保持 false，ensureProjectsStateLoaded 据此抛错
    * 阻断 pin/archive；但本函数不抛出（避免阻断 App.vue fire-and-forget 启动）。
    * 赋值 loadPromise 供 ensureProjectsStateLoaded 复用（并发等待同一加载，不重复发请求）。
+   * P2：失败时 loadPromise 重置为 null，允许下次 ensureProjectsStateLoaded 重试
+   * （否则已 settled 的 loadPromise 被反复 await，一次临时 IPC/文件错误致本次进程永久不可用）。
+   * projectsStateError 供 UI 门禁区分「加载中」与「加载失败」（失败提示 + 重试按钮）。
    */
   function loadProjectsState(): Promise<void> {
     loadPromise = (async () => {
       try {
+        projectsStateError.value = false
         const state = await getProjectsState()
         pinnedProjects.value = state.pinnedProjects ?? []
         archivedSessions.clear()
@@ -639,7 +645,10 @@ export const useSessionStore = defineStore('session', () => {
       } catch (err) {
         console.error('[SessionStore] loadProjectsState failed:', err)
         projectsStateLoaded.value = false
-        // 不抛：避免阻断 App.vue fire-and-forget 启动；ensureProjectsStateLoaded 据标志抛
+        projectsStateError.value = true
+        // 重置 loadPromise：下次 ensureProjectsStateLoaded 可重新触发加载（P2 重试）。
+        // 不抛：避免阻断 App.vue fire-and-forget 启动；ensureProjectsStateLoaded 据标志抛。
+        loadPromise = null
       }
     })()
     return loadPromise
@@ -647,9 +656,10 @@ export const useSessionStore = defineStore('session', () => {
 
   /**
    * 确保 projects.json 已加载完成（P1.2 门禁，pin/unpin/archive/restore 开头调用）。
-   * - loadPromise 已存在（含已 resolved）则直接 await，避免重复加载
-   * - loadPromise 为 null 则触发 loadProjectsState 并 await
-   * - 加载失败（projectsStateLoaded=false）则抛错，阻止后续操作用空内存覆写磁盘旧数据
+   * - loadPromise 已存在（含进行中）则直接 await 同一个，并发不重复触发
+   * - loadPromise 为 null（首次 / 上次失败已重置）则触发 loadProjectsState 并 await
+   * - 加载失败（projectsStateLoaded=false，loadPromise 已被重置为 null）则抛错，
+   *   阻止后续操作用空内存覆写磁盘旧数据；下次调用可重试（P2）
    */
   async function ensureProjectsStateLoaded(): Promise<void> {
     if (loadPromise === null) {
@@ -895,6 +905,7 @@ export const useSessionStore = defineStore('session', () => {
     // 项目置顶 + 会话存档
     loadProjectsState,
     projectsStateLoaded,
+    projectsStateError,
     ensureProjectsStateLoaded,
     isPinned,
     pinProject,

@@ -8,6 +8,7 @@ export default {
   refresh: '刷新',
   loading: '加载中...',
   loadingMore: '加载更多...',
+  projectsLoadFailed: '置顶/存档状态加载失败',
   add: '添加',
   remove: '移除',
   settings: '设置',

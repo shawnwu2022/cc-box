@@ -8,6 +8,7 @@ export default {
   refresh: 'Refresh',
   loading: 'Loading...',
   loadingMore: 'Loading more...',
+  projectsLoadFailed: 'Failed to load pin/archive state',
   add: 'Add',
   remove: 'Remove',
   settings: 'Settings',

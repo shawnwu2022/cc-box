@@ -27,6 +27,7 @@
 | **配置只读展示** | Skills/MCP/Agents/Plugins 无法编辑，日常可用性低 |
 | **无预设库** | 用户需要手动配置，开箱即用体验不足 |
 | **无快速配置** | 新用户配置门槛高，需要了解 Claude 配置格式 |
+| **多实例置顶/存档 stale-write** | 多实例（快捷键开新窗口）并发改置顶/存档可能丢数据：前端 opLock 只防单实例并发，B 基于旧内存完整快照覆盖 A。彻底修复方案 A（后端 `apply_projects_operation` + 文件锁原子读改写）留 follow-up，详见 [spec §9](superpowers/specs/2026-07-12-tree-project-session-design.md) |
 
 ---
 

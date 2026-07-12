@@ -30,6 +30,15 @@
 
     <!-- 项目树列表 -->
     <div class="panel-content" ref="scrollContainer" @scroll="handleScroll">
+      <!-- P1: projects.json 未加载完成不渲染树，避免读空 pin/archive 状态导致置顶闪回/已存档短暂显示 -->
+      <div v-if="!sessionStore.projectsStateLoaded && !sessionStore.projectsStateError" class="loading-indicator">
+        {{ t('loading') }}
+      </div>
+      <div v-else-if="sessionStore.projectsStateError" class="state-hint">
+        <span>{{ t('projectsLoadFailed') }}</span>
+        <button class="state-retry-btn" @click="retryProjectsLoad">{{ t('retry') }}</button>
+      </div>
+      <template v-else>
       <!-- 搜索结果模式：命中的项目组（带 matchedHistoryIds） -->
       <template v-if="searchQuery.trim()">
         <ProjectNode
@@ -99,6 +108,7 @@
         <div v-if="sessionStore.isLoadingMore" class="loading-indicator">
           {{ t('loadingMore') }}
         </div>
+      </template>
       </template>
     </div>
 
@@ -243,6 +253,11 @@ function handleRefresh() {
   }
 }
 
+// P2: projects.json 加载失败后重试（loadProjectsState 失败时已重置 loadPromise，可重新触发）
+function retryProjectsLoad() {
+  sessionStore.loadProjectsState()
+}
+
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close')
 }
@@ -353,6 +368,32 @@ onUnmounted(() => {
   padding: 12px;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.state-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.state-retry-btn {
+  padding: 4px 14px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.state-retry-btn:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
 }
 
 .panel-footer {

@@ -557,6 +557,30 @@ describe('session store - 全局树', () => {
       expect(mockUpdate).not.toHaveBeenCalled()
     })
 
+    // P2：加载失败后 loadPromise 重置为 null，第二次 ensureProjectsStateLoaded 触发重试（第二次成功）
+    it('LoadFail_Retry_001', async () => {
+      const { getProjectsState } = await import('@/api/tauri')
+      const mockGet = getProjectsState as ReturnType<typeof vi.fn>
+      // 第一次加载失败
+      mockGet.mockRejectedValueOnce(new Error('read fail'))
+      // 第二次加载成功
+      mockGet.mockResolvedValueOnce({
+        pinnedProjects: ['/p-retry'],
+        archivedSessions: { '/p-retry': ['sess-arch'] },
+      })
+      const store = useSessionStore()
+      // 第一次 ensureProjectsStateLoaded 抛错（加载失败，门禁阻断）
+      await expect(store.ensureProjectsStateLoaded()).rejects.toThrow()
+      expect(store.projectsStateLoaded).toBe(false)
+      expect(store.projectsStateError).toBe(true)
+      // 第二次 ensureProjectsStateLoaded 触发重试（loadPromise 已重置为 null）
+      await store.ensureProjectsStateLoaded()
+      expect(store.projectsStateLoaded).toBe(true)
+      expect(store.projectsStateError).toBe(false)
+      expect(store.isPinned('/p-retry')).toBe(true)
+      expect(store.getArchivedSessions('/p-retry')).toContain('sess-arch')
+    })
+
     // 并发 pin + archive（pin 先入锁）：操作锁串行化，磁盘最终同时含两者（不丢更新）
     it('Concurrent_PinArchive_NoLostUpdate_001', async () => {
       const { updateProjectsState } = await import('@/api/tauri')
