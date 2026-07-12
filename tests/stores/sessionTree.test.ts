@@ -202,6 +202,57 @@ describe('session store — 全局树', () => {
       // 孤儿即使 active 也排到非孤儿之后
       expect(sorted[sorted.length - 1].projectPath).toBe('/orphan')
     })
+
+    // 第 4 档：current/orphan/hasActive 全持平，仅 tabs 最近活跃时间不同 → 降序
+    it('Sort_LastActiveDesc_001', () => {
+      const store = useSessionStore()
+      const groups = [
+        {
+          projectPath: '/old',
+          name: 'old',
+          tabs: [{
+            tabId: 'tab-old',
+            projectPath: '/old',
+            ptyId: null,
+            sessionId: null,
+            name: 'Old Session',
+            status: 'stopped',
+            createdAt: 1000,
+            lastActiveAt: 100,
+            working: false,
+            pending: false,
+            isResume: false,
+          }],
+          runningCount: 0,
+          pendingCount: 0,
+          hasActive: false,
+          isOrphan: false,
+        },
+        {
+          projectPath: '/new',
+          name: 'new',
+          tabs: [{
+            tabId: 'tab-new',
+            projectPath: '/new',
+            ptyId: null,
+            sessionId: null,
+            name: 'New Session',
+            status: 'stopped',
+            createdAt: 2000,
+            lastActiveAt: 500,
+            working: false,
+            pending: false,
+            isResume: false,
+          }],
+          runningCount: 0,
+          pendingCount: 0,
+          hasActive: false,
+          isOrphan: false,
+        },
+      ]
+      const sorted = store.sortProjectGroups(groups, '/other')
+      expect(sorted.map(g => g.projectPath)).toEqual(['/new', '/old'])
+    })
   })
 })
 
