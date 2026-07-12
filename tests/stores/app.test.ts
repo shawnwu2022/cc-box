@@ -270,3 +270,110 @@ describe('setTerminalTheme', () => {
     expect(store.terminalTheme).toBe('cc-box-dark')
   })
 })
+
+describe('app store - 启动状态源 + setCwd 拆分 + setHidden opLock', () => {
+  // loadAppConfig 读 lastOpenedProject + hiddenProjects
+  it('LoadAppConfig_ReadLastOpenedAndHidden_001', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'get_app_config') return { lastOpenedProject: '/p-x', hiddenProjects: ['/p-h'] }
+      if (cmd === 'update_app_config') return null
+    })
+    const store = useAppStore()
+    await store.loadAppConfig()
+    expect(store.lastOpenedProject).toBe('/p-x')
+    expect(store.isHidden('/p-h')).toBe(true)
+    expect(store.isHidden('/p-x')).toBe(false)
+  })
+
+  // setCwdLocal 只更新内存，不持久化（saveLastProject 未调）
+  it('SetCwdLocal_NoPersist_001', () => {
+    const store = useAppStore()
+    store.setCwdLocal('/p-a')
+    expect(store.cwd).toBe('/p-a')
+    // 无 mockIPC 配置 saveLastProject -> 若调用会报错；此处仅断言 cwd 已切
+  })
+
+  // setCurrentProject persist=true：await saveLastProject 成功后 setCwdLocal
+  it('SetCurrentProject_PersistSuccess_001', async () => {
+    const calls: string[] = []
+    mockIPC((cmd, args) => {
+      if (cmd === 'save_last_project') { calls.push((args as { path: string }).path); return null }
+      return null
+    })
+    const store = useAppStore()
+    await store.setCurrentProject('/p-a', { persist: true })
+    expect(store.cwd).toBe('/p-a')
+    expect(calls).toEqual(['/p-a'])
+  })
+
+  // setCurrentProject persist 失败：saveLastProject reject -> 抛错 + cwd 不变（persist-first）
+  it('SetCurrentProject_PersistFail_NoCwdChange_001', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'save_last_project') throw new Error('persist failed')
+      return null
+    })
+    const store = useAppStore()
+    store.setCwdLocal('/old') // 预设旧 cwd
+    await expect(store.setCurrentProject('/p-new', { persist: true })).rejects.toThrow('persist failed')
+    expect(store.cwd).toBe('/old') // 未变
+  })
+
+  // setCurrentProject persist=false：只 setCwdLocal，不 save
+  it('SetCurrentProject_NoPersist_001', async () => {
+    const store = useAppStore()
+    await store.setCurrentProject('/p-a', { persist: false })
+    expect(store.cwd).toBe('/p-a')
+  })
+
+  // setHidden opLock 串行：连续隐藏 A+B 不丢
+  it('SetHidden_OpLock_ConcurrentAB_001', async () => {
+    const store = useAppStore()
+    await Promise.all([
+      store.setHidden('/p-a', true),
+      store.setHidden('/p-b', true),
+    ])
+    expect(store.isHidden('/p-a')).toBe(true)
+    expect(store.isHidden('/p-b')).toBe(true)
+  })
+
+  // setHidden persist-first 失败：updateAppConfig reject -> hiddenProjects 不变 + 抛错
+  it('SetHidden_PersistFail_Rollback_001', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'update_app_config') throw new Error('persist failed')
+      return null
+    })
+    const store = useAppStore()
+    await expect(store.setHidden('/p-a', true)).rejects.toThrow('persist failed')
+    expect(store.isHidden('/p-a')).toBe(false)
+  })
+
+  // setHidden 取消隐藏用规范化比较（大小写/斜杠差异仍能移除）
+  it('SetHidden_Show_NormalizedRemove_001', async () => {
+    const store = useAppStore()
+    await store.setHidden('E:\\Source\\Foo', true) // 隐藏（原始路径）
+    expect(store.isHidden('e:/source/foo')).toBe(true) // 规范化比较可见
+    await store.setHidden('e:/source/foo', false) // 取消（规范化路径）
+    expect(store.isHidden('E:\\Source\\Foo')).toBe(false) // 原始路径也已移除
+  })
+
+  // loadAppConfig 失败抛错（不吞）+ loadStatus=error
+  it('LoadAppConfig_Throws_OnFail_001', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'get_app_config') throw new Error('config read failed')
+      return null
+    })
+    const store = useAppStore()
+    await expect(store.loadAppConfig()).rejects.toThrow('config read failed')
+    expect(store.loadStatus).toBe('error')
+  })
+
+  // loadCache 失败抛错（不吞）
+  it('LoadCache_Throws_OnFail_001', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'get_home_data') throw new Error('home read failed')
+      return null
+    })
+    const store = useAppStore()
+    await expect(store.loadCache()).rejects.toThrow('home read failed')
+  })
+})

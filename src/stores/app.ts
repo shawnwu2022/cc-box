@@ -76,6 +76,15 @@ export const useAppStore = defineStore('app', () => {
     customArgs: ''
   })
 
+  // ---- 启动状态源（v5-T3）----
+  // 最近打开的项目路径（启动决定视图用）+ 隐藏项目集合（项目列表过滤用）
+  const lastOpenedProject = ref<string>('')
+  const hiddenProjects = ref<Set<string>>(new Set())
+  // app config 加载状态：idle/loading/loaded/error（v5 P1：加载失败感知）
+  const loadStatus = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle')
+  // setHidden 操作锁：串行化 读->算 next->persist->改本地，防并发丢更新
+  let hiddenOpLock: Promise<void> = Promise.resolve()
+
   const currentProject = computed(() => {
     if (!cwd.value) return null
     const parts = cwd.value.replace(/\\/g, '/').split('/')
@@ -85,6 +94,7 @@ export const useAppStore = defineStore('app', () => {
   const failedChecks = computed(() => checkResults.value.filter(c => !c.passed))
 
   async function loadAppConfig() {
+    loadStatus.value = 'loading'
     try {
       const config = await getAppConfig()
       theme.value = config.theme || 'light'
@@ -121,8 +131,16 @@ export const useAppStore = defineStore('app', () => {
         skipPermissions: defaultClaudeOptions.value.skipPermissions,
         customArgs: defaultClaudeOptions.value.customArgs
       }
+
+      // 启动状态源：读 lastOpenedProject + hiddenProjects（v5-T3）
+      lastOpenedProject.value = config.lastOpenedProject ?? ''
+      hiddenProjects.value = new Set(config.hiddenProjects ?? [])
+
+      loadStatus.value = 'loaded'
     } catch (err) {
+      loadStatus.value = 'error'
       console.error('Failed to load app config:', err)
+      throw err // v5 P1：加载失败不吞，向上传播让 UI 感知
     }
   }
 
@@ -146,6 +164,7 @@ export const useAppStore = defineStore('app', () => {
       cacheLoaded.value = true
     } catch (err) {
       console.error('Failed to load cache:', err)
+      throw err // v5 P1：加载失败不吞，向上传播让 UI 感知
     }
   }
 
@@ -194,9 +213,93 @@ export const useAppStore = defineStore('app', () => {
     cachedRecentSessions.value = sessions
   }
 
-  function setCwd(path: string) {
+  /**
+   * 路径归一化：统一为小写正斜杠，用于跨平台/跨重启匹配隐藏集合。
+   * 与 session.ts normalizePath 语义一致。
+   */
+  function normalizePath(p: string): string {
+    return p.replace(/\\/g, '/').toLowerCase()
+  }
+
+  /** 该项目是否已隐藏（normalized 比较，兼容 Windows 路径大小写/斜杠差异） */
+  function isHidden(path: string): boolean {
+    const n = normalizePath(path)
+    for (const h of hiddenProjects.value) {
+      if (normalizePath(h) === n) return true
+    }
+    return false
+  }
+
+  /**
+   * setHidden 操作锁（复用 session.ts withLock 范式）：串行化
+   * 读集合 -> 算 next -> persist -> 改本地 全流程，防同窗口快速隐藏 A+B 各自基于旧内存
+   * 算 next、后 persist 覆盖前导致磁盘丢一项。
+   */
+  function withHiddenLock<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = hiddenOpLock
+    let release!: () => void
+    hiddenOpLock = new Promise<void>(r => { release = r })
+    return (async () => {
+      await prev
+      try {
+        return await fn()
+      } finally {
+        release()
+      }
+    })()
+  }
+
+  /**
+   * 设置/取消隐藏项目（opLock 串行 + persist-first 回滚 + 规范化比较）。
+   * - 算 next：规范化比较移除旧条目，hidden=true 时加回（用原始 path 保真）。
+   * - 幂等：状态未变则不持久化。
+   * - persist-first：成功后才改本地；失败抛错，hiddenProjects 不变。
+   */
+  async function setHidden(path: string, hidden: boolean): Promise<void> {
+    return withHiddenLock(async () => {
+      const n = normalizePath(path)
+      const next = new Set<string>()
+      let existed = false
+      for (const h of hiddenProjects.value) {
+        if (normalizePath(h) === n) { existed = true; continue }
+        next.add(h)
+      }
+      if (hidden) next.add(path)
+      // 幂等：状态未变则跳过持久化
+      if (hidden === existed) return
+      // persist-first：失败抛错，本地不变
+      await updateAppConfig({ hiddenProjects: [...next] })
+      hiddenProjects.value = next
+    })
+  }
+
+  /**
+   * 只更新内存 cwd + openedProjectPaths，不持久化。
+   * 用途：sessionStart 事务中 spawn 前切 cwd（终端立即用新 cwd 启动），
+   * 持久化由后续 setCurrentProject(persist:true) 或 setCwd 完成。
+   */
+  function setCwdLocal(path: string) {
     cwd.value = path
     openedProjectPaths.value.add(path)
+  }
+
+  /**
+   * setCurrentProject（persist-first）。
+   * - persist=true：先 await saveLastProject 成功，再 setCwdLocal；失败抛错且 cwd 不变。
+   *   注：sessionStart 事务中 spawn 前已 setCwdLocal（cwd 已切），此处 persist 失败时 cwd 保持
+   *   已切状态（终端已跑），仅 lastOpened 未持久化--错误传播让 UI 提示，终端不中断（spec v6 §4.4）。
+   * - persist=false / undefined：只 setCwdLocal（恢复启动用，不重复持久化）。
+   */
+  async function setCurrentProject(path: string, opts: { persist?: boolean } = {}): Promise<void> {
+    if (opts.persist === true) {
+      await saveLastProject(path) // 失败抛错，setCwdLocal 不执行
+    }
+    setCwdLocal(path)
+  }
+
+  /** 兼容旧调用方：setCwdLocal + fire-and-forget saveLastProject */
+  function setCwd(path: string) {
+    setCwdLocal(path)
     saveLastProject(path)
   }
 
@@ -354,6 +457,9 @@ export const useAppStore = defineStore('app', () => {
     openedProjectPaths,
     hasMoreProjects,
     isLoadingProjects,
+    lastOpenedProject,
+    hiddenProjects,
+    loadStatus,
     loadAppConfig,
     runChecks: doChecks,
     loadCache,
@@ -362,6 +468,10 @@ export const useAppStore = defineStore('app', () => {
     ensureProjectInList,
     isKnownProject,
     refreshRecentSessions,
+    isHidden,
+    setHidden,
+    setCwdLocal,
+    setCurrentProject,
     setCwd,
     setTheme,
     setTerminalTheme,
