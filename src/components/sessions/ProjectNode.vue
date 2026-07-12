@@ -67,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import SessionList from './SessionList.vue'
 import type { ProjectGroup, HistorySession } from '@/stores/session'
@@ -99,6 +99,19 @@ const emit = defineEmits<{
 }>()
 
 const menuOpen = ref(false)
+
+// 点击外部关闭菜单：⋯ 按钮和菜单内部已 @click.stop，不会触发此处
+function closeMenuOnOutside() {
+  menuOpen.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('click', closeMenuOnOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeMenuOnOutside)
+})
 
 function onMenu(action: 'closeAll' | 'openInExplorer' | 'toggleFavorite') {
   menuOpen.value = false
