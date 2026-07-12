@@ -15,72 +15,51 @@ vi.mock('@/api/tauri', () => ({
   getSessionCount: vi.fn().mockResolvedValue(0),
   getSessions: vi.fn().mockResolvedValue([]),
   searchSessionMessages: vi.fn().mockResolvedValue([]),
+  getProjectsState: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {} }),
+  updateProjectsState: vi.fn().mockResolvedValue(undefined),
 }))
 
 import { useSessionStore } from '@/stores/session'
-import type { TerminalTab } from '@/stores/session'
 
-describe('session store — 全局树', () => {
+describe('session store - 全局树', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  // ==================== expandedProjectPaths ====================
+  // ==================== isExpanded / toggleExpand（v3 纯手动） ====================
   describe('toggleExpand / isExpanded', () => {
-    // toggleExpand 后 isExpanded 反映手动展开状态
-    it('Expand_ToggleManual_001', () => {
+    // 未 toggle 时默认折叠（v3 纯手动，无自动展开）
+    it('Expand_DefaultCollapsed_001', () => {
       const store = useSessionStore()
-      expect(store.isExpanded('/p-a', { hasActive: false, isCurrent: false })).toBe(false)
-      store.toggleExpand('/p-a')
-      expect(store.isExpanded('/p-a', { hasActive: false, isCurrent: false })).toBe(true)
-      store.toggleExpand('/p-a')
-      expect(store.isExpanded('/p-a', { hasActive: false, isCurrent: false })).toBe(false)
+      expect(store.isExpanded('/p-a')).toBe(false)
     })
 
-    // 有运行中 tab 的项目默认展开（即便未手动 toggle）
-    it('Expand_DefaultActive_001', () => {
+    // toggle 后 isExpanded 反映手动展开状态；再 toggle 回折叠
+    it('Expand_ToggleManual_001', () => {
+      const store = useSessionStore()
+      expect(store.isExpanded('/p-a')).toBe(false)
+      store.toggleExpand('/p-a')
+      expect(store.isExpanded('/p-a')).toBe(true)
+      store.toggleExpand('/p-a')
+      expect(store.isExpanded('/p-a')).toBe(false)
+    })
+
+    // 有运行中 tab 也不自动展开（v3 移除 hasActive 自动展开）
+    it('Expand_NoAutoExpandOnActive_001', () => {
       const store = useSessionStore()
       const tabId = store.createTab('/p-active')
       store.setTabPty(tabId, 'pty-1')  // status -> running
-      expect(store.isExpanded('/p-active', { hasActive: true, isCurrent: false })).toBe(true)
+      expect(store.isExpanded('/p-active')).toBe(false)
     })
 
-    // 当前项目默认展开
-    it('Expand_DefaultCurrent_001', () => {
+    // 不同项目展开状态互不影响
+    it('Expand_PerProject_001', () => {
       const store = useSessionStore()
-      expect(store.isExpanded('/p-cur', { hasActive: false, isCurrent: true })).toBe(true)
-    })
-
-    // 手动折叠覆盖「活的项目默认展开」
-    it('Expand_ManualCollapseOverridesActive_001', () => {
-      const store = useSessionStore()
-      const tabId = store.createTab('/p-active')
-      store.setTabPty(tabId, 'pty-1')
-      store.toggleExpand('/p-active', { hasActive: true, isCurrent: false })  // 手动折叠
-      expect(store.isExpanded('/p-active', { hasActive: true, isCurrent: false })).toBe(false)
-    })
-
-    // 主路径：调用方传 opts 时切换行为正确
-    it('Expand_ToggleWithOpts_001', () => {
-      const store = useSessionStore()
-      // hasActive=true，默认展开，toggle 后变为折叠
-      expect(store.isExpanded('/p-a', { hasActive: true, isCurrent: false })).toBe(true)
-      store.toggleExpand('/p-a', { hasActive: true, isCurrent: false })
-      expect(store.isExpanded('/p-a', { hasActive: true, isCurrent: false })).toBe(false)
-      store.toggleExpand('/p-a', { hasActive: true, isCurrent: false })
-      expect(store.isExpanded('/p-a', { hasActive: true, isCurrent: false })).toBe(true)
-    })
-
-    // override 优先级高于 isCurrent
-    it('Expand_OverridePriority_001', () => {
-      const store = useSessionStore()
-      // 先手动 override=true
-      store.toggleExpand('/p-a', { hasActive: false, isCurrent: false })
-      expect(store.isExpanded('/p-a', { hasActive: false, isCurrent: false })).toBe(true)
-      // 即使 isCurrent=true，override 仍优先
-      expect(store.isExpanded('/p-a', { hasActive: false, isCurrent: true })).toBe(true)
+      store.toggleExpand('/p-a')
+      expect(store.isExpanded('/p-a')).toBe(true)
+      expect(store.isExpanded('/p-b')).toBe(false)
     })
   })
 
-  // ==================== getHistoryFor（多项目历史） ====================
+  // ==================== getHistoryFor（多项目历史 + 过滤存档） ====================
   describe('getHistoryFor', () => {
     // 两个项目各自的历史互不干扰（对抗审查 A 的核心）
     it('HistoryFor_MultiProject_001', async () => {
@@ -117,6 +96,21 @@ describe('session store — 全局树', () => {
       const ids = store.getHistoryFor('/p-a').map(s => s.sessionId)
       expect(ids).not.toContain('claimed-1')
       expect(ids).toContain('free-1')
+    })
+
+    // 存档会话从历史列表过滤掉（v3 §5.1）
+    it('HistoryFor_FilterArchived_001', async () => {
+      const { getSessions } = await import('@/api/tauri')
+      ;(getSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { sessionId: 'sess-keep', name: 'Keep', projectPath: '/p-a', lastActiveAt: 1000 },
+        { sessionId: 'sess-archived', name: 'Archived', projectPath: '/p-a', lastActiveAt: 2000 },
+      ])
+      const store = useSessionStore()
+      await store.loadHistorySessions('/p-a')
+      await store.archiveSession('/p-a', 'sess-archived')
+      const ids = store.getHistoryFor('/p-a').map(s => s.sessionId)
+      expect(ids).toContain('sess-keep')
+      expect(ids).not.toContain('sess-archived')
     })
   })
 
@@ -172,88 +166,83 @@ describe('session store — 全局树', () => {
     })
   })
 
-  // ==================== sortProjectGroups ====================
+  // ==================== sortProjectGroups（v3：置顶 + 字母序 + 孤儿置底） ====================
   describe('sortProjectGroups', () => {
-    it('Sort_CurrentFirst_001', () => {
+    // 置顶项目排在非置顶之前
+    it('Sort_PinnedFirst_001', () => {
       const store = useSessionStore()
+      store.pinnedProjects = ['/p-b']
       const groups = [
-        { projectPath: '/p-a', name: 'a', tabs: [], runningCount: 1, pendingCount: 0, hasActive: true, isOrphan: false },
-        { projectPath: '/p-cur', name: 'cur', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
+        { projectPath: '/p-a', name: 'alpha', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
+        { projectPath: '/p-b', name: 'beta', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
       ]
-      const sorted = store.sortProjectGroups(groups, '/p-cur')
-      expect(sorted[0].projectPath).toBe('/p-cur')
+      const sorted = store.sortProjectGroups(groups)
+      expect(sorted[0].projectPath).toBe('/p-b')
+      expect(sorted[1].projectPath).toBe('/p-a')
     })
 
-    it('Sort_ActiveBeforeIdle_001', () => {
+    // 非置顶项目按字母序排列
+    it('Sort_Alphabetical_001', () => {
       const store = useSessionStore()
+      store.pinnedProjects = []
       const groups = [
-        { projectPath: '/idle', name: 'idle', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
-        { projectPath: '/active', name: 'active', tabs: [], runningCount: 1, pendingCount: 0, hasActive: true, isOrphan: false },
+        { projectPath: '/p-zeta', name: 'zeta', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
+        { projectPath: '/p-alpha', name: 'alpha', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
+        { projectPath: '/p-mid', name: 'mid', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
       ]
-      const sorted = store.sortProjectGroups(groups, '/other')
-      expect(sorted[0].projectPath).toBe('/active')
+      const sorted = store.sortProjectGroups(groups)
+      expect(sorted.map(g => g.projectPath)).toEqual(['/p-alpha', '/p-mid', '/p-zeta'])
     })
 
+    // 孤儿项目置底（即便孤儿 name 字母序更靠前）
     it('Sort_OrphanLast_001', () => {
       const store = useSessionStore()
+      store.pinnedProjects = []
       const groups = [
-        { projectPath: '/orphan', name: 'o', tabs: [], runningCount: 1, pendingCount: 0, hasActive: true, isOrphan: true },
-        { projectPath: '/idle', name: 'idle', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
+        { projectPath: '/orphan', name: 'aaa', tabs: [], runningCount: 1, pendingCount: 0, hasActive: true, isOrphan: true },
+        { projectPath: '/normal', name: 'zzz', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
       ]
-      const sorted = store.sortProjectGroups(groups, '/other')
-      // 孤儿即使 active 也排到非孤儿之后
+      const sorted = store.sortProjectGroups(groups)
+      // 孤儿即使 name 更靠前也排到非孤儿之后
       expect(sorted[sorted.length - 1].projectPath).toBe('/orphan')
+      expect(sorted[0].projectPath).toBe('/normal')
     })
 
-    // 第 4 档：current/orphan/hasActive 全持平，仅 tabs 最近活跃时间不同 → 降序
-    it('Sort_LastActiveDesc_001', () => {
+    // 综合：置顶（字母序）-> 非孤儿（字母序）-> 孤儿置底
+    it('Sort_PinnedAlphaOrphan_001', () => {
+      const store = useSessionStore()
+      store.pinnedProjects = ['/p-pin-a', '/p-pin-b']
+      const groups = [
+        { projectPath: '/p-orphan', name: 'orphan', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: true },
+        { projectPath: '/p-normal', name: 'normal', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
+        { projectPath: '/p-pin-a', name: 'pinA', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
+        { projectPath: '/p-pin-b', name: 'pinB', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
+      ]
+      const sorted = store.sortProjectGroups(groups)
+      expect(sorted.map(g => g.projectPath)).toEqual(['/p-pin-a', '/p-pin-b', '/p-normal', '/p-orphan'])
+    })
+
+    // 置顶匹配使用 normalized 比较（大小写/斜杠不敏感）
+    it('Sort_PinnedNormalized_001', () => {
+      const store = useSessionStore()
+      store.pinnedProjects = ['C:\\Users\\proj']
+      const groups = [
+        { projectPath: 'c:/users/proj', name: 'proj', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
+        { projectPath: '/other', name: 'other', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
+      ]
+      const sorted = store.sortProjectGroups(groups)
+      expect(sorted[0].projectPath).toBe('c:/users/proj')
+    })
+
+    // 签名已移除 currentCwd 参数：v3 排序不依赖 cwd
+    it('Sort_NoCwdParam_001', () => {
       const store = useSessionStore()
       const groups = [
-        {
-          projectPath: '/old',
-          name: 'old',
-          tabs: [{
-            tabId: 'tab-old',
-            projectPath: '/old',
-            ptyId: null,
-            sessionId: null,
-            name: 'Old Session',
-            status: 'stopped',
-            createdAt: 1000,
-            lastActiveAt: 100,
-            working: false,
-            pending: false,
-            isResume: false,
-          } as TerminalTab],
-          runningCount: 0,
-          pendingCount: 0,
-          hasActive: false,
-          isOrphan: false,
-        },
-        {
-          projectPath: '/new',
-          name: 'new',
-          tabs: [{
-            tabId: 'tab-new',
-            projectPath: '/new',
-            ptyId: null,
-            sessionId: null,
-            name: 'New Session',
-            status: 'stopped',
-            createdAt: 2000,
-            lastActiveAt: 500,
-            working: false,
-            pending: false,
-            isResume: false,
-          } as TerminalTab],
-          runningCount: 0,
-          pendingCount: 0,
-          hasActive: false,
-          isOrphan: false,
-        },
+        { projectPath: '/p-a', name: 'a', tabs: [], runningCount: 0, pendingCount: 0, hasActive: false, isOrphan: false },
       ]
-      const sorted = store.sortProjectGroups(groups, '/other')
-      expect(sorted.map(g => g.projectPath)).toEqual(['/new', '/old'])
+      // 不传第二参数，应正常返回
+      const sorted = store.sortProjectGroups(groups)
+      expect(sorted).toHaveLength(1)
     })
   })
 
@@ -292,6 +281,152 @@ describe('session store — 全局树', () => {
       const out = store.filterProjectGroups(groups, 'fix')
       expect(out).toHaveLength(1)
       expect(out[0].matchedHistoryIds).toEqual(['s-fix-bug'])
+    })
+  })
+
+  // ==================== pin / archive（持久化） ====================
+  describe('pin / archive（持久化）', () => {
+    // pin 项目后 isPinned 返回 true，并调用 updateProjectsState 发完整 pinnedProjects
+    it('Pin_MarkPinned_001', async () => {
+      const { updateProjectsState } = await import('@/api/tauri')
+      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      mockUpdate.mockClear()
+      const store = useSessionStore()
+      await store.pinProject('/p-a')
+      expect(store.isPinned('/p-a')).toBe(true)
+      expect(mockUpdate).toHaveBeenCalledTimes(1)
+      const arg = mockUpdate.mock.calls[0][0] as { pinnedProjects: string[] }
+      expect(arg.pinnedProjects).toContain('/p-a')
+    })
+
+    // 重复 pin 同一项目幂等（不再调用 updateProjectsState）
+    it('Pin_Idempotent_001', async () => {
+      const { updateProjectsState } = await import('@/api/tauri')
+      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      mockUpdate.mockClear()
+      const store = useSessionStore()
+      await store.pinProject('/p-a')
+      mockUpdate.mockClear()
+      await store.pinProject('/p-a')
+      expect(mockUpdate).not.toHaveBeenCalled()
+    })
+
+    // unpin 移除置顶（normalized 比较）
+    it('Unpin_Removes_001', async () => {
+      const store = useSessionStore()
+      await store.pinProject('/p-a')
+      expect(store.isPinned('/p-a')).toBe(true)
+      await store.unpinProject('/p-a')
+      expect(store.isPinned('/p-a')).toBe(false)
+    })
+
+    // unpin 不存在的项目幂等（不调用 updateProjectsState）
+    it('Unpin_Idempotent_001', async () => {
+      const { updateProjectsState } = await import('@/api/tauri')
+      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      mockUpdate.mockClear()
+      const store = useSessionStore()
+      await store.unpinProject('/not-pinned')
+      expect(mockUpdate).not.toHaveBeenCalled()
+    })
+
+    // isPinned 使用 normalized 比较（Windows 路径大小写/斜杠不敏感）
+    it('Pinned_Normalized_001', async () => {
+      const store = useSessionStore()
+      await store.pinProject('C:\\Users\\proj')
+      expect(store.isPinned('c:/users/proj')).toBe(true)
+    })
+
+    // archive 会话后 getArchivedSessions 包含该 sessionId
+    it('Archive_Adds_001', async () => {
+      const store = useSessionStore()
+      await store.archiveSession('/p-a', 'sess-1')
+      expect(store.getArchivedSessions('/p-a')).toContain('sess-1')
+    })
+
+    // archive 同一会话幂等（不重复调用 updateProjectsState）
+    it('Archive_Idempotent_001', async () => {
+      const { updateProjectsState } = await import('@/api/tauri')
+      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      const store = useSessionStore()
+      await store.archiveSession('/p-a', 'sess-1')
+      mockUpdate.mockClear()
+      await store.archiveSession('/p-a', 'sess-1')
+      expect(mockUpdate).not.toHaveBeenCalled()
+    })
+
+    // restore 移除存档
+    it('Restore_Removes_001', async () => {
+      const store = useSessionStore()
+      await store.archiveSession('/p-a', 'sess-1')
+      await store.restoreSession('/p-a', 'sess-1')
+      expect(store.getArchivedSessions('/p-a')).not.toContain('sess-1')
+    })
+
+    // restore 未存档会话幂等
+    it('Restore_Idempotent_001', async () => {
+      const { updateProjectsState } = await import('@/api/tauri')
+      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      mockUpdate.mockClear()
+      const store = useSessionStore()
+      await store.restoreSession('/p-a', 'not-archived')
+      expect(mockUpdate).not.toHaveBeenCalled()
+    })
+
+    // archive 发送完整 archivedSessions map（顶层替换语义：多个项目并存）
+    it('Archive_SendsFullMap_001', async () => {
+      const { updateProjectsState } = await import('@/api/tauri')
+      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      mockUpdate.mockClear()
+      const store = useSessionStore()
+      await store.archiveSession('/p-a', 'sess-a1')
+      await store.archiveSession('/p-b', 'sess-b1')
+      // 最后一次写入应包含两个项目的存档（v3-1 顶层替换，须发完整）
+      const lastCall = mockUpdate.mock.calls[mockUpdate.mock.calls.length - 1][0] as {
+        archivedSessions: Record<string, string[]>
+      }
+      expect(Object.keys(lastCall.archivedSessions).sort()).toEqual(['/p-a', '/p-b'])
+      expect(lastCall.archivedSessions['/p-a']).toContain('sess-a1')
+      expect(lastCall.archivedSessions['/p-b']).toContain('sess-b1')
+    })
+
+    // restore 最后一个会话后空数组自动清理 key
+    it('Restore_EmptyKeyCleaned_001', async () => {
+      const store = useSessionStore()
+      await store.archiveSession('/p-a', 'sess-1')
+      await store.restoreSession('/p-a', 'sess-1')
+      expect(store.getArchivedSessions('/p-a')).toEqual([])
+    })
+
+    // loadProjectsState 从后端加载填充 pinnedProjects + archivedSessions
+    it('LoadProjectsState_Fills_001', async () => {
+      const { getProjectsState } = await import('@/api/tauri')
+      ;(getProjectsState as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: ['/p-loaded'],
+        archivedSessions: { '/p-loaded': ['sess-archived'] },
+      })
+      const store = useSessionStore()
+      await store.loadProjectsState()
+      expect(store.isPinned('/p-loaded')).toBe(true)
+      expect(store.getArchivedSessions('/p-loaded')).toContain('sess-archived')
+    })
+
+    // archived lookup 使用 normalized 比较（跨重启路径漂移容忍）
+    it('Archive_NormalizedLookup_001', async () => {
+      const store = useSessionStore()
+      await store.archiveSession('C:\\Users\\proj', 'sess-1')
+      expect(store.getArchivedSessions('c:/users/proj')).toContain('sess-1')
+    })
+
+    // archive 复用已有键（normalized 匹配），避免重复条目
+    it('Archive_ReuseKey_001', async () => {
+      const store = useSessionStore()
+      await store.archiveSession('/p-a', 'sess-1')
+      // 用不同大小写再 archive 同项目另一会话，应进同一键
+      await store.archiveSession('/P-A', 'sess-2')
+      const archived = store.getArchivedSessions('/p-a')
+      expect(archived).toContain('sess-1')
+      expect(archived).toContain('sess-2')
     })
   })
 })

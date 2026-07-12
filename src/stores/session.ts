@@ -1,9 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed, reactive } from 'vue'
 import {
+  getProjectsState,
   getSessions,
   ptyKill,
-  searchSessionMessages
+  searchSessionMessages,
+  updateProjectsState,
 } from '@/api/tauri'
 import type { SessionSearchResult } from '@/types'
 
@@ -56,6 +58,9 @@ export interface ProjectGroup {
   matchedHistoryIds?: string[]  // 搜索命中的会话 ID（供 UI 临时展开 + 高亮）
 }
 
+/** 路径归一化：统一为小写正斜杠，用于跨平台/跨重启匹配置顶与存档 */
+const normalizePath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
+
 // ==================== Store ====================
 
 export const useSessionStore = defineStore('session', () => {
@@ -73,6 +78,11 @@ export const useSessionStore = defineStore('session', () => {
   const isLoadingMore = ref<boolean>(false)
   const messageSearchResults = ref<SessionSearchResult[]>([])
   let messageSearchTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** 置顶项目（持久化到 projects.json，启动加载） */
+  const pinnedProjects = ref<string[]>([])
+  /** 会话存档：projectPath -> sessionId[]（持久化到 projects.json，启动加载） */
+  const archivedSessions = reactive(new Map<string, string[]>())
 
   // ---- Computed ----
 
@@ -116,16 +126,19 @@ export const useSessionStore = defineStore('session', () => {
   })
 
   /**
-   * 取指定项目的历史会话（去重 + 不含已被 tab 占用的 sessionId）。
+   * 取指定项目的历史会话（去重 + 不含已被 tab 占用的 sessionId + 过滤存档）。
    * 替代单值 historySessions 作为全局树的数据源（对抗审查 A）。
+   * v3 §5.1：在去重基础上过滤 archivedSessions.get(projectPath) 的 sessionId。
    */
   function getHistoryFor(projectPath: string): HistorySession[] {
     const cached = historyCacheMap.get(projectPath) ?? []
     const claimed = claimedSessionIds.value
+    const archived = new Set(getArchivedSessions(projectPath))
     const seen = new Set<string>()
     return cached
       .filter(s => {
         if (claimed.has(s.sessionId) || seen.has(s.sessionId)) return false
+        if (archived.has(s.sessionId)) return false
         seen.add(s.sessionId)
         return true
       })
@@ -460,28 +473,23 @@ export const useSessionStore = defineStore('session', () => {
   // ---- 全局树：展开状态 ----
 
   /**
-   * 显式展开/折叠覆盖：true=强制展开，false=强制折叠，缺省=按默认规则。
-   * 用 Map 而非 Set，以支持「手动折叠覆盖默认展开」。
+   * 显式展开/折叠覆盖：true=展开，false=折叠，缺省=折叠。
+   * v3 §4.2：纯手动，无默认展开（移除 isCurrent/hasActive 自动展开）。
    */
   const expandOverride = reactive(new Map<string, boolean>())
 
-  /** 切换展开/折叠；opts 传入以判断当前是否展开、决定取反方向 */
-  function toggleExpand(projectPath: string, opts?: { hasActive?: boolean; isCurrent?: boolean }) {
-    const cur = isExpanded(projectPath, opts)
+  /** 切换展开/折叠（纯手动，无默认展开） */
+  function toggleExpand(projectPath: string) {
+    const cur = expandOverride.get(projectPath) ?? false
     expandOverride.set(projectPath, !cur)
   }
 
   /**
-   * 判断项目是否展开。
-   * 规则：手动 toggle 过 → 以显式状态为准；否则按默认（当前项目 或 有 running/pending tab）。
-   * @param opts.hasActive 该项目是否有 running/pending tab（调用方算好传入，避免 store 反查 cwd）
-   * @param opts.isCurrent 该项目是否为当前项目（cwd）
+   * 判断项目是否展开（纯手动：只看 expandOverride，未 toggle 过则 false）。
+   * v3 移除 isCurrent/hasActive 自动展开，展开状态完全由用户控制。
    */
-  function isExpanded(projectPath: string, opts?: { hasActive?: boolean; isCurrent?: boolean }): boolean {
-    if (expandOverride.has(projectPath)) return expandOverride.get(projectPath)!
-    if (opts?.isCurrent) return true
-    if (opts?.hasActive) return true
-    return false
+  function isExpanded(projectPath: string): boolean {
+    return expandOverride.get(projectPath) ?? false
   }
 
   // ---- 清理 ----
@@ -560,22 +568,17 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   /**
-   * 项目分组排序：当前项目 → 有 active tab 的 → 其余按最近活跃 → 孤儿置底。
-   * 「最近活跃」取该组 tabs 的最大 lastActiveAt，无 tab 的排最后（孤儿前）。
+   * 项目分组排序（v3 §4.6）：置顶项目优先 -> 非孤儿字母序 -> 孤儿置底。
+   * 移除 v2 的当前项目置顶 / hasActive / lastActiveAt 档位。
    */
-  function sortProjectGroups(groups: ProjectGroup[], currentCwd: string): ProjectGroup[] {
-    const normalize = (p: string) => p.replace(/\\/g, '/').toLowerCase()
-    const curN = normalize(currentCwd)
-    const lastActive = (g: ProjectGroup) =>
-      g.tabs.reduce((m, t) => Math.max(m, t.lastActiveAt), 0)
-
+  function sortProjectGroups(groups: ProjectGroup[]): ProjectGroup[] {
+    const pinnedSet = new Set(pinnedProjects.value.map(normalizePath))
     return [...groups].sort((a, b) => {
-      const aCur = normalize(a.projectPath) === curN ? 1 : 0
-      const bCur = normalize(b.projectPath) === curN ? 1 : 0
-      if (aCur !== bCur) return bCur - aCur          // 当前置顶
-      if (a.isOrphan !== b.isOrphan) return a.isOrphan ? 1 : -1  // 孤儿置底
-      if (a.hasActive !== b.hasActive) return a.hasActive ? -1 : 1
-      return lastActive(b) - lastActive(a)            // 最近活跃降序
+      const aPinned = pinnedSet.has(normalizePath(a.projectPath)) ? 1 : 0
+      const bPinned = pinnedSet.has(normalizePath(b.projectPath)) ? 1 : 0
+      if (aPinned !== bPinned) return bPinned - aPinned                // 置顶优先
+      if (a.isOrphan !== b.isOrphan) return a.isOrphan ? 1 : -1        // 孤儿置底
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase())  // 字母序
     })
   }
 
@@ -606,6 +609,106 @@ export const useSessionStore = defineStore('session', () => {
       .filter((g): g is ProjectGroup => g !== null)
   }
 
+  // ---- 项目置顶 + 会话存档（持久化到 ~/.cc-box/projects.json）----
+
+  /**
+   * 启动加载：读取 pinnedProjects + archivedSessions（参考 loadAppConfig 范式）。
+   * v3-1 后端 merge 为顶层替换，故写入时须发送完整 map。
+   */
+  async function loadProjectsState() {
+    try {
+      const state = await getProjectsState()
+      pinnedProjects.value = state.pinnedProjects ?? []
+      archivedSessions.clear()
+      for (const [k, v] of Object.entries(state.archivedSessions ?? {})) {
+        archivedSessions.set(k, v)
+      }
+    } catch (err) {
+      console.error('[SessionStore] loadProjectsState failed:', err)
+    }
+  }
+
+  /** 发送完整 pinnedProjects + archivedSessions（顶层替换语义，v3-1 merge 非深合并） */
+  async function persistProjectsState() {
+    const archivedObj: Record<string, string[]> = {}
+    for (const [k, v] of archivedSessions.entries()) {
+      archivedObj[k] = v
+    }
+    await updateProjectsState({
+      pinnedProjects: [...pinnedProjects.value],
+      archivedSessions: archivedObj,
+    })
+  }
+
+  /** 该项目是否已置顶（normalized 比较，兼容 Windows 路径大小写/斜杠差异） */
+  function isPinned(path: string): boolean {
+    const n = normalizePath(path)
+    return pinnedProjects.value.some(p => normalizePath(p) === n)
+  }
+
+  /** 置顶项目（已存在则幂等返回，不发持久化） */
+  async function pinProject(path: string) {
+    if (isPinned(path)) return
+    pinnedProjects.value = [...pinnedProjects.value, path]
+    await persistProjectsState()
+  }
+
+  /** 取消置顶（normalized 比较；未置顶则幂等返回） */
+  async function unpinProject(path: string) {
+    const n = normalizePath(path)
+    const next = pinnedProjects.value.filter(p => normalizePath(p) !== n)
+    if (next.length === pinnedProjects.value.length) return
+    pinnedProjects.value = next
+    await persistProjectsState()
+  }
+
+  /**
+   * 取指定项目的存档会话 ID（normalized 查找，合并匹配键以容忍跨重启路径漂移）。
+   */
+  function getArchivedSessions(projectPath: string): string[] {
+    const n = normalizePath(projectPath)
+    const result: string[] = []
+    for (const [key, val] of archivedSessions.entries()) {
+      if (normalizePath(key) === n) result.push(...val)
+    }
+    return result
+  }
+
+  /** 存档会话（从历史列表隐藏；已存档则幂等返回） */
+  async function archiveSession(projectPath: string, sessionId: string) {
+    const n = normalizePath(projectPath)
+    // 复用已有键（normalized 匹配）避免重复条目
+    let key: string | null = null
+    for (const k of archivedSessions.keys()) {
+      if (normalizePath(k) === n) { key = k; break }
+    }
+    const useKey = key ?? projectPath
+    const arr = archivedSessions.get(useKey) ?? []
+    if (arr.includes(sessionId)) return
+    arr.push(sessionId)
+    archivedSessions.set(useKey, arr)
+    await persistProjectsState()
+  }
+
+  /** 恢复存档会话（重新出现在历史列表；未存档则幂等返回；空数组自动清理键） */
+  async function restoreSession(projectPath: string, sessionId: string) {
+    const n = normalizePath(projectPath)
+    let changed = false
+    for (const [key, val] of archivedSessions.entries()) {
+      if (normalizePath(key) === n) {
+        const idx = val.indexOf(sessionId)
+        if (idx >= 0) {
+          val.splice(idx, 1)
+          if (val.length === 0) archivedSessions.delete(key)
+          else archivedSessions.set(key, val)
+          changed = true
+          break
+        }
+      }
+    }
+    if (changed) await persistProjectsState()
+  }
+
   return {
     // State
     tabs,
@@ -614,6 +717,8 @@ export const useSessionStore = defineStore('session', () => {
     searchQuery,
     isLoading,
     isLoadingMore,
+    pinnedProjects,
+    archivedSessions,
 
     // Computed
     activeTab,
@@ -664,5 +769,14 @@ export const useSessionStore = defineStore('session', () => {
     buildProjectGroups,
     sortProjectGroups,
     filterProjectGroups,
+
+    // 项目置顶 + 会话存档
+    loadProjectsState,
+    isPinned,
+    pinProject,
+    unpinProject,
+    getArchivedSessions,
+    archiveSession,
+    restoreSession,
   }
 })

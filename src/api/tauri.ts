@@ -14,6 +14,7 @@ import type {
   SessionDetails,
   SessionSearchResult,
   AppConfig,
+  ProjectsState,
   DefaultClaudeOptions,
   ProjectConfigResult,
   AgentInfo,
@@ -41,6 +42,7 @@ export type {
   SessionDetails,
   SessionSearchResult,
   AppConfig,
+  ProjectsState,
   DefaultClaudeOptions,
   ProjectConfigResult,
   AgentInfo,
@@ -161,6 +163,13 @@ export const getAppConfig = (): Promise<AppConfig> =>
 
 export const updateAppConfig = (updates: Record<string, unknown>): Promise<void> =>
   invoke<void>('update_app_config', { updates });
+
+// 项目置顶 + 会话存档状态（~/.cc-box/projects.json，顶层替换语义，须发完整 map）
+export const getProjectsState = (): Promise<ProjectsState> =>
+  invoke<ProjectsState>('get_projects_state');
+
+export const updateProjectsState = (updates: Record<string, unknown>): Promise<void> =>
+  invoke<void>('update_projects_state', { updates });
 
 export const getDefaultClaudeOptions = (): Promise<DefaultClaudeOptions> =>
   invoke<DefaultClaudeOptions>('get_default_claude_options');
