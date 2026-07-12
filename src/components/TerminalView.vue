@@ -470,14 +470,13 @@ async function handleOpenInExplorer(projectPath: string) {
 
 // PTY 启动回调
 function handlePtyStarted(tabId: string, _ptyId: string) {
-  const cwd = appStore.cwd
-  if (cwd) {
-    appStore.ensureProjectInList(cwd)
-    // 恢复历史会话时不需要重载（claimedSessionIds 已自动过滤），仅新建会话时刷新
-    const tab = sessionStore.tabs.get(tabId)
-    if (!tab?.isResume) {
-      sessionStore.loadHistorySessions(cwd, true)
-    }
+  const tab = sessionStore.tabs.get(tabId)
+  const projPath = tab?.projectPath ?? appStore.cwd // 优先 tab.projectPath（新流程 spawn 后才 setCwdLocal，避免读旧 cwd），回退 cwd（兼容旧调用）
+  if (!projPath) return
+  appStore.ensureProjectInList(projPath)
+  // 恢复历史会话时不需要重载（claimedSessionIds 已自动过滤），仅新建会话时刷新
+  if (!tab?.isResume) {
+    sessionStore.loadHistorySessions(projPath, true)
   }
 }
 </script>
