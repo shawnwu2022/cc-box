@@ -51,6 +51,7 @@
             :key="project.path"
             class="project-row"
             :class="{ hidden: appStore.isHidden(project.path) }"
+            :data-path="project.path"
           >
             <svg class="folder-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -80,19 +81,30 @@
               :aria-label="t('more')"
               @click.stop="toggleMenu(project.path)"
               @keydown.enter.prevent="toggleMenu(project.path)"
-              @keydown.esc.prevent="closeMenu"
+              @keydown.esc.prevent="closeMenuAndRestore(project.path)"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
               </svg>
             </button>
 
-            <!-- ⋯ 菜单：置顶/取消置顶 + 隐藏/显示（cwd 项目禁隐藏） -->
-            <div v-if="menuOpen === project.path" class="menu" @click.stop>
-              <button @click="onMenuPin(project.path)">
+            <!-- ⋯ 菜单：置顶/取消置顶 + 隐藏/显示（cwd 项目禁隐藏）。
+                 键盘协议（spec §4.8）：ArrowUp/Down 循环焦点 + Escape 关闭并恢复焦点到触发按钮 -->
+            <div
+              v-if="menuOpen === project.path"
+              class="menu"
+              role="menu"
+              @click.stop
+              @keydown="onMenuKeydown($event, project.path)"
+            >
+              <button role="menuitem" @click="onMenuPin(project.path)">
                 {{ sessionStore.isPinned(project.path) ? t('unpin') : t('pin') }}
               </button>
-              <button :disabled="isCwdProject(project.path)" @click="onMenuHide(project.path)">
+              <button
+                role="menuitem"
+                :disabled="isCwdProject(project.path)"
+                @click="onMenuHide(project.path)"
+              >
                 {{ appStore.isHidden(project.path) ? t('show') : t('hide') }}
               </button>
             </div>
@@ -142,7 +154,7 @@
               v-for="s in sessionStore.getArchivedSessionInfos(proj.path)"
               :key="s.sessionId"
               class="archived-item"
-              @click="handleRestore(proj.path, s.sessionId)"
+              @click="handleRestore(proj.path, s.sessionId, s.name)"
             >
               <span class="archived-name">{{ s.name }}</span>
               <span v-if="s.lastActiveAt > 0" class="archived-time">{{ formatTime(s.lastActiveAt) }}</span>
@@ -155,7 +167,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useSessionStore } from '@/stores/session'
@@ -226,10 +238,72 @@ function handleBack() {
 }
 
 function toggleMenu(path: string) {
-  menuOpen.value = menuOpen.value === path ? null : path
+  if (menuOpen.value === path) {
+    closeMenuAndRestore(path)
+  } else {
+    menuOpen.value = path
+    // 展开后焦点入首个菜单项（aria 菜单按钮模式：展开即焦点入菜单，便于方向键导航）
+    nextTick(() => focusFirstMenuItem(path))
+  }
 }
-function closeMenu() {
+
+/** 关闭菜单并恢复焦点到触发按钮（spec §4.8：Escape/菜单项选中后焦点回 menu-btn） */
+function closeMenuAndRestore(path?: string) {
+  const targetPath = path ?? menuOpen.value
   menuOpen.value = null
+  if (targetPath) {
+    nextTick(() => getMenuBtn(targetPath)?.focus())
+  }
+}
+
+/** 按 data-path 定位项目行的菜单触发按钮 */
+function getMenuBtn(path: string): HTMLButtonElement | null {
+  return projectListRef.value?.querySelector(
+    `.project-row[data-path="${cssEscape(path)}"] .menu-btn`
+  ) ?? null
+}
+
+/** 按数据路径定位当前展开的菜单容器 */
+function getMenu(path: string): HTMLElement | null {
+  return projectListRef.value?.querySelector(
+    `.project-row[data-path="${cssEscape(path)}"] .menu`
+  ) ?? null
+}
+
+/** 焦点入菜单首个可点项 */
+function focusFirstMenuItem(path: string) {
+  getMenu(path)?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+}
+
+/**
+ * 菜单内键盘协议（spec §4.8）：
+ * - ArrowDown/ArrowUp：在可点菜单项间循环焦点
+ * - Escape：关闭菜单并恢复焦点到触发按钮
+ */
+function onMenuKeydown(e: KeyboardEvent, path: string) {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    const menu = getMenu(path)
+    if (!menu) return
+    const items = Array.from(menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'))
+    if (items.length === 0) return
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
+    let nextIndex: number
+    if (e.key === 'ArrowDown') {
+      nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length
+    } else {
+      nextIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1
+    }
+    items[nextIndex].focus()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    closeMenuAndRestore(path)
+  }
+}
+
+/** CSS 属性选择器转义：路径含特殊字符（空格/括号等）时避免 querySelector 解析失败 */
+function cssEscape(value: string): string {
+  return (window.CSS && CSS.escape) ? CSS.escape(value) : value.replace(/["\\]/g, '\\$&')
 }
 
 /** 点击外部关闭菜单（⋯ 按钮 / 菜单内部已 @click.stop，不会触发此处） */
@@ -245,13 +319,13 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onGlobalKeydown)
 })
 function onGlobalKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') closeMenu()
+  if (e.key === 'Escape') closeMenuAndRestore()
 }
 
 function onMenuPin(path: string) {
   if (sessionStore.isPinned(path)) sessionStore.unpinProject(path).catch(() => {})
   else sessionStore.pinProject(path).catch(() => {})
-  menuOpen.value = null
+  closeMenuAndRestore(path)
 }
 
 function onMenuHide(path: string) {
@@ -259,7 +333,7 @@ function onMenuHide(path: string) {
   if (isCwdProject(path)) return
   const willHide = !appStore.isHidden(path)
   appStore.setHidden(path, willHide).catch(() => {})
-  menuOpen.value = null
+  closeMenuAndRestore(path)
 }
 
 function handleSettingsClick() {
@@ -308,10 +382,10 @@ async function loadArchived() {
   archivedLoaded.value = true
 }
 
-/** 恢复存档会话：restoreSession 持久化后切到该会话（--resume） */
-function handleRestore(projectPath: string, sessionId: string) {
+/** 恢复存档会话：restoreSession 持久化后切到该会话（--resume），透传 sessionName 供 tab 命名 */
+function handleRestore(projectPath: string, sessionId: string, sessionName?: string) {
   sessionStore.restoreSession(projectPath, sessionId).then(() => {
-    emit('resumeSession', projectPath, sessionId)
+    emit('resumeSession', projectPath, sessionId, sessionName)
   }).catch(() => {})
 }
 

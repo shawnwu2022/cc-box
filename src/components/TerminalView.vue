@@ -73,12 +73,12 @@ import { computeTerminalSurfaceVars, getTerminalTheme } from '@/config/terminalT
 import { useSessionStore } from '@/stores/session'
 import { useSidebarStore, type SidebarPanelType } from '@/stores/sidebar'
 import { useConfigStore } from '@/stores/config'
-import { openInFileManager, logMessage } from '@/api/tauri'
+import { openInFileManager, logMessage, ptyKill } from '@/api/tauri'
 import { sendTerminalCommand } from '@/composables/useTerminalCommand'
 import { useWindowAttention } from '@/composables/useWindowAttention'
 import { useStatusMonitor } from '@/composables/useStatusMonitor'
 import { resolveSwitchAction } from '@/composables/useProjectTreeNavigation'
-import { reduceWaiter, type WaiterStatus, type WaiterEvent } from '@/composables/useSessionStartWaiter'
+import { reduceWaiter, isTimeoutError, STARTUP_TIMEOUT_CODE, type WaiterStatus, type WaiterEvent } from '@/composables/useSessionStartWaiter'
 import { useHookStore, type HookEventHandler } from '@/stores/hook'
 import type { HookEventPayload } from '@/types/hook'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -161,7 +161,13 @@ function settleWaiter(tabId: string, event: WaiterEvent) {
   sessionStartWaiters.delete(tabId)
   switch (next) {
     case 'started': entry.resolve(); break
-    case 'timeout': entry.reject(new Error(t('claudeStartTimeout'))); break
+    case 'timeout': {
+      // tag code 供 catch 精确区分 timeout（i18n 无关），见 isTimeoutError
+      const err = new Error(t('claudeStartTimeout')) as Error & { code: typeof STARTUP_TIMEOUT_CODE }
+      err.code = STARTUP_TIMEOUT_CODE
+      entry.reject(err)
+      break
+    }
     case 'exited': entry.reject(new Error(t('claudeStartFailed'))); break
     case 'failed': entry.reject(new Error(t('claudeStartFailed'))); break
     case 'cancelled': entry.reject(new Error('cancelled')); break
@@ -214,10 +220,23 @@ async function startProjectSession(path: string): Promise<void> {
   try {
     await waiter
   } catch (e) {
-    // 失败清理 tab：spawnFail 路径 startTab 内 discardUnstartedTab 已 removeTab（幂等，再调无害）；
-    // ptyExit 路径 PTY 已退、Terminal 实例已被 onPtyExit 销毁，但 tab（status=stopped）残留，此处 removeTab 清脏 tab。
-    sessionStore.removeTab(tabId)
     sessionStarting.value = false
+    if (isTimeoutError(e)) {
+      // timeout：spawn 已成功但 sessionStart hook 30s 未到 -> PTY 可能活。
+      // kill PTY（防泄漏 + 防 retry 起重复 Claude 进程）+ 清 terminal instance（onPtyExit 亦会清，此处幂等兜底）。
+      // 保留 tab（不 removeTab）：onPtyExit -> handlePtyExit 置 stopped，tab 结构留作上下文（贴 spec §4.4 step 8）。
+      // retry 起新 tab（App.vue retryProjectSpawn -> startProjectSession -> createTab 新 id）。
+      const tab = sessionStore.tabs.get(tabId)
+      if (tab?.ptyId) {
+        ptyKill(tab.ptyId).catch(() => {}) // PTY 已退则 kill no-op，catch 吞错
+      }
+      terminalRef.value?.disposeTabInstance?.(tabId)
+    } else {
+      // ptyExit/spawnFail：清脏 tab。
+      // spawnFail 路径 startTab 内 discardUnstartedTab 已 removeTab（幂等，再调无害）；
+      // ptyExit 路径 PTY 已退、Terminal 实例已被 onPtyExit 销毁，但 tab（status=stopped）残留，此处 removeTab 清脏 tab。
+      sessionStore.removeTab(tabId)
+    }
     throw spawnError ?? e
   }
 

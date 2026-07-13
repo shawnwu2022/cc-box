@@ -28,3 +28,28 @@ export function reduceWaiter(state: WaiterStatus, event: WaiterEvent): WaiterSta
     case 'unmount': return 'cancelled'
   }
 }
+
+/**
+ * timeout 错误标记码：settleWaiter reject timeout 时挂到 Error.code，
+ * 供 startProjectSession catch 精确区分 timeout vs ptyExit/spawnFail（i18n 无关）。
+ *
+ * 不依赖 error.message 文案匹配：claudeStartTimeout 的本地化文案随 locale 变
+ * （zh 含「超时」，en 为 'Claude failed to start (timeout).' 不含「超时」/key 名），
+ * 文案匹配在英文 locale 下会误判 -> 走 removeTab 清掉本应保留的 tab。故用 code 标记。
+ */
+export const STARTUP_TIMEOUT_CODE = 'claudeStartTimeout' as const
+
+/**
+ * 判定 waiter reject 是否为 timeout：检查 Error.code === STARTUP_TIMEOUT_CODE。
+ * 用于 startProjectSession catch 区分清理路径：
+ * - timeout：PTY 可能活 -> ptyKill + 清 terminal instance + 保留 tab（贴 spec §4.4 step 8）
+ * - ptyExit/spawnFail：removeTab 清脏 tab
+ */
+export function isTimeoutError(e: unknown): boolean {
+  return (
+    e !== null &&
+    typeof e === 'object' &&
+    'code' in e &&
+    (e as { code: unknown }).code === STARTUP_TIMEOUT_CODE
+  )
+}

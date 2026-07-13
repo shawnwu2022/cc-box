@@ -149,7 +149,6 @@ const terminalViewRef = ref()
 // 启动加载/失败门禁（v5-T7）：initStartup 中三路并行加载或启动摘要门禁失败时置位，
 // 弹出错误卡 + 重试按钮；成功后清空。
 const startupError = ref<string | null>(null)
-const startupLoading = ref(false)
 
 // 添加项目 spawn 失败提示（v5-T7 concern 1）：独立于 startupError，避免重试语义错位。
 // 用户要重 spawn 同目录，而非重跑 initStartup（重新决策），故单独 overlay + 重试按钮直连 startProjectSession。
@@ -382,7 +381,6 @@ function initAfterChecks() {
  * ~/.claude/projects/；可接受（启动一次），后续可合并为一次扫描返回 HomeData+摘要。
  */
 async function initStartup() {
-  startupLoading.value = true
   startupError.value = null
   try {
     // 1. 并行加载（加载器抛错不吞：Promise.allSettled 收纳，下方统一判定）
@@ -420,8 +418,6 @@ async function initStartup() {
     }
   } catch (e) {
     startupError.value = String(e)
-  } finally {
-    startupLoading.value = false
   }
 }
 

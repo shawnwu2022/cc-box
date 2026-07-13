@@ -655,6 +655,21 @@ function discardUnstartedTab(tabId: string) {
 }
 
 /**
+ * 清理指定 Tab 的 Terminal 实例（不动 store tab、不 kill PTY）。
+ * 用于 startProjectSession timeout 路径：PTY 由调用方 ptyKill，onPtyExit 也会清此实例；
+ * 此处显式清为幂等兜底（先到者清实例 + 删 Map，后到者 no-op），避免依赖 pty-exit 事件时序。
+ * 保留 tab（status 由 onPtyExit -> handlePtyExit 置 stopped），调用方不 removeTab。
+ */
+function disposeTabInstance(tabId: string) {
+  const instance = terminalInstances.get(tabId)
+  if (instance) {
+    void disposeTerminal(instance.term, `disposeTabInstance(tabId=${tabId})`)
+    terminalInstances.delete(tabId)
+    terminalEls.delete(tabId)
+  }
+}
+
+/**
  * 重启 Tab（停止的 Tab 恢复运行）
  */
 async function restartTab(tabId: string) {
@@ -843,6 +858,7 @@ defineExpose({
   sendText,
   focus,
   fitCurrentTerminal,
+  disposeTabInstance,
 })
 </script>
 
