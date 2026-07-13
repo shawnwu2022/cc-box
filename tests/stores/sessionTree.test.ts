@@ -308,6 +308,71 @@ describe('session store - 全局树', () => {
     })
   })
 
+  // ==================== buildProjectGroups / filterProjectGroups（displayName + 三字段搜索） ====================
+  describe('buildProjectGroups displayName', () => {
+    // 已收项目：name = getDisplayName（别名优先 basename）
+    it('Group_DisplayName_Cached_001', () => {
+      const store = useSessionStore()
+      store.displayNames.set('/p-a', '别名A')
+      const groups = store.buildProjectGroups([{ path: '/p-a', name: 'p-a' }])
+      expect(groups[0].name).toBe('别名A')
+    })
+
+    // 孤儿项目（tab 有、cachedProjects 无）：name 同样用 getDisplayName
+    it('Group_DisplayName_Orphan_001', () => {
+      const store = useSessionStore()
+      store.displayNames.set('/p-orphan', '孤儿别名')
+      const tabId = store.createTab('/p-orphan')
+      store.setTabPty(tabId, 'pty-1')
+      const groups = store.buildProjectGroups([]) // cachedProjects 空 -> 该 tab 为孤儿
+      const orphan = groups.find(g => g.projectPath === '/p-orphan')
+      expect(orphan).toBeTruthy()
+      expect(orphan!.name).toBe('孤儿别名')
+      expect(orphan!.isOrphan).toBe(true)
+    })
+  })
+
+  describe('filterProjectGroups 搜索三字段', () => {
+    // 搜别名命中（别名后搜「客户的活」能找到）
+    it('Filter_SearchDisplayName_001', () => {
+      const store = useSessionStore()
+      store.displayNames.set('/p-a', '客户的活')
+      const groups = store.buildProjectGroups([{ path: '/p-a', name: 'p-a' }])
+      const filtered = store.filterProjectGroups(groups, '客户')
+      expect(filtered.length).toBe(1)
+      expect(filtered[0].projectPath).toBe('/p-a')
+    })
+
+    // alias 设置时搜 basename 仍命中（codex #8/#16）：path='/work/c1' 别名='客户的活'，
+    // 搜 'c1' -> basename 'c1' 命中（path 也含 c1，二者独立验证三字段）
+    it('Filter_SearchBasenameWithAlias_001', () => {
+      const store = useSessionStore()
+      store.displayNames.set('/work/c1', '客户的活')
+      const groups = store.buildProjectGroups([{ path: '/work/c1', name: 'c1' }])
+      const filtered = store.filterProjectGroups(groups, 'c1')
+      expect(filtered.length).toBe(1)
+      expect(filtered[0].projectPath).toBe('/work/c1')
+    })
+
+    // 搜 path 命中（displayName/basename 不含，path 含）
+    it('Filter_SearchPath_001', () => {
+      const store = useSessionStore()
+      store.displayNames.set('/work/secret-dir', '别名')
+      const groups = store.buildProjectGroups([{ path: '/work/secret-dir', name: 'secret-dir' }])
+      const filtered = store.filterProjectGroups(groups, 'secret')
+      expect(filtered.length).toBe(1)
+    })
+
+    // 别名不匹配 + 无会话命中 -> 过滤掉
+    it('Filter_NoMatch_001', () => {
+      const store = useSessionStore()
+      store.displayNames.set('/p-a', '客户的活')
+      const groups = store.buildProjectGroups([{ path: '/p-a', name: 'p-a' }])
+      const filtered = store.filterProjectGroups(groups, 'zzz')
+      expect(filtered.length).toBe(0)
+    })
+  })
+
   // ==================== pin / archive（持久化） ====================
   describe('pin / archive（持久化）', () => {
     // pin 项目后 isPinned 返回 true，并调用 updateProjectsState 发完整 pinnedProjects

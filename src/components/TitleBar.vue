@@ -40,12 +40,15 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { isMac, isWindows } from '@/utils/platform'
 import { useAppStore } from '@/stores/app'
+import { useSessionStore } from '@/stores/session'
 
 const appStore = useAppStore()
+const sessionStore = useSessionStore()
 const win = getCurrentWindow()
 const isMaximized = ref(false)
 
-const title = computed(() => appStore?.currentProject || 'CC-Box')
+// title 用 getDisplayName（别名优先 basename 回退）；cwd 为空时 currentProject 二次兜底
+const title = computed(() => sessionStore.getDisplayName(appStore.cwd) || appStore?.currentProject || 'CC-Box')
 
 async function handleMinimize() {
   await win.minimize()

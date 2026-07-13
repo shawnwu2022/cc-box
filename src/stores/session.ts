@@ -8,7 +8,7 @@ import {
   updateProjectsState,
 } from '@/api/tauri'
 import { normalizePath } from '@/utils/path'
-import { validateDisplayName, projectBasename } from '@/utils/displayName'
+import { validateDisplayName, projectBasename, matchProjectQuery } from '@/utils/displayName'
 import type { SessionSearchResult } from '@/types'
 
 // ==================== Tab-Centric 数据模型 ====================
@@ -628,14 +628,12 @@ export const useSessionStore = defineStore('session', () => {
     const groups: ProjectGroup[] = []
     for (const p of visibleProjects) {
       const projTabs = tabsByNorm.get(normalizePath(p.path))?.tabs ?? []
-      groups.push(makeGroup(p.path, p.name, projTabs, false))
+      groups.push(makeGroup(p.path, getDisplayName(p.path), projTabs, false))
     }
     // 孤儿：tabs 中有但 cachedProjects 没有（Map 已按 normalized key 去重）
     for (const [n, entry] of tabsByNorm) {
       if (known.has(n)) continue
-      const parts = entry.firstRaw.replace(/\\/g, '/').split('/')
-      const name = parts[parts.length - 1] || entry.firstRaw
-      groups.push(makeGroup(entry.firstRaw, name, entry.tabs, true))
+      groups.push(makeGroup(entry.firstRaw, getDisplayName(entry.firstRaw), entry.tabs, true))
     }
     return groups
 
@@ -681,7 +679,12 @@ export const useSessionStore = defineStore('session', () => {
     if (!q) return groups
     return groups
       .map((g): ProjectGroup | null => {
-        const matchProject = g.name.toLowerCase().includes(q)
+        const matchProject = matchProjectQuery(
+          getDisplayName(g.projectPath),
+          projectBasename(g.projectPath),
+          g.projectPath,
+          q,
+        )
         const tabHits = g.tabs
           .filter(t => t.name.toLowerCase().includes(q) || (t.sessionId?.toLowerCase().includes(q) ?? false))
           .map(t => t.sessionId)

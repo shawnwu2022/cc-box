@@ -57,7 +57,7 @@
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
             <div class="project-info">
-              <span class="project-name">{{ project.name }}</span>
+              <span class="project-name">{{ sessionStore.getDisplayName(project.path) }}</span>
               <span class="project-path">{{ project.path }}</span>
             </div>
             <!-- 置顶标记 -->
@@ -174,6 +174,7 @@ import { useSessionStore } from '@/stores/session'
 import { useSidebarStore } from '@/stores/sidebar'
 import { ctrl } from '@/utils/platform'
 import { normalizePath } from '@/utils/path'
+import { matchProjectQuery } from '@/utils/displayName'
 
 const { t } = useI18n()
 
@@ -200,12 +201,11 @@ function isCwdProject(path: string): boolean {
 
 /** 过滤 + 排序：置顶优先 -> 最近活跃（与全局树排序语义一致） */
 const filteredProjects = computed(() => {
-  const q = searchQuery.value.toLowerCase()
+  const q = searchQuery.value.trim().toLowerCase()
   let list = appStore.cachedProjects
   if (q) {
     list = list.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      p.path.toLowerCase().includes(q)
+      matchProjectQuery(sessionStore.getDisplayName(p.path), p.name, p.path, q)
     )
   }
   return [...list].sort((a, b) => {
@@ -363,13 +363,13 @@ const hasArchived = computed(() => sessionStore.archivedSessions.size > 0)
 
 /**
  * 已存档项目列表：直接从 archivedSessions.keys() 生成（不依赖 cachedProjects 分页，
- * 避免分页外的已存档项目漏显示）。basename 提取项目名。
+ * 避免分页外的已存档项目漏显示）。name 用 getDisplayName（别名优先 basename 回退）。
  */
 const archivedProjects = computed(() => {
-  return [...sessionStore.archivedSessions.keys()].map(k => {
-    const parts = k.replace(/\\/g, '/').split('/')
-    return { path: k, name: parts[parts.length - 1] || k }
-  })
+  return [...sessionStore.archivedSessions.keys()].map(k => ({
+    path: k,
+    name: sessionStore.getDisplayName(k),
+  }))
 })
 
 /** 懒加载所有已存档项目的历史（loadHistoryFor 无副作用，不改 currentHistoryProject） */

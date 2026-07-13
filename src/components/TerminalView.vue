@@ -79,6 +79,7 @@ import { useWindowAttention } from '@/composables/useWindowAttention'
 import { useStatusMonitor } from '@/composables/useStatusMonitor'
 import { resolveSwitchAction } from '@/composables/useProjectTreeNavigation'
 import { normalizePath } from '@/utils/path'
+import { resolveWindowTitle } from '@/utils/displayName'
 import { reduceWaiter, isTimeoutError, STARTUP_TIMEOUT_CODE, type WaiterStatus, type WaiterEvent } from '@/composables/useSessionStartWaiter'
 import { useHookStore, type HookEventHandler } from '@/stores/hook'
 import type { HookEventPayload } from '@/types/hook'
@@ -123,9 +124,8 @@ const showEmptyState = computed(() => {
 })
 
 function updateWindowTitle(cwd: string) {
-  const parts = cwd.replace(/\\/g, '/').split('/')
-  const folderName = parts[parts.length - 1] || 'CC-Box'
-  getCurrentWindow().setTitle(folderName).catch(() => {})
+  const name = resolveWindowTitle(cwd, (p) => sessionStore.getDisplayName(p))
+  getCurrentWindow().setTitle(name).catch(() => {})
 }
 
 async function startResumeSession(projectPath: string, sessionId: string, sessionName?: string) {
@@ -338,6 +338,12 @@ watch(() => appStore.cwd, async (newCwd, oldCwd) => {
     }
   }
 })
+
+// 别名变化（不改 cwd）也要刷新 native title：watch getDisplayName(cwd)（reactive，别名改后重算）
+watch(
+  () => appStore.cwd ? sessionStore.getDisplayName(appStore.cwd) : '',
+  () => { if (appStore.cwd) updateWindowTitle(appStore.cwd) }
+)
 
 function handleBack() {
   emit('back')

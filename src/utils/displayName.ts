@@ -31,3 +31,32 @@ export function projectBasename(projectPath: string): string {
   const parts = projectPath.replace(/\\/g, '/').replace(/\/+$/, '').split('/')
   return parts[parts.length - 1] || projectPath
 }
+
+/**
+ * 解析 native window title（纯函数，便于测）：
+ * cwd 空 -> 'CC-Box'；否则用 resolveName(cwd)（调用方传 getDisplayName，含别名/basename 回退）。
+ */
+export function resolveWindowTitle(
+  cwd: string | null | undefined,
+  resolveName: (p: string) => string,
+): string {
+  if (!cwd) return 'CC-Box'
+  return resolveName(cwd)
+}
+
+/**
+ * 项目搜索匹配（纯函数，三字段）：displayName + basename + path 任一小写包含 query。
+ * - displayName：别名（或无别名时的 basename）
+ * - basename：原路径末段（别名设置时仍可搜原名命中）
+ * - path：完整路径
+ * 大小写不敏感（query 与三字段统一 toLowerCase 比较）；调用方通常会 trim+lower，
+ * 函数内再 lower 一次作防御，保证无论调用方是否预处理都大小写不敏感。
+ */
+export function matchProjectQuery(displayName: string, basename: string, path: string, query: string): boolean {
+  const ql = query.toLowerCase()
+  return (
+    displayName.toLowerCase().includes(ql) ||
+    basename.toLowerCase().includes(ql) ||
+    path.toLowerCase().includes(ql)
+  )
+}
