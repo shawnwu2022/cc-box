@@ -133,7 +133,10 @@ async function startResumeSession(projectPath: string, sessionId: string, sessio
   sessionStore.setActiveTab(tabId)
   await nextTick()
   if (terminalRef.value?.startTab) {
-    terminalRef.value.startTab(tabId)
+    // await + 失败传播（v6 codex batch1 #12）：startTab 返回 {ok:false} 时已清理 tab，
+    // 抛错让 App.vue handleResumeSession catch -> 错误提示 + 重试，避免 UI 无错误无重试悬空。
+    const result = await terminalRef.value.startTab(tabId)
+    if (!result.ok) throw new Error(result.error)
   }
 }
 
@@ -225,11 +228,20 @@ async function startProjectSession(path: string): Promise<void> {
     if (isTimeoutError(e)) {
       // timeout：spawn 已成功但 sessionStart hook 30s 未到 -> PTY 可能活。
       // kill PTY（防泄漏 + 防 retry 起重复 Claude 进程）+ 清 terminal instance（onPtyExit 亦会清，此处幂等兜底）。
-      // 保留 tab（不 removeTab）：onPtyExit -> handlePtyExit 置 stopped，tab 结构留作上下文（贴 spec §4.4 step 8）。
+      // 保留 tab（不 removeTab）：tab 结构留作上下文（贴 spec §4.4 step 8）。
       // retry 起新 tab（App.vue retryProjectSpawn -> startProjectSession -> createTab 新 id）。
+      //
+      // v6 codex batch1 #1：ptyKill 后显式调 sessionStore.handlePtyExit(ptyId) 清 tab 状态
+      // （status=stopped + ptyId=null + working=false）再 disposeTabInstance。原因：PTY kill 后
+      // exit 事件可能不再触发，或到达时 XTermTerminal.onPtyExit 只对仍存在 terminalInstances 的实例
+      // handlePtyExit（disposeTabInstance 先清实例则 onPtyExit 找不到实例 -> 不调 store.handlePtyExit），
+      // 导致 tab 仍 status=running ptyId 非空 -> getRunningTabForProject 误判 -> retry 创建第二个 tab。
+      // 此处先抓 ptyId（handlePtyExit 会置 null），ptyKill + handlePtyExit 双保险清状态，再 dispose 实例。
       const tab = sessionStore.tabs.get(tabId)
-      if (tab?.ptyId) {
-        ptyKill(tab.ptyId).catch(() => {}) // PTY 已退则 kill no-op，catch 吞错
+      const ptyId = tab?.ptyId ?? null
+      if (ptyId) {
+        ptyKill(ptyId).catch(() => {}) // PTY 已退则 kill no-op，catch 吞错
+        sessionStore.handlePtyExit(ptyId) // 显式清 tab 状态（PTY kill 后 exit 可能不再触发或找不到实例）
       }
       terminalRef.value?.disposeTabInstance?.(tabId)
     } else {
@@ -244,9 +256,17 @@ async function startProjectSession(path: string): Promise<void> {
   // sessionStart 到达 -> 持久化 lastOpened（cwd 已在 spawn 后切，此处仅持久化）
   try {
     await appStore.setCurrentProject(path, { persist: true })
-  } finally {
+  } catch (e) {
     sessionStarting.value = false
+    // v6 codex batch1 #2：sessionStart 已成功（Claude 已跑），persist 失败不应误判启动失败重 spawn。
+    // 抛带 code='persist_failed' 的错误，让 App.vue catch 区分（isPersistFailedError）：
+    // persist 失败保留 tab（Claude 已跑）+ 重试只重 persist（非重 spawn）。
+    const err = new Error('persist_failed') as Error & { code: string; cause?: unknown }
+    err.code = 'persist_failed'
+    err.cause = e instanceof Error ? e : undefined
+    throw err
   }
+  sessionStarting.value = false
 }
 
 // PTY 提前退出 -> settle waiter（未 sessionStart 退出 = 启动失败）
@@ -360,11 +380,16 @@ function handleOpenFolder() {
 // 切换到已有 Tab
 // v3 §4.3：跨项目点 running tab = 切 cwd + 切 activeTabId。
 // 否则 header/配置/新建仍用旧项目 cwd，与切换语义不一致。
+// v6 codex batch1 #3：setCwd 改 setCwdLocal（同步切 cwd）+ setCurrentProject(persist:true)
+// 可等待持久化（fire-and-forget + catch 提示，不阻塞切换）。
 function handleSwitchSession(tabId: string) {
   const tab = sessionStore.tabs.get(tabId)
   if (tab) {
     if (normalizePath(tab.projectPath) !== normalizePath(appStore.cwd)) {
-      appStore.setCwd(tab.projectPath)
+      appStore.setCwdLocal(tab.projectPath)
+      appStore.setCurrentProject(tab.projectPath, { persist: true }).catch(err => {
+        console.error('[TerminalView] handleSwitchSession persist failed:', err)
+      })
     }
   }
   sessionStore.setActiveTab(tabId)
@@ -439,9 +464,12 @@ function handleCloseOtherTabs() {
 /**
  * 点会话节点：解析动作后执行（v3：点项目=展开/折叠，不经此函数；切换只靠点会话节点）。
  * 对抗审查 D/E —— 全程参数直传，不读写全局单值中间态；复用 startResumeSession 天然无竞态。
+ * v6 codex batch1 #3：setCwd 改 setCurrentProject(persist:true) 可等待 + 错误传播。
+ *   先 setCwdLocal 同步切 cwd（保 UI 响应），再 await setCurrentProject(persist:true) 持久化。
+ *   persist 失败不中断切换（cwd 已切、历史/激活逻辑继续），仅记日志提示用户。
  */
 async function handleSwitchToProjectSession(projectPath: string, sessionId: string) {
-  appStore.setCwd(projectPath)
+  appStore.setCwdLocal(projectPath) // 同步切 cwd，保 UI 响应
   // 确保该项目历史已加载（缓存命中秒回），供 resolveSwitchAction 判定 activate/resume
   await sessionStore.loadHistorySessions(projectPath)
   await nextTick()
@@ -450,6 +478,10 @@ async function handleSwitchToProjectSession(projectPath: string, sessionId: stri
     sessionId,
     tabs: sessionStore.getProjectTabs(projectPath),
     history: sessionStore.getHistoryFor(projectPath),
+  })
+  // 持久化 lastOpened（可等待 + 错误提示，不中断切换）
+  appStore.setCurrentProject(projectPath, { persist: true }).catch(err => {
+    console.error('[TerminalView] handleSwitchToProjectSession persist failed:', err)
   })
   switch (action.type) {
     case 'activate':
@@ -461,10 +493,15 @@ async function handleSwitchToProjectSession(projectPath: string, sessionId: stri
   }
 }
 
-/** 项目节点 + 新建：切到该项目并新建空会话 */
+/** 项目节点 + 新建：切到该项目并新建空会话。
+ *  v6 codex batch1 #3：setCwd 改 setCwdLocal（同步切 cwd 保响应）+ setCurrentProject(persist:true)
+ *  可等待持久化（fire-and-forget + catch 提示，不阻塞新建会话）。 */
 function handleNewSessionIn(projectPath: string) {
-  appStore.setCwd(projectPath)
+  appStore.setCwdLocal(projectPath)
   if (terminalRef.value) terminalRef.value.startNewSession(projectPath)
+  appStore.setCurrentProject(projectPath, { persist: true }).catch(err => {
+    console.error('[TerminalView] handleNewSessionIn persist failed:', err)
+  })
 }
 
 function handleCloseAllSessionsIn(projectPath: string) {

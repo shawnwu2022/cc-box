@@ -376,4 +376,81 @@ describe('app store - 启动状态源 + setCwd 拆分 + setHidden opLock', () =>
     const store = useAppStore()
     await expect(store.loadCache()).rejects.toThrow('home read failed')
   })
+
+  // v6 codex batch1 #3：setCurrentProject(persist:true) lastOpenedOpLock 串行化--
+  // 快速 A->B 切换（A 的 saveLastProject 故意慢于 B）最终磁盘写入顺序仍为 A 后 B，
+  // 终态 cwd=B、lastOpened 持久化调用顺序 [A, B]（opLock 保证 A 写完才写 B，不会乱序覆盖）。
+  it('SetCurrentProject_OpLock_FastAB_PreservesOrder_001', async () => {
+    const calls: string[] = []
+    let resolveA!: () => void
+    const slowA = new Promise<void>(r => { resolveA = r })
+    mockIPC((cmd, args) => {
+      if (cmd === 'save_last_project') {
+        const path = (args as { path: string }).path
+        calls.push(path)
+        // A 慢：返回一个等 resolveA 的 Promise；B 快：直接 resolve
+        if (path === '/p-a') return slowA.then(() => null)
+        return null
+      }
+      return null
+    })
+    const store = useAppStore()
+    // 同时发起 A、B（A 先调但慢，B 后调但快）。无 opLock 则 B 先写完、A 后写完 -> 磁盘留 A（错）。
+    const pA = store.setCurrentProject('/p-a', { persist: true })
+    const pB = store.setCurrentProject('/p-b', { persist: true })
+    // 让 B 有机会在 A resolve 前排队（验证 B 不抢跑）
+    await Promise.resolve()
+    resolveA() // A 的 saveLastProject 现在完成
+    await Promise.all([pA, pB])
+    expect(calls).toEqual(['/p-a', '/p-b']) // 顺序：A 先 B 后（opLock 串行）
+    expect(store.cwd).toBe('/p-b') // 终态 cwd=B
+  })
+
+  // v6 codex batch1 #3：setCurrentProject(persist:false) 不经 opLock、不写磁盘（直接 setCwdLocal）
+  it('SetCurrentProject_NoPersist_NoOpLock_001', async () => {
+    const calls: string[] = []
+    mockIPC((cmd, args) => {
+      if (cmd === 'save_last_project') calls.push((args as { path: string }).path)
+      return null
+    })
+    const store = useAppStore()
+    await store.setCurrentProject('/p-a', { persist: false })
+    expect(store.cwd).toBe('/p-a')
+    expect(calls).toEqual([]) // persist=false 不写磁盘
+  })
+
+  // v6 codex batch1 #10：setHidden 拒绝隐藏当前 cwd（domain 层硬保护，防 App.vue 打开入口绕过）
+  it('SetHidden_RejectHideCwd_001', async () => {
+    const store = useAppStore()
+    store.setCwdLocal('/p-cwd') // 设当前 cwd
+    await store.setHidden('/p-cwd', true) // 隐藏当前 cwd -> 拒绝（不抛错，幂等兼容 UI）
+    expect(store.isHidden('/p-cwd')).toBe(false) // 未隐藏
+  })
+
+  // v6 codex batch1 #10：setHidden 拒绝隐藏 cwd（规范化比较--斜杠/大小写差异仍识别为 cwd）
+  it('SetHidden_RejectHideCwd_Normalized_001', async () => {
+    const store = useAppStore()
+    store.setCwdLocal('E:\\Source\\MyProj')
+    await store.setHidden('e:/source/myproj', true) // 规范化后同 cwd -> 拒绝
+    expect(store.isHidden('E:\\Source\\MyProj')).toBe(false)
+  })
+
+  // v6 codex batch1 #10：setHidden 隐藏非 cwd 项目仍正常（cwd 保护不影响其他路径）
+  it('SetHidden_HideNonCwd_Ok_001', async () => {
+    const store = useAppStore()
+    store.setCwdLocal('/p-cwd')
+    await store.setHidden('/p-other', true) // 非 cwd -> 正常隐藏
+    expect(store.isHidden('/p-other')).toBe(true)
+    expect(store.isHidden('/p-cwd')).toBe(false)
+  })
+
+  // v6 codex batch1 #10：setHidden 取消隐藏（hidden=false）不受 cwd 保护限制--
+  // 取消隐藏 cwd 自身亦允许（虽管理页 cwd 项目禁隐藏按钮，但 hidden=false 语义是「显示」，应放行）
+  it('SetHidden_ShowCwd_Ok_001', async () => {
+    const store = useAppStore()
+    store.setCwdLocal('/p-cwd')
+    // 先设法让 cwd 在隐藏集合（绕过 cwd 保护模拟历史脏数据）：直接操作内部不易，改为验证 hidden=false 不抛错
+    await store.setHidden('/p-cwd', false) // 取消隐藏 cwd -> 不受限，不抛错
+    expect(store.isHidden('/p-cwd')).toBe(false)
+  })
 })

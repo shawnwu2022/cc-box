@@ -58,10 +58,12 @@
     </div>
   </div>
 
-  <!-- 添加项目 spawn 失败提示（独立于启动门禁：标题用 claudeStartFailed，重试=重 spawn 同目录） -->
+  <!-- 添加项目 spawn 失败提示（独立于启动门禁）。
+       v6 codex batch1 #2：persistFailed=true 时标题/语义切换为「保存失败」（Claude 已跑，重试只重 persist）；
+       否则 claudeStartFailed（重试=重 spawn 同目录） -->
   <div v-if="projectSpawnError" class="startup-error-overlay">
     <div class="startup-error-card">
-      <h2>{{ t('claudeStartFailed') }}</h2>
+      <h2>{{ projectSpawnError.persistFailed ? t('saveLastOpenedFailed') : t('claudeStartFailed') }}</h2>
       <p class="startup-error-msg">{{ projectSpawnError.msg }}</p>
       <div class="startup-error-actions">
         <button class="startup-cancel-btn" @click="projectSpawnError = null">{{ t('cancel') }}</button>
@@ -129,6 +131,7 @@ import {
 } from '@/api/tauri'
 import { useAppShortcuts } from '@/composables/useAppShortcuts'
 import { decideStartupView } from '@/composables/useStartupDecision'
+import { isPersistFailedError } from '@/composables/useSessionStartWaiter'
 import WelcomeView from '@/components/WelcomeView.vue'
 import ProjectSelectView from '@/components/ProjectSelectView.vue'
 import TitleBar from '@/components/TitleBar.vue'
@@ -153,7 +156,9 @@ const startupError = ref<string | null>(null)
 
 // 添加项目 spawn 失败提示（v5-T7 concern 1）：独立于 startupError，避免重试语义错位。
 // 用户要重 spawn 同目录，而非重跑 initStartup（重新决策），故单独 overlay + 重试按钮直连 startProjectSession。
-const projectSpawnError = ref<{ path: string; msg: string } | null>(null)
+// v6 codex batch1 #2：persistFailed 标记区分 sessionStart 成功后 lastOpened 持久化失败（Claude 已跑，
+// 不重 spawn，重试只重 persist）。标题/文案据 persistFailed 切换（saveLastOpenedFailed vs claudeStartFailed）。
+const projectSpawnError = ref<{ path: string; msg: string; persistFailed: boolean } | null>(null)
 
 // 应用 GUI 主题到 DOM。loadAppConfig 是异步 fire-and-forget：initAfterChecks 先用 store 初始值
 // （'light'）设置 DOM，待 loadAppConfig 把 theme.value 更新为持久化值后，由该 watch 同步到 DOM。
@@ -208,6 +213,11 @@ async function handleSelectProject() {
   const result = await selectDirectory()
   if (!result) return
   const path = result.path
+  // v6 codex batch1 #10：隐藏项目不能成 cwd，目录打开入口兜底（管理页按钮层禁用之外的硬保护）。
+  if (appStore.isHidden(path)) {
+    projectSpawnError.value = { path, msg: t('showFirst'), persistFailed: false }
+    return
+  }
   const existing = appStore.cachedProjects.find(p => normalizePath(p.path) === normalizePath(path))
   if (existing) {
     // 已存在项目走统一切换
@@ -217,35 +227,70 @@ async function handleSelectProject() {
   // 新项目：进终端 + startProjectSession 事务（spawn 后切 cwd + 等 sessionStart 持久化）。
   // cancelled/spawnFail/timeout/提前退出 reject 统一 catch -> projectSpawnError 提示
   // （T6 concern：unmount 期间 reject 'cancelled' 亦走此路径，不悬空）。
+  // v6 codex batch1 #2：persist_failed（sessionStart 成功但持久化失败）单独区分--Claude 已跑，
+  // 不重 spawn，重试只重 persist（retryProjectSpawn 据 persistFailed 标记走 retryPersist）。
   currentView.value = 'terminal'
   await nextTick()
   try {
     appStore.setClaudeOptions({ resume: '' }) // 新项目不恢复会话
     await terminalViewRef.value?.startProjectSession(path)
   } catch (e) {
-    // 失败分离 projectSpawnError（不混 startupError）：重试语义=重 spawn 同 path，非重跑 initStartup
-    projectSpawnError.value = { path, msg: t('claudeStartFailed') + ': ' + String(e) }
+    if (isPersistFailedError(e)) {
+      // persist 失败：Claude 已成功运行，保留 tab，错误提示「保存失败」，重试只重 persist
+      projectSpawnError.value = { path, msg: t('saveLastOpenedFailed'), persistFailed: true }
+    } else {
+      // 失败分离 projectSpawnError（不混 startupError）：重试语义=重 spawn 同 path，非重跑 initStartup
+      projectSpawnError.value = { path, msg: t('claudeStartFailed') + ': ' + String(e), persistFailed: false }
+    }
   }
 }
 
-// 添加项目 spawn 失败重试：重 spawn 同 path（非重跑 initStartup 决策，lastOpened 未持久化结果不可预测）。
-// 失败再次设 projectSpawnError，成功则 overlay 自动消失（startProjectSession 不抛即成功）。
+// 添加项目 spawn 失败重试：
+// - spawn 失败（persistFailed=false）：重 spawn 同 path（非重跑 initStartup 决策，lastOpened 未持久化结果不可预测）。
+// - persist 失败（persistFailed=true，v6 codex batch1 #2）：Claude 已跑，不重 spawn，仅重 persist lastOpened。
+//   失败再次设 projectSpawnError（保持 persistFailed 标记），成功则 overlay 自动消失。
 async function retryProjectSpawn() {
   if (!projectSpawnError.value) return
-  const path = projectSpawnError.value.path
+  const { path, persistFailed } = projectSpawnError.value
   projectSpawnError.value = null
+  if (persistFailed) {
+    // 只重 persist：Claude 已跑，不重 spawn
+    try {
+      await appStore.setCurrentProject(path, { persist: true })
+    } catch (e) {
+      projectSpawnError.value = { path, msg: t('saveLastOpenedFailed'), persistFailed: true }
+    }
+    return
+  }
   try {
     await terminalViewRef.value?.startProjectSession(path)
   } catch (e) {
-    projectSpawnError.value = { path, msg: t('claudeStartFailed') + ': ' + String(e) }
+    if (isPersistFailedError(e)) {
+      projectSpawnError.value = { path, msg: t('saveLastOpenedFailed'), persistFailed: true }
+    } else {
+      projectSpawnError.value = { path, msg: t('claudeStartFailed') + ': ' + String(e), persistFailed: false }
+    }
   }
 }
 
+/** 判定错误是否为 persist_failed：使用 useSessionStartWaiter 的 isPersistFailedError（i18n 无关，code 标记） */
+
 async function handleOpenProject(path: string) {
-  appStore.setCwd(path)
+  // v6 codex batch1 #10：隐藏项目不能成 cwd（domain 层兜底，管理页按钮禁用之外的硬保护）。
+  if (appStore.isHidden(path)) {
+    projectSpawnError.value = { path, msg: t('showFirst'), persistFailed: false }
+    return
+  }
+  // v6 codex batch1 #3：setCwd 改 setCurrentProject(persist:true) 可等待 + 错误传播。
+  //   先 setCwdLocal 同步切 cwd 保 UI 响应，再 setCurrentProject 持久化；persist 失败提示用户但不中断打开。
+  appStore.setCwdLocal(path)
   currentView.value = 'terminal'
   // 启动时自动加载 sidebar 数据
   sidebarStore.loadAllSidebarData(path)
+  appStore.setCurrentProject(path, { persist: true }).catch(err => {
+    console.error('[App] handleOpenProject persist failed:', err)
+    projectSpawnError.value = { path, msg: t('saveLastOpenedFailed'), persistFailed: true }
+  })
 
   // 当前激活 tab 属于该项目则保持，否则切换到运行中 Tab
   const activeTab = sessionStore.activeTab
@@ -259,7 +304,17 @@ async function handleOpenProject(path: string) {
 }
 
 async function handleResumeSession(projectPath: string, sessionId: string, sessionName?: string) {
-  appStore.setCwd(projectPath)
+  // v6 codex batch1 #10：隐藏项目不能成 cwd。
+  if (appStore.isHidden(projectPath)) {
+    projectSpawnError.value = { path: projectPath, msg: t('showFirst'), persistFailed: false }
+    return
+  }
+  // v6 codex batch1 #3：setCwd 改 setCurrentProject(persist:true) 可等待 + 错误传播。
+  appStore.setCwdLocal(projectPath)
+  appStore.setCurrentProject(projectPath, { persist: true }).catch(err => {
+    console.error('[App] handleResumeSession persist failed:', err)
+    projectSpawnError.value = { path: projectPath, msg: t('saveLastOpenedFailed'), persistFailed: true }
+  })
 
   // 如果该 session 已在运行，直接切换到对应 tab
   const existingTab = sessionStore.getTabBySessionId(sessionId)
@@ -274,9 +329,16 @@ async function handleResumeSession(projectPath: string, sessionId: string, sessi
   sidebarStore.loadAllSidebarData(projectPath)
 
   // 直接调用 TerminalView 方法恢复会话（不再依赖 watch）
+  // v6 codex batch1 #12：await startResumeSession + catch 失败传播（startResumeSession 现在
+  // await startTab + 失败抛错），恢复失败提示用户 + 重试（重 spawn）。
   await nextTick()
   if (terminalViewRef.value?.startResumeSession) {
-    terminalViewRef.value.startResumeSession(projectPath, sessionId, sessionName)
+    try {
+      await terminalViewRef.value.startResumeSession(projectPath, sessionId, sessionName)
+    } catch (e) {
+      console.error('[App] handleResumeSession startResumeSession failed:', e)
+      projectSpawnError.value = { path: projectPath, msg: t('claudeStartFailed') + ': ' + String(e), persistFailed: false }
+    }
   } else {
     // 异步组件尚未加载的 fallback
     appStore.setClaudeOptions({ resume: sessionId })
@@ -357,14 +419,24 @@ function initAfterChecks() {
   }).catch(() => {})
 
   // 监听右键菜单传入的目录
+  // v6 codex batch1 #3/#10：setCwd 改 setCurrentProject(persist:true) 可等待；隐藏项目拒绝成 cwd。
   onOpenDirectory((dir) => {
+    // 隐藏项目不能成 cwd（domain 层兜底，复用管理页 showFirst 语义）
+    if (appStore.isHidden(dir)) {
+      projectSpawnError.value = { path: dir, msg: t('showFirst'), persistFailed: false }
+      return
+    }
     if (appStore.isKnownProject(dir)) {
       handleOpenProject(dir)
     } else {
-      appStore.setCwd(dir)
+      appStore.setCwdLocal(dir)
       appStore.setClaudeOptions({ resume: '' })
       currentView.value = 'terminal'
       sidebarStore.loadAllSidebarData(dir)
+      appStore.setCurrentProject(dir, { persist: true }).catch(err => {
+        console.error('[App] onOpenDirectory persist failed:', err)
+        projectSpawnError.value = { path: dir, msg: t('saveLastOpenedFailed'), persistFailed: true }
+      })
     }
   }).then(fn => { unlistenOpenDir = fn })
 }

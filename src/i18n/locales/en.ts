@@ -219,6 +219,8 @@ export default {
   claudeStarting: 'Claude is starting...',
   claudeStartTimeout: 'Claude failed to start (timeout). Check Claude CLI installation and try again.',
   claudeStartFailed: 'Claude failed to start. Check Claude CLI installation and try again.',
+  // v6 codex batch1 #2：sessionStart succeeded but lastOpened persist failed (Claude already running, no re-spawn)
+  saveLastOpenedFailed: 'Failed to save the recently opened project. Please retry saving.',
 
   // Project select view
   recentSessions: 'Recent Sessions',

@@ -219,6 +219,8 @@ export default {
   claudeStarting: 'Claude 启动中...',
   claudeStartTimeout: 'Claude 启动超时，请检查 Claude CLI 是否正确安装后重试。',
   claudeStartFailed: 'Claude 启动失败，请检查 Claude CLI 是否正确安装后重试。',
+  // v6 codex batch1 #2：sessionStart 成功但 lastOpened 持久化失败的提示（Claude 已跑，不重 spawn）
+  saveLastOpenedFailed: '保存最近打开项目失败，请重试保存。',
 
   // Project select view
   recentSessions: '近期会话',

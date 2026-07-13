@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reduceWaiter, isTimeoutError, STARTUP_TIMEOUT_CODE } from '@/composables/useSessionStartWaiter'
+import { reduceWaiter, isTimeoutError, isPersistFailedError, STARTUP_TIMEOUT_CODE, PERSIST_FAILED_CODE } from '@/composables/useSessionStartWaiter'
 
 describe('reduceWaiter 状态机', () => {
   // waiting + sessionStart -> started
@@ -67,5 +67,44 @@ describe('isTimeoutError', () => {
     const err = new Error('x') as Error & { code: string }
     err.code = 'other'
     expect(isTimeoutError(err)).toBe(false)
+  })
+})
+
+describe('isPersistFailedError', () => {
+  // v6 codex batch1 #2：persist_failed 标记区分 sessionStart 成功后 lastOpened 持久化失败
+  // 带 PERSIST_FAILED_CODE 标记 -> true
+  it('IsPersistFailed_TaggedCode_001', () => {
+    const err = new Error('persist_failed') as Error & { code: string }
+    err.code = PERSIST_FAILED_CODE
+    expect(isPersistFailedError(err)).toBe(true)
+  })
+
+  // startTab/spawn 失败的错误无 code 标记 -> false（应重 spawn）
+  it('IsPersistFailed_UntaggedNotPersist_001', () => {
+    expect(isPersistFailedError(new Error('Claude 启动失败'))).toBe(false)
+    expect(isPersistFailedError(new Error('no pty info'))).toBe(false)
+    expect(isPersistFailedError(new Error('cancelled'))).toBe(false)
+  })
+
+  // timeout 错误（code=STARTUP_TIMEOUT_CODE）-> false（不是 persist 失败，应走 timeout 清理路径）
+  it('IsPersistFailed_TimeoutNotPersist_001', () => {
+    const err = new Error('Claude 启动超时') as Error & { code: string }
+    err.code = STARTUP_TIMEOUT_CODE
+    expect(isPersistFailedError(err)).toBe(false)
+  })
+
+  // 非 Error 值（null/undefined/string/object 无 code）-> false，不抛错
+  it('IsPersistFailed_NonError_001', () => {
+    expect(isPersistFailedError(null)).toBe(false)
+    expect(isPersistFailedError(undefined)).toBe(false)
+    expect(isPersistFailedError('persist_failed')).toBe(false)
+    expect(isPersistFailedError({ message: 'x' })).toBe(false)
+  })
+
+  // code 不等于 PERSIST_FAILED_CODE -> false
+  it('IsPersistFailed_OtherCode_001', () => {
+    const err = new Error('x') as Error & { code: string }
+    err.code = 'other'
+    expect(isPersistFailedError(err)).toBe(false)
   })
 })

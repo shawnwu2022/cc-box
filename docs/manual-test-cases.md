@@ -1651,7 +1651,24 @@
 - 步骤 3：「隐藏」按钮禁用（灰显，规范化比较容忍路径大小写/斜杠差异）
 - 步骤 4：点击无反应，项目 A 仍可见
 
-### MgmtPage_MenuKeyboard_010 - ⋯ 菜单键盘协议完整
+### MgmtPage_HiddenCwdBypassBlocked_010 - 隐藏项目不能成 cwd（domain 层 + 打开入口兜底，v6 codex batch1 #10）
+
+**目标**：验证隐藏项目不能通过「打开目录」「点会话节点」「resume」等非管理页按钮入口成为 cwd（domain 层 setHidden 拒绝隐藏当前 cwd + App.vue 打开入口 isHidden 检查兜底）
+
+**前置条件**：项目 A 已隐藏（hiddenProjects 含 A），Claude CLI 已安装
+
+**操作步骤**：
+1. 通过右键菜单「Open Directory」或拖入隐藏项目 A 的目录
+2. 观察是否进入终端、是否出现提示
+3. 在全局树点隐藏项目 A 的历史会话节点（若树中可见）
+4. 管理页对当前 cwd 项目 B 尝试隐藏（⌘ 菜单「隐藏」），再确认 B 仍为 cwd
+
+**预期结果**：
+- 步骤 1-2：不进入隐藏项目 A 的终端，弹出错误卡提示「先显示项目」（showFirst）；config.json 的 lastOpenedProject 未改向 A
+- 步骤 3：不切换到隐藏项目 A（不 setCwd）；点会话节点对应 handler 检查 isHidden 拒绝
+- 步骤 4：B 的「隐藏」禁用（管理页按钮层）+ 即便绕过调用 setHidden(B,true) 也被 domain 层拒绝（B 仍为 cwd，hiddenProjects 不含 B）
+
+### MgmtPage_MenuKeyboard_011 - ⋯ 菜单键盘协议完整
 
 **目标**：验证 ⋯ 菜单键盘可达性：Tab 到达、Enter 展开、Escape 关闭、外部点击关闭（a11y）
 
@@ -1672,7 +1689,7 @@
 
 ### Startup_AddProjectSpawn_011 - 添加项目 spawn 后立即见终端 + sessionStart 持久化 + 失败/超时重试
 
-**目标**：验证添加新项目后立即进入终端（pending 指示，允许交互），sessionStart 后才持久化 lastOpened；spawn 失败/超时显示错误 + 重试（spec §4.4 事务）
+**目标**：验证添加新项目后立即进入终端（pending 指示，允许交互），sessionStart 后才持久化 lastOpened；spawn 失败/超时显示错误 + 重试（spec §4.4 事务）；persist 失败区分（Claude 已跑不重 spawn，v6 codex batch1 #2）；超时清理不残留 running 假 tab（#1）
 
 **前置条件**：管理页打开，Claude CLI 已安装
 
@@ -1683,14 +1700,18 @@
 4. 等待 Claude sessionStart（hook 事件触发）
 5. 观察 lastOpened 是否持久化（检查 `~/.cc-box/config.json`）
 6. （可选）模拟 spawn 失败：选择一个无权限/不存在的目录，观察错误提示与重试按钮
-7. （可选）模拟超时：启动后 Claude CLI 不响应，观察超时提示与重试
+7. （可选）模拟超时：启动后 Claude CLI 不响应（30s 内无 sessionStart hook），观察超时提示与重试
+8. （可选 #2）模拟 persist 失败：sessionStart 成功后让 `save_last_project` IPC 失败（如 config.json 只读），观察提示文案与重试行为
+9. （可选 #1）超时后重试：步骤 7 超时后，确认原 tab 状态为 stopped（非 running），点重试起新 tab 不重复
 
 **预期结果**：
 - 步骤 1-2：立即切到终端视图，终端显示 starting/pending 指示（允许交互，非阻塞 overlay）
 - 步骤 3：sessionStart 前可输入/响应 Claude 提示
 - 步骤 4-5：sessionStart 后 lastOpened 持久化（重启后直进该项目）
-- 步骤 6：spawn 失败显示错误卡 + 重试按钮（重试 = 重 spawn 同目录，非重跑 initStartup）
-- 步骤 7：超时显示超时提示 + 重试按钮
+- 步骤 6：spawn 失败显示错误卡（标题「Claude 启动失败」）+ 重试按钮（重试 = 重 spawn 同目录，非重跑 initStartup）
+- 步骤 7：超时显示超时提示 + 重试按钮；原 tab status=stopped、ptyId=null（非 running 假 tab）
+- 步骤 8：persist 失败显示错误卡（标题「保存最近打开项目失败」），重试只重 persist（不重 spawn，Claude 仍在原 tab 运行）
+- 步骤 9：重试起新 tab（新 tabId），无重复 Claude 进程；原 stopped tab 保留作上下文
 
 ### Startup_LoadFailedRetry_012 - 启动加载失败门禁 + 重试
 

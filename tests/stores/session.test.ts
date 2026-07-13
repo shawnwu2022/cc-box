@@ -256,6 +256,38 @@ describe('session store', () => {
       store.handlePtyExit('pty-003')
       expect(tab.working).toBe(false)
     })
+
+    // v6 codex batch1 #1：handlePtyExit 后 getRunningTabForProject 不再返回该 tab--
+    // 这是 timeout 路径显式调 handlePtyExit 的动机：避免 PTY kill 后 exit 事件找不到实例导致
+    // tab 仍 status=running，retry 误判「已有运行 tab」或起重复 Claude 进程。
+    it('PtyExit_NotRunningAfterExit_001', () => {
+      const store = useSessionStore()
+      const tabId = store.createTab('/project-x')
+      store.setTabPty(tabId, 'pty-timeout')
+      // 启动后该 tab 为运行中，getRunningTabForProject 命中
+      expect(store.getRunningTabForProject('/project-x')?.tabId).toBe(tabId)
+      // PTY kill 后显式 handlePtyExit（贴 fix #1）-> tab 不再 running
+      store.handlePtyExit('pty-timeout')
+      expect(store.getRunningTabForProject('/project-x')).toBeNull()
+      const tab = store.tabs.get(tabId)!
+      expect(tab.status).toBe('stopped')
+      expect(tab.ptyId).toBeNull()
+    })
+
+    // v6 codex batch1 #1：handlePtyExit 对未知 ptyId 安全 no-op（不抛错、不影响其他 tab）--
+    // timeout 路径 ptyKill 后 exit 事件可能再次到达，幂等 handlePtyExit 不应破坏状态。
+    it('PtyExit_Idempotent_UnknownPtyId_001', () => {
+      const store = useSessionStore()
+      const tabId = store.createTab('/project-y')
+      store.setTabPty(tabId, 'pty-known')
+      store.handlePtyExit('pty-known')
+      // 再次调（exit 事件重复到达）或调未知 id：no-op，不抛错
+      expect(() => store.handlePtyExit('pty-known')).not.toThrow()
+      expect(() => store.handlePtyExit('pty-unknown')).not.toThrow()
+      const tab = store.tabs.get(tabId)!
+      expect(tab.status).toBe('stopped') // 状态稳定，未被重复 exit 破坏
+      expect(tab.ptyId).toBeNull()
+    })
   })
 
   // ==================== claimedSessionIds ====================

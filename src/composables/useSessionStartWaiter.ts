@@ -53,3 +53,25 @@ export function isTimeoutError(e: unknown): boolean {
     (e as { code: unknown }).code === STARTUP_TIMEOUT_CODE
   )
 }
+
+/**
+ * persist_failed 错误标记码：startProjectSession sessionStart 成功后 setCurrentProject(persist:true)
+ * 失败时挂到 Error.code，供 App.vue catch 精确区分 persist 失败 vs spawn 失败（v6 codex batch1 #2）。
+ *
+ * 区分动机：sessionStart 已成功（Claude 已跑），persist 失败不应误判启动失败重 spawn（会起重复 Claude 进程）。
+ * persist 失败 -> 保留 tab + 重试只重 persist；其他 -> 重 spawn。
+ */
+export const PERSIST_FAILED_CODE = 'persist_failed' as const
+
+/**
+ * 判定错误是否为 persist_failed（sessionStart 成功后 lastOpened 持久化失败）。
+ * 与 isTimeoutError 同形态：检查 Error.code === PERSIST_FAILED_CODE（i18n 无关，不靠文案匹配）。
+ */
+export function isPersistFailedError(e: unknown): boolean {
+  return (
+    e !== null &&
+    typeof e === 'object' &&
+    'code' in e &&
+    (e as { code: unknown }).code === PERSIST_FAILED_CODE
+  )
+}

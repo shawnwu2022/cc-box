@@ -85,6 +85,10 @@ export const useAppStore = defineStore('app', () => {
   const loadStatus = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle')
   // setHidden 操作锁：串行化 读->算 next->persist->改本地，防并发丢更新
   let hiddenOpLock: Promise<void> = Promise.resolve()
+  // lastOpened 操作锁：串行化 saveLastProject + setCwdLocal，防快速 A->B 各自基于旧内存
+  // 持久化、后 persist 覆盖前导致 lastOpened 乱序（终态为 B 但磁盘先写 A 后写 B 顺序虽对，
+  // 然 setCwdLocal 若与 persist 交错可能短暂错乱；串行化保证读-写原子）。
+  let lastOpenedOpLock: Promise<void> = Promise.resolve()
 
   const currentProject = computed(() => {
     if (!cwd.value) return null
@@ -241,12 +245,37 @@ export const useAppStore = defineStore('app', () => {
   }
 
   /**
-   * 设置/取消隐藏项目（opLock 串行 + persist-first 回滚 + 规范化比较）。
+   * lastOpened 操作锁（复用 withLock 范式）：串行化 saveLastProject + setCwdLocal，
+   * 防快速 A->B 切换时并发 persist 乱序覆盖 lastOpened。
+   */
+  function withLastOpenedLock<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = lastOpenedOpLock
+    let release!: () => void
+    lastOpenedOpLock = new Promise<void>(r => { release = r })
+    return (async () => {
+      await prev
+      try {
+        return await fn()
+      } finally {
+        release()
+      }
+    })()
+  }
+
+  /**
+   * 设置/取消隐藏项目（opLock 串行 + persist-first 回滚 + 规范化比较 + cwd 保护）。
+   * - cwd 保护（v6 codex batch1 #10）：拒绝隐藏当前 cwd（隐藏项目不能成 cwd，store/domain 层保证不变量）。
+   *   管理页按钮层禁用是 UI 兜底，此为 domain 层硬保护，防 App.vue 打开入口绕过。
    * - 算 next：规范化比较移除旧条目，hidden=true 时加回（用原始 path 保真）。
    * - 幂等：状态未变则不持久化。
    * - persist-first：成功后才改本地；失败抛错，hiddenProjects 不变。
    */
   async function setHidden(path: string, hidden: boolean): Promise<void> {
+    // cwd 保护：隐藏当前 cwd 破坏「隐藏项目不能成 cwd」不变量，直接拒绝（不抛错以兼容 UI 幂等调用，
+    // 管理页按钮已 disabled，此处为 domain 层兜底防绕过）。隐藏=false（取消隐藏）不受限。
+    if (hidden && cwd.value && normalizePath(path) === normalizePath(cwd.value)) {
+      return
+    }
     return withHiddenLock(async () => {
       const n = normalizePath(path)
       const next = new Set<string>()
@@ -275,15 +304,21 @@ export const useAppStore = defineStore('app', () => {
   }
 
   /**
-   * setCurrentProject（persist-first）。
+   * setCurrentProject（persist-first + lastOpenedOpLock 串行）。
    * - persist=true：先 await saveLastProject 成功，再 setCwdLocal；失败抛错且 cwd 不变。
    *   注：sessionStart 事务中 spawn 前已 setCwdLocal（cwd 已切），此处 persist 失败时 cwd 保持
    *   已切状态（终端已跑），仅 lastOpened 未持久化--错误传播让 UI 提示，终端不中断（spec v6 §4.4）。
    * - persist=false / undefined：只 setCwdLocal（恢复启动用，不重复持久化）。
+   * - lastOpenedOpLock（v6 codex batch1 #3）：串行化 persist 路径，防快速 A->B 切换并发
+   *   saveLastProject 乱序覆盖 lastOpened（A 后切到 B，但 B 的 persist 先完成、A 后完成则磁盘留 A）。
+   *   persist=false 不涉及磁盘写，无需串行（直接 setCwdLocal，避免无谓排队）。
    */
   async function setCurrentProject(path: string, opts: { persist?: boolean } = {}): Promise<void> {
     if (opts.persist === true) {
-      await saveLastProject(path) // 失败抛错，setCwdLocal 不执行
+      return withLastOpenedLock(async () => {
+        await saveLastProject(path) // 失败抛错，setCwdLocal 不执行
+        setCwdLocal(path)
+      })
     }
     setCwdLocal(path)
   }
