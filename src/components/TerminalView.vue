@@ -78,6 +78,7 @@ import { sendTerminalCommand } from '@/composables/useTerminalCommand'
 import { useWindowAttention } from '@/composables/useWindowAttention'
 import { useStatusMonitor } from '@/composables/useStatusMonitor'
 import { resolveSwitchAction } from '@/composables/useProjectTreeNavigation'
+import { normalizePath } from '@/utils/path'
 import { reduceWaiter, isTimeoutError, STARTUP_TIMEOUT_CODE, type WaiterStatus, type WaiterEvent } from '@/composables/useSessionStartWaiter'
 import { useHookStore, type HookEventHandler } from '@/stores/hook'
 import type { HookEventPayload } from '@/types/hook'
@@ -356,8 +357,7 @@ function handleOpenFolder() {
 function handleSwitchSession(tabId: string) {
   const tab = sessionStore.tabs.get(tabId)
   if (tab) {
-    const normalize = (p: string) => p.replace(/\\/g, '/').toLowerCase()
-    if (normalize(tab.projectPath) !== normalize(appStore.cwd)) {
+    if (normalizePath(tab.projectPath) !== normalizePath(appStore.cwd)) {
       appStore.setCwd(tab.projectPath)
     }
   }

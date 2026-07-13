@@ -173,6 +173,7 @@ import { useAppStore } from '@/stores/app'
 import { useSessionStore } from '@/stores/session'
 import { useSidebarStore } from '@/stores/sidebar'
 import { ctrl } from '@/utils/platform'
+import { normalizePath } from '@/utils/path'
 
 const { t } = useI18n()
 
@@ -190,11 +191,6 @@ const searchQuery = ref('')
 const projectListRef = ref<HTMLElement | null>(null)
 const menuOpen = ref<string | null>(null)
 const archivedLoaded = ref(false)
-
-/** 路径归一化：跨平台/跨重启匹配 cwd 比较（与 store normalizePath 语义一致） */
-function normalizePath(p: string): string {
-  return p.replace(/\\/g, '/').toLowerCase()
-}
 
 /** 判断给定项目是否为当前 cwd 项目（规范化比较，容忍 Windows 路径大小写/斜杠差异） */
 function isCwdProject(path: string): boolean {

@@ -7,6 +7,7 @@ import {
   searchSessionMessages,
   updateProjectsState,
 } from '@/api/tauri'
+import { normalizePath } from '@/utils/path'
 import type { SessionSearchResult } from '@/types'
 
 // ==================== Tab-Centric 数据模型 ====================
@@ -58,9 +59,6 @@ export interface ProjectGroup {
   isPinned?: boolean          // 是否置顶（buildProjectGroups 填充，UI 展示用；排序读 pinnedProjects）
   matchedHistoryIds?: string[]  // 搜索命中的会话 ID（供 UI 临时展开 + 高亮）
 }
-
-/** 路径归一化：统一为小写正斜杠，用于跨平台/跨重启匹配置顶与存档 */
-const normalizePath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
 
 // ==================== Store ====================
 
@@ -601,19 +599,18 @@ export const useSessionStore = defineStore('session', () => {
     cachedProjects: { path: string; name: string }[],
     hidden?: Set<string>,
   ): ProjectGroup[] {
-    const normalize = (p: string) => p.replace(/\\/g, '/').toLowerCase()
-    const hiddenSet = hidden ? new Set([...hidden].map(h => normalize(h))) : null
+    const hiddenSet = hidden ? new Set([...hidden].map(h => normalizePath(h))) : null
     // 过滤 hidden 项目（含规范化比较）
     const visibleProjects = hiddenSet
-      ? cachedProjects.filter(p => !hiddenSet.has(normalize(p.path)))
+      ? cachedProjects.filter(p => !hiddenSet.has(normalizePath(p.path)))
       : cachedProjects
-    const known = new Set(visibleProjects.map(p => normalize(p.path)))
+    const known = new Set(visibleProjects.map(p => normalizePath(p.path)))
 
     // 按 normalized path 聚合 tabs，避免 Windows 路径大小写/斜杠不一致时
     // 精确匹配（getProjectTabs）漏 tab：known 判非孤儿却贴不到 tab。
     const tabsByNorm = new Map<string, { tabs: TerminalTab[]; firstRaw: string }>()
     for (const tab of tabs.values()) {
-      const n = normalize(tab.projectPath)
+      const n = normalizePath(tab.projectPath)
       // hidden 项目的 tab 不入树（不作孤儿出现）
       if (hiddenSet && hiddenSet.has(n)) continue
       const entry = tabsByNorm.get(n)
@@ -627,7 +624,7 @@ export const useSessionStore = defineStore('session', () => {
 
     const groups: ProjectGroup[] = []
     for (const p of visibleProjects) {
-      const projTabs = tabsByNorm.get(normalize(p.path))?.tabs ?? []
+      const projTabs = tabsByNorm.get(normalizePath(p.path))?.tabs ?? []
       groups.push(makeGroup(p.path, p.name, projTabs, false))
     }
     // 孤儿：tabs 中有但 cachedProjects 没有（Map 已按 normalized key 去重）

@@ -105,6 +105,7 @@
 import { ref, watch, onMounted, onUnmounted, defineAsyncComponent, nextTick } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { applyThemeToDom } from '@/utils/theme'
+import { normalizePath } from '@/utils/path'
 import { useHookStore } from '@/stores/hook'
 import { useSessionStore } from '@/stores/session'
 import { useSidebarStore } from '@/stores/sidebar'
@@ -207,7 +208,6 @@ async function handleSelectProject() {
   const result = await selectDirectory()
   if (!result) return
   const path = result.path
-  const normalizePath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
   const existing = appStore.cachedProjects.find(p => normalizePath(p.path) === normalizePath(path))
   if (existing) {
     // 已存在项目走统一切换

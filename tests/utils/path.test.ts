@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { relativizePath } from '@/utils/path'
 
 describe('relativizePath', () => {
@@ -102,5 +102,96 @@ describe('relativizePath', () => {
     expect(
       relativizePath('/a/b/c/d/e.ts', '/a/b'),
     ).toBe('c/d/e.ts')
+  })
+})
+
+// 平台感知需 mock utils/platform；先 doMock 再动态 import 被测模块
+describe('normalizePath 平台感知', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+  afterEach(() => {
+    vi.doUnmock('@/utils/platform')
+  })
+
+  // Windows：反斜杠规范 + 去尾斜杠 + 小写
+  it('NormalizePath_WindowsLower_001', async () => {
+    vi.doMock('@/utils/platform', () => ({
+      detectPlatform: () => 'windows', platform: 'windows',
+      isMac: false, isWindows: true,
+      ctrl: 'Ctrl', alt: 'Alt', cmd: 'Ctrl', getClaudePlatformKey: () => 'win32-x64',
+    }))
+    const { normalizePath } = await import('@/utils/path')
+    expect(normalizePath('E:\\Source\\Foo\\')).toBe('e:/source/foo')
+  })
+
+  // macOS：同样小写 + 斜杠规范
+  it('NormalizePath_MacLower_001', async () => {
+    vi.doMock('@/utils/platform', () => ({
+      detectPlatform: () => 'macos', platform: 'macos',
+      isMac: true, isWindows: false,
+      ctrl: 'Control', alt: 'Option', cmd: 'Cmd', getClaudePlatformKey: () => 'darwin-arm64',
+    }))
+    const { normalizePath } = await import('@/utils/path')
+    expect(normalizePath('/Users/Tester/Repo')).toBe('/users/tester/repo')
+  })
+
+  // Linux：大小写敏感 -> 不 lower，仅斜杠规范 + 去尾斜杠
+  it('NormalizePath_LinuxNoLower_001', async () => {
+    vi.doMock('@/utils/platform', () => ({
+      detectPlatform: () => 'linux', platform: 'linux',
+      isMac: false, isWindows: false,
+      ctrl: 'Ctrl', alt: 'Alt', cmd: 'Ctrl', getClaudePlatformKey: () => 'linux-x64',
+    }))
+    const { normalizePath } = await import('@/utils/path')
+    expect(normalizePath('/work/Foo/')).toBe('/work/Foo')
+  })
+
+  // Linux 大小写敏感：/work/Foo 与 /work/foo 不等价（身份区分）
+  it('NormalizePath_LinuxCaseSensitive_001', async () => {
+    vi.doMock('@/utils/platform', () => ({
+      detectPlatform: () => 'linux', platform: 'linux',
+      isMac: false, isWindows: false,
+      ctrl: 'Ctrl', alt: 'Alt', cmd: 'Ctrl', getClaudePlatformKey: () => 'linux-x64',
+    }))
+    const { normalizePath } = await import('@/utils/path')
+    expect(normalizePath('/work/Foo')).not.toBe(normalizePath('/work/foo'))
+  })
+
+  // Windows 大小写不敏感：E:\Repo 与 e:/repo 等价（身份合并）
+  it('NormalizePath_WindowsCaseInsensitive_001', async () => {
+    vi.doMock('@/utils/platform', () => ({
+      detectPlatform: () => 'windows', platform: 'windows',
+      isMac: false, isWindows: true,
+      ctrl: 'Ctrl', alt: 'Alt', cmd: 'Ctrl', getClaudePlatformKey: () => 'win32-x64',
+    }))
+    const { normalizePath } = await import('@/utils/path')
+    expect(normalizePath('E:\\Repo')).toBe(normalizePath('e:/repo'))
+  })
+
+  // POSIX 根路径：/ 去尾斜杠不成空串，保留 '/'
+  it('NormalizePath_PosixRoot_001', async () => {
+    vi.doMock('@/utils/platform', () => ({
+      detectPlatform: () => 'linux', platform: 'linux',
+      isMac: false, isWindows: false,
+      ctrl: 'Ctrl', alt: 'Alt', cmd: 'Ctrl', getClaudePlatformKey: () => 'linux-x64',
+    }))
+    const { normalizePath } = await import('@/utils/path')
+    expect(normalizePath('/')).toBe('/')
+    expect(normalizePath('///')).toBe('/')
+  })
+
+  // Windows drive 根：C:\ / C: / C:/ 均归一为 c:（盘符小写 + 去尾斜杠）
+  it('NormalizePath_WindowsDriveRoot_001', async () => {
+    vi.doMock('@/utils/platform', () => ({
+      detectPlatform: () => 'windows', platform: 'windows',
+      isMac: false, isWindows: true,
+      ctrl: 'Ctrl', alt: 'Alt', cmd: 'Ctrl', getClaudePlatformKey: () => 'win32-x64',
+    }))
+    const { normalizePath } = await import('@/utils/path')
+    expect(normalizePath('C:\\')).toBe('c:')
+    expect(normalizePath('C:')).toBe('c:')
+    expect(normalizePath('C:/')).toBe('c:')
+    expect(normalizePath('D:\\Proj\\')).toBe('d:/proj')
   })
 })

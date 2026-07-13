@@ -31,11 +31,12 @@ export interface AppConfig {
   language?: string
 }
 
-// 项目置顶 + 会话存档持久化状态（~/.cc-box/projects.json，与 config.json 分开存储）
-// 后端 merge 为顶层替换：写入时须发送完整 pinnedProjects / archivedSessions
+// 项目置顶 + 会话存档 + 项目别名持久化状态（~/.cc-box/projects.json，与 config.json 分开存储）
+// 后端 merge 为顶层替换：写入时须发送完整 pinnedProjects / archivedSessions / displayNames
 export interface ProjectsState {
   pinnedProjects: string[]
   archivedSessions: Record<string, string[]>
+  displayNames?: Record<string, string>
 }
 
 export interface DefaultClaudeOptions {

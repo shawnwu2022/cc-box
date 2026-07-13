@@ -1,3 +1,5 @@
+import { isMac, isWindows } from '@/utils/platform'
+
 /**
  * 把绝对路径转换为相对于项目根目录的路径。
  *
@@ -31,4 +33,24 @@ export function relativizePath(filePath: string, projectPath: string): string {
   }
 
   return filePath
+}
+
+/**
+ * 路径归一化（平台感知身份）：
+ * - 斜杠规范（\ -> /）+ 去尾斜杠
+ * - Windows / macOS（文件系统不区分大小写）：toLowerCase
+ * - Linux（区分大小写）：不 lower，保留大小写身份
+ * - 根路径边界：POSIX '/' 去尾斜杠后恢复 '/'；Windows drive 根 'C:\'/'C:'/'C:/' -> 'c:'
+ *
+ * 用于跨平台/跨重启匹配 pinned / archived / hidden / displayNames，
+ * 消除各处内联 normalize 的不一致风险。平台身份读 utils/platform（模块级，
+ * 测试用 vi.doMock('@/utils/platform') + 动态 import 注入）。
+ */
+export function normalizePath(p: string): string {
+  let s = p.replace(/\\/g, '/')
+  if (isWindows || isMac) s = s.toLowerCase()
+  s = s.replace(/\/+$/, '')
+  // POSIX 根 '/' 被去成空串 -> 恢复 '/'（保留根身份，避免空串 key）
+  if (s === '' && p !== '') s = '/'
+  return s
 }

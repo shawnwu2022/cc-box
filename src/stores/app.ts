@@ -12,6 +12,7 @@ import {
   runChecks,
 } from '@/api/tauri'
 import { normalizeTerminalThemeId } from '@/config/terminalThemes'
+import { normalizePath } from '@/utils/path'
 import { applyThemeToDom } from '@/utils/theme'
 import i18n from '@/i18n'
 
@@ -190,9 +191,8 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function ensureProjectInList(projectPath: string) {
-    const normalize = (p: string) => p.replace(/\\/g, '/').toLowerCase()
-    const normalized = normalize(projectPath)
-    if (cachedProjects.value.some(p => normalize(p.path) === normalized)) return
+    const normalized = normalizePath(projectPath)
+    if (cachedProjects.value.some(p => normalizePath(p.path) === normalized)) return
 
     const parts = projectPath.replace(/\\/g, '/').split('/')
     cachedProjects.value.unshift({
@@ -204,21 +204,12 @@ export const useAppStore = defineStore('app', () => {
 
   /** 检查路径是否为已知项目（归一化后匹配 cachedProjects） */
   function isKnownProject(projectPath: string): boolean {
-    const normalize = (p: string) => p.replace(/\\/g, '/').toLowerCase()
-    const normalized = normalize(projectPath)
-    return cachedProjects.value.some(p => normalize(p.path) === normalized)
+    const normalized = normalizePath(projectPath)
+    return cachedProjects.value.some(p => normalizePath(p.path) === normalized)
   }
 
   function refreshRecentSessions(sessions: SessionInfo[]) {
     cachedRecentSessions.value = sessions
-  }
-
-  /**
-   * 路径归一化：统一为小写正斜杠，用于跨平台/跨重启匹配隐藏集合。
-   * 与 session.ts normalizePath 语义一致。
-   */
-  function normalizePath(p: string): string {
-    return p.replace(/\\/g, '/').toLowerCase()
   }
 
   /** 该项目是否已隐藏（normalized 比较，兼容 Windows 路径大小写/斜杠差异） */
