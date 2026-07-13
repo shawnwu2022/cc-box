@@ -235,6 +235,12 @@ export default {
   noMatchingProjects: '没有匹配的项目',
   noProjectsYet: '暂无项目',
   addProject: '添加项目',
+  // 管理页（v5-T8）
+  backToTerminal: '返回终端',
+  projectManagement: '项目管理',
+  enterTerminal: '进入终端',
+  showFirst: '先显示项目',
+  loadArchived: '加载已存档会话',
 
   // Terminal
   startNewSession: '启动新的 Claude 会话',

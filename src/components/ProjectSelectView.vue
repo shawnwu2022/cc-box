@@ -1,81 +1,21 @@
 <template>
   <div class="project-select-view">
-    <!-- 左侧：近期会话列表 -->
-    <aside class="sessions-panel">
-      <header class="panel-header">
-        <h2>{{ t('recentSessions') }}</h2>
-      </header>
-
-      <div class="session-list">
-        <template v-if="!appStore.cacheLoaded">
-          <div v-for="i in 4" :key="i" class="skeleton-item">
-            <div class="skeleton-icon"></div>
-            <div class="skeleton-text-group">
-              <div class="skeleton-text skeleton-name"></div>
-              <div class="skeleton-text skeleton-sub"></div>
-            </div>
-          </div>
-        </template>
-        <template v-else>
-          <button
-            v-for="session in recentSessions"
-            :key="session.sessionId"
-            class="session-item"
-            @click="handleResumeSession(session)"
-          >
-            <svg class="session-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="4 17 10 11 4 5"/>
-              <line x1="12" y1="19" x2="20" y2="19"/>
-            </svg>
-            <div class="session-info">
-              <span class="session-name">{{ session.name }}</span>
-              <span class="session-project">{{ getProjectName(session.projectPath) }}</span>
-            </div>
-            <span v-if="isSessionRunning(session.sessionId)" class="status-dot" :class="sessionDotClass(session)"></span>
-            <span v-else class="session-time">{{ formatTimeAgo(session.lastActiveAt) }}</span>
-          </button>
-
-          <div v-if="recentSessions.length === 0" class="empty-sessions">
-            <span>{{ t('noRecentSessions') }}</span>
-          </div>
-        </template>
-      </div>
-
-      <!-- 底部：启动参数设置 -->
-      <footer class="startup-options">
-        <div class="options-header">
-          <span class="options-title">{{ t('startupOptions') }}</span>
-        </div>
-
-        <label class="option-item">
-          <input type="checkbox" v-model="localOptions.skipPermissions" />
-          <span class="option-label">{{ t('allow') }}</span>
-          <code class="option-flag warning">skip-permissions</code>
-        </label>
-
-        <div class="option-item text-option">
-          <span class="option-label">{{ t('customArgs') }}</span>
-          <input type="text" v-model="localOptions.customArgs" placeholder="--model sonnet" />
-        </div>
-
-        <button
-          class="save-default-btn"
-          :class="{ saving: isSaving, success: saveSuccess }"
-          :disabled="isSaving"
-          @click="handleSaveDefault"
-        >
-          <span v-if="isSaving">{{ t('saving') }}</span>
-          <span v-else-if="saveSuccess">{{ t('saved') }}</span>
-          <span v-else>{{ t('saveAsDefault') }}</span>
-        </button>
-      </footer>
-    </aside>
-
-    <!-- 右侧：项目列表 -->
     <div class="projects-panel">
       <header class="panel-header">
         <div class="header-row">
-          <h2>{{ t('projects') }}</h2>
+          <!-- 返回终端：无 cwd 时禁用（首次启动未进过项目） -->
+          <button
+            class="back-btn"
+            :disabled="!appStore.cwd"
+            @click="handleBack"
+            :title="appStore.cwd ? t('backToTerminal') : ''"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            <span>{{ t('backToTerminal') }}</span>
+          </button>
+          <h2>{{ t('projectManagement') }}</h2>
           <button class="settings-btn" @click="handleSettingsClick" :title="t('titleSettings', { key: ctrl + '+,' })">
             <img src="@/assets/icons/settings.svg" alt="Settings" />
             <span v-if="sidebarStore.updateAvailable" class="update-badge"></span>
@@ -105,11 +45,12 @@
           </div>
         </template>
         <template v-else>
-          <button
+          <!-- 项目行 = 静态 div（非 button，不进 Tab 顺序）；点项目本身 = nothing（spec §4.5） -->
+          <div
             v-for="project in filteredProjects"
             :key="project.path"
-            class="project-item"
-            @click="$emit('selectProject', project.path)"
+            class="project-row"
+            :class="{ hidden: appStore.isHidden(project.path) }"
           >
             <svg class="folder-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -118,11 +59,46 @@
               <span class="project-name">{{ project.name }}</span>
               <span class="project-path">{{ project.path }}</span>
             </div>
-            <span v-if="getProjectRunningCount(project.path) > 0" class="running-number">
-              {{ getProjectRunningCount(project.path) }}
-            </span>
-          </button>
+            <!-- 置顶标记 -->
+            <span v-if="sessionStore.isPinned(project.path)" class="pin-mark" :title="t('pinned')">📌</span>
+            <!-- 运行中 tab 计数徽标 -->
+            <span v-if="getRunningCount(project.path) > 0" class="running-number">●{{ getRunningCount(project.path) }}</span>
 
+            <!-- 行尾「进入终端」按钮：隐藏项目禁用 + title 提示「先显示项目」（P1.1） -->
+            <button
+              class="enter-btn"
+              :disabled="appStore.isHidden(project.path)"
+              :title="appStore.isHidden(project.path) ? t('showFirst') : t('enterTerminal')"
+              @click="handleEnter(project.path)"
+            >{{ t('enterTerminal') }}</button>
+
+            <!-- ⋯ 菜单按钮（Tab 可达 + Enter 展开 + aria 协议） -->
+            <button
+              class="menu-btn"
+              :aria-haspopup="true"
+              :aria-expanded="menuOpen === project.path"
+              :aria-label="t('more')"
+              @click.stop="toggleMenu(project.path)"
+              @keydown.enter.prevent="toggleMenu(project.path)"
+              @keydown.esc.prevent="closeMenu"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+              </svg>
+            </button>
+
+            <!-- ⋯ 菜单：置顶/取消置顶 + 隐藏/显示（cwd 项目禁隐藏） -->
+            <div v-if="menuOpen === project.path" class="menu" @click.stop>
+              <button @click="onMenuPin(project.path)">
+                {{ sessionStore.isPinned(project.path) ? t('unpin') : t('pin') }}
+              </button>
+              <button :disabled="isCwdProject(project.path)" @click="onMenuHide(project.path)">
+                {{ appStore.isHidden(project.path) ? t('show') : t('hide') }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 分页：加载更多 -->
           <div v-if="!searchQuery && appStore.hasMoreProjects && !appStore.isLoadingProjects" class="load-more-section">
             <button class="load-more-btn" @click="handleLoadMore">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -145,7 +121,7 @@
       </div>
 
       <footer class="panel-footer">
-        <button class="add-btn" @click="$emit('addProject')">
+        <button class="add-btn" @click="emit('addProject')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
@@ -153,18 +129,38 @@
           <span>{{ t('addProject') }}</span>
         </button>
       </footer>
+
+      <!-- 已存档会话全局视图（v-if 块，懒加载；archivedProjects 从 archivedSessions.keys() 直接生成，
+           不依赖 cachedProjects 分页，避免分页外已存档项目漏显示） -->
+      <div v-if="hasArchived" class="archived-section">
+        <h3>{{ t('archivedSessions') }}</h3>
+        <button v-if="!archivedLoaded" class="load-archived-btn" @click="loadArchived">{{ t('loadArchived') }}</button>
+        <template v-else>
+          <div v-for="proj in archivedProjects" :key="proj.path" class="archived-project">
+            <div class="archived-project-name">{{ proj.name }}</div>
+            <button
+              v-for="s in sessionStore.getArchivedSessionInfos(proj.path)"
+              :key="s.sessionId"
+              class="archived-item"
+              @click="handleRestore(proj.path, s.sessionId)"
+            >
+              <span class="archived-name">{{ s.name }}</span>
+              <span v-if="s.lastActiveAt > 0" class="archived-time">{{ formatTime(s.lastActiveAt) }}</span>
+            </button>
+          </div>
+        </template>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useSessionStore } from '@/stores/session'
 import { useSidebarStore } from '@/stores/sidebar'
 import { ctrl } from '@/utils/platform'
-import type { SessionInfo } from '@/api/tauri'
 
 const { t } = useI18n()
 
@@ -172,7 +168,7 @@ const emit = defineEmits<{
   selectProject: [path: string]
   addProject: []
   resumeSession: [projectPath: string, sessionId: string, sessionName?: string]
-  openSettings: []
+  backToTerminal: []
 }>()
 
 const appStore = useAppStore()
@@ -180,107 +176,91 @@ const sessionStore = useSessionStore()
 const sidebarStore = useSidebarStore()
 const searchQuery = ref('')
 const projectListRef = ref<HTMLElement | null>(null)
+const menuOpen = ref<string | null>(null)
+const archivedLoaded = ref(false)
 
-const localOptions = ref({
-  skipPermissions: appStore.claudeOptions.skipPermissions,
-  customArgs: appStore.claudeOptions.customArgs
-})
-
-const isSaving = ref(false)
-const saveSuccess = ref(false)
-
-const projects = computed(() => appStore.cachedProjects)
-
-/** 合并缓存的历史会话和当前运行中的 tabs */
-const recentSessions = computed(() => {
-  const result: SessionInfo[] = []
-  const addedIds = new Set<string>()
-
-  // 先添加运行中的 tabs
-  for (const tab of sessionStore.tabs.values()) {
-    if (tab.status === 'running' && tab.sessionId) {
-      addedIds.add(tab.sessionId)
-      result.push({
-        sessionId: tab.sessionId,
-        name: tab.name,
-        projectPath: tab.projectPath,
-        lastActiveAt: tab.lastActiveAt,
-        working: tab.working,
-        pending: tab.pending,
-      })
-    }
-  }
-
-  // 再添加缓存的历史会话（排除已在运行中的）
-  for (const session of appStore.cachedRecentSessions) {
-    if (!addedIds.has(session.sessionId)) {
-      result.push(session)
-    }
-  }
-
-  // 按时间排序
-  return result.sort((a, b) => b.lastActiveAt - a.lastActiveAt)
-})
-
-/** 运行中的 sessionId 集合（用于 recent sessions 标记） */
-const runningSessionIds = computed<Set<string>>(() => {
-  const ids = new Set<string>()
-  for (const tab of sessionStore.tabs.values()) {
-    if (tab.status === 'running' && tab.sessionId) {
-      ids.add(tab.sessionId)
-    }
-  }
-  return ids
-})
-
-/** 每个 project 的运行会话数 */
-const projectRunningCounts = computed<Map<string, number>>(() => {
-  const counts = new Map<string, number>()
-  for (const tab of sessionStore.tabs.values()) {
-    if (tab.status === 'running') {
-      const current = counts.get(tab.projectPath) ?? 0
-      counts.set(tab.projectPath, current + 1)
-    }
-  }
-  return counts
-})
-
-/** 检查会话是否运行中 */
-function isSessionRunning(sessionId: string): boolean {
-  return runningSessionIds.value.has(sessionId)
+/** 路径归一化：跨平台/跨重启匹配 cwd 比较（与 store normalizePath 语义一致） */
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, '/').toLowerCase()
 }
 
-/** 运行中会话的状态圆点 class */
-function sessionDotClass(session: SessionInfo): string {
-  if (session.working) return 'working'
-  if (session.pending) return 'pending'
-  return 'running'
+/** 判断给定项目是否为当前 cwd 项目（规范化比较，容忍 Windows 路径大小写/斜杠差异） */
+function isCwdProject(path: string): boolean {
+  if (!appStore.cwd) return false
+  return normalizePath(appStore.cwd) === normalizePath(path)
 }
 
-/** 获取项目的运行会话数 */
-function getProjectRunningCount(projectPath: string): number {
-  return projectRunningCounts.value.get(projectPath) ?? 0
-}
-
+/** 过滤 + 排序：置顶优先 -> 最近活跃（与全局树排序语义一致） */
 const filteredProjects = computed(() => {
-  const query = searchQuery.value.toLowerCase()
-  const openedSet = appStore.openedProjectPaths
-
-  let list = projects.value
-  if (query) {
+  const q = searchQuery.value.toLowerCase()
+  let list = appStore.cachedProjects
+  if (q) {
     list = list.filter(p =>
-      p.name.toLowerCase().includes(query) ||
-      p.path.toLowerCase().includes(query)
+      p.name.toLowerCase().includes(q) ||
+      p.path.toLowerCase().includes(q)
     )
   }
-
   return [...list].sort((a, b) => {
-    const aOpened = openedSet.has(a.path) ? 1 : 0
-    const bOpened = openedSet.has(b.path) ? 1 : 0
-    if (aOpened !== bOpened) return bOpened - aOpened
+    const aPinned = sessionStore.isPinned(a.path) ? 1 : 0
+    const bPinned = sessionStore.isPinned(b.path) ? 1 : 0
+    if (aPinned !== bPinned) return bPinned - aPinned
     return (b.lastDuration ?? 0) - (a.lastDuration ?? 0)
   })
 })
+
+/** 该项目运行中 tab 计数 */
+function getRunningCount(projectPath: string): number {
+  return sessionStore.getProjectTabs(projectPath).filter(tab => tab.status === 'running').length
+}
+
+/** 进入终端：隐藏项目禁用（P1.1）；非隐藏复用 handleOpenProject（emit selectProject） */
+function handleEnter(path: string) {
+  if (appStore.isHidden(path)) return
+  emit('selectProject', path)
+}
+
+/** 返回终端：无 cwd 时禁用（按钮已 disabled，双保险） */
+function handleBack() {
+  if (!appStore.cwd) return
+  emit('backToTerminal')
+}
+
+function toggleMenu(path: string) {
+  menuOpen.value = menuOpen.value === path ? null : path
+}
+function closeMenu() {
+  menuOpen.value = null
+}
+
+/** 点击外部关闭菜单（⋯ 按钮 / 菜单内部已 @click.stop，不会触发此处） */
+function closeOnOutside() {
+  menuOpen.value = null
+}
+onMounted(() => {
+  document.addEventListener('click', closeOnOutside)
+  document.addEventListener('keydown', onGlobalKeydown)
+})
+onUnmounted(() => {
+  document.removeEventListener('click', closeOnOutside)
+  document.removeEventListener('keydown', onGlobalKeydown)
+})
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') closeMenu()
+}
+
+function onMenuPin(path: string) {
+  if (sessionStore.isPinned(path)) sessionStore.unpinProject(path).catch(() => {})
+  else sessionStore.pinProject(path).catch(() => {})
+  menuOpen.value = null
+}
+
+function onMenuHide(path: string) {
+  // cwd 项目禁隐藏（规范化比较；与模板 :disabled 一致）
+  if (isCwdProject(path)) return
+  const willHide = !appStore.isHidden(path)
+  appStore.setHidden(path, willHide).catch(() => {})
+  menuOpen.value = null
+}
 
 function handleSettingsClick() {
   if (sidebarStore.updateAvailable) {
@@ -306,39 +286,44 @@ function handleLoadMore() {
   }
 }
 
-watch(localOptions, (val) => {
-  appStore.setClaudeOptions(val)
-}, { deep: true })
+// ---- 已存档会话全局视图 ----
 
-function getProjectName(projectPath: string): string {
-  const parts = projectPath.replace(/\\/g, '/').split('/')
-  return parts[parts.length - 1] || projectPath
+/** archivedSessions 非空时显示入口 */
+const hasArchived = computed(() => sessionStore.archivedSessions.size > 0)
+
+/**
+ * 已存档项目列表：直接从 archivedSessions.keys() 生成（不依赖 cachedProjects 分页，
+ * 避免分页外的已存档项目漏显示）。basename 提取项目名。
+ */
+const archivedProjects = computed(() => {
+  return [...sessionStore.archivedSessions.keys()].map(k => {
+    const parts = k.replace(/\\/g, '/').split('/')
+    return { path: k, name: parts[parts.length - 1] || k }
+  })
+})
+
+/** 懒加载所有已存档项目的历史（loadHistoryFor 无副作用，不改 currentHistoryProject） */
+async function loadArchived() {
+  await Promise.all(archivedProjects.value.map(p => sessionStore.loadHistoryFor(p.path)))
+  archivedLoaded.value = true
 }
 
-function formatTimeAgo(timestamp: number): string {
-  const diff = Date.now() - timestamp
+/** 恢复存档会话：restoreSession 持久化后切到该会话（--resume） */
+function handleRestore(projectPath: string, sessionId: string) {
+  sessionStore.restoreSession(projectPath, sessionId).then(() => {
+    emit('resumeSession', projectPath, sessionId)
+  }).catch(() => {})
+}
+
+function formatTime(ts: number): string {
+  if (!ts) return ''
+  const diff = Date.now() - ts
   const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return t('timeNow')
+  if (minutes < 60) return t('timeMinutes', { n: minutes })
   const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-  if (minutes < 1) return 'now'
-  if (minutes < 60) return `${minutes}m`
-  if (hours < 24) return `${hours}h`
-  return `${days}d`
-}
-
-function handleResumeSession(session: SessionInfo) {
-  emit('resumeSession', session.projectPath, session.sessionId, session.name)
-}
-
-async function handleSaveDefault() {
-  isSaving.value = true
-  saveSuccess.value = false
-  const success = await appStore.saveAsDefault()
-  isSaving.value = false
-  if (success) {
-    saveSuccess.value = true
-    setTimeout(() => { saveSuccess.value = false }, 3000)
-  }
+  if (hours < 24) return t('timeHours', { n: hours })
+  return t('timeDays', { n: Math.floor(diff / 86400000) })
 }
 </script>
 
@@ -348,236 +333,17 @@ async function handleSaveDefault() {
   background: var(--bg-primary);
 }
 
-/* 左侧近期会话面板 */
-.sessions-panel {
-  width: 280px;
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-color);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-
-.sessions-panel .panel-header {
-  padding: 16px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.sessions-panel .panel-header h2 {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: -0.3px;
-}
-
-.session-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.session-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.15s ease;
-}
-
-.session-item:hover {
-  background: var(--hover-bg);
-}
-
-.session-icon {
-  flex-shrink: 0;
-  color: var(--text-tertiary);
-  transition: color 0.15s ease;
-}
-
-.session-item:hover .session-icon {
-  color: var(--accent-gold);
-}
-
-.session-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.session-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-project {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  display: block;
-}
-
-.session-time {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-}
-
-/* 状态圆点（与 SessionItem 样式一致） */
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  transition: background 0.3s ease;
-}
-
-.status-dot.running {
-  background: var(--status-success);
-}
-
-.status-dot.working {
-  background: var(--status-success);
-  animation: status-pulse 2.5s ease-in-out infinite;
-}
-
-.status-dot.pending {
-  background: var(--accent-gold);
-  animation: status-pulse 2s ease-in-out infinite;
-}
-
-@keyframes status-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-.empty-sessions {
-  padding: 32px;
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-/* 底部启动参数 */
-.startup-options {
-  border-top: 1px solid var(--border-color);
-  padding: 12px;
-}
-
-.options-header {
-  margin-bottom: 8px;
-}
-
-.options-title {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.option-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  cursor: pointer;
-}
-
-.option-item input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  accent-color: var(--accent-primary);
-}
-
-.option-label {
-  font-size: 12px;
-  color: var(--text-primary);
-}
-
-.option-flag {
-  font-size: 10px;
-  padding: 1px 5px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  color: var(--text-secondary);
-}
-
-.option-flag.warning {
-  color: var(--status-error);
-  border-color: rgba(196, 92, 74, 0.3);
-}
-
-.text-option {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-
-.text-option input[type="text"] {
-  width: 100%;
-  padding: 6px 10px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  font-size: 12px;
-  color: var(--text-primary);
-  transition: border-color 0.15s ease;
-}
-
-.text-option input[type="text"]:focus {
-  outline: none;
-  border-color: var(--focus-ring);
-}
-
-.save-default-btn {
-  margin-top: 8px;
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  font-size: 11px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  width: 100%;
-}
-
-.save-default-btn:hover:not(:disabled):not(.success) {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-}
-
-.save-default-btn.saving {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.save-default-btn.success {
-  border-color: var(--status-success);
-  color: var(--status-success);
-  background: rgba(61, 140, 110, 0.1);
-}
-
-/* 右侧项目列表 */
 .projects-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 400px;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
 }
 
-.projects-panel .panel-header {
+.panel-header {
   padding: 16px 20px;
   border-bottom: 1px solid var(--border-color);
 }
@@ -586,14 +352,41 @@ async function handleSaveDefault() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
-.projects-panel .panel-header h2 {
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.back-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.back-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.panel-header h2 {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.3px;
+  flex: 1;
+  text-align: center;
 }
 
 .settings-btn {
@@ -679,24 +472,27 @@ async function handleSaveDefault() {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
+  position: relative;
 }
 
-.project-item {
+/* 项目行 = 静态 div（非 button，不进 Tab 顺序）；点项目本身 = nothing */
+.project-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 100%;
-  padding: 12px 16px;
-  border: none;
-  background: transparent;
+  padding: 10px 12px;
   border-radius: var(--radius-md);
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease;
+  position: relative;
 }
 
-.project-item:hover {
+.project-row:hover {
   background: var(--bg-secondary);
+}
+
+/* 隐藏项目整行置灰；hover 显示 enter/menu 按钮仍可点（菜单用于"显示"恢复） */
+.project-row.hidden {
+  opacity: 0.5;
 }
 
 .folder-icon {
@@ -705,7 +501,7 @@ async function handleSaveDefault() {
   transition: color 0.15s ease;
 }
 
-.project-item:hover .folder-icon {
+.project-row:hover .folder-icon {
   color: var(--accent-gold);
 }
 
@@ -722,7 +518,7 @@ async function handleSaveDefault() {
 }
 
 .project-path {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
   display: block;
   overflow: hidden;
@@ -730,12 +526,88 @@ async function handleSaveDefault() {
   white-space: nowrap;
 }
 
-/* 运行会话数（绿色数字） */
+.pin-mark {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
 .running-number {
   font-size: 12px;
   color: var(--status-success);
   font-weight: 500;
   flex-shrink: 0;
+}
+
+/* 行尾按钮：默认隐藏，hover 行时显示（隐藏项目 enter 禁用） */
+.enter-btn,
+.menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.menu-btn {
+  padding: 5px 7px;
+}
+
+.enter-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.enter-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.menu-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+/* ⋯ 菜单下拉 */
+.menu {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 8px;
+  min-width: 120px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  z-index: 10;
+}
+
+.menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.menu button:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+
+.menu button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .empty-list {
@@ -768,14 +640,6 @@ async function handleSaveDefault() {
   border-color: var(--accent-primary);
   color: var(--accent-primary);
   background: var(--hover-bg);
-}
-
-.load-more-btn svg {
-  opacity: 0.7;
-}
-
-.load-more-btn:hover svg {
-  opacity: 1;
 }
 
 .loading-more {
@@ -812,19 +676,92 @@ async function handleSaveDefault() {
   border-style: solid;
 }
 
+/* 已存档会话全局视图（管理页底部 v-if 块） */
+.archived-section {
+  border-top: 1px solid var(--border-color);
+  padding: 16px 20px;
+}
+
+.archived-section h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.load-archived-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.load-archived-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.archived-project {
+  margin-bottom: 12px;
+}
+
+.archived-project-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  padding: 0 4px;
+}
+
+.archived-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.archived-item:hover {
+  background: var(--hover-bg);
+}
+
+.archived-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archived-time {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
 /* 滚动条 */
-.session-list::-webkit-scrollbar,
 .project-list::-webkit-scrollbar {
   width: 6px;
 }
 
-.session-list::-webkit-scrollbar-thumb,
 .project-list::-webkit-scrollbar-thumb {
   background: var(--border-dark);
   border-radius: 3px;
 }
 
-.session-list::-webkit-scrollbar-track,
 .project-list::-webkit-scrollbar-track {
   background: transparent;
 }
@@ -842,19 +779,13 @@ async function handleSaveDefault() {
   padding: 10px 12px;
 }
 
-.skeleton-icon,
 .skeleton-folder {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 3px;
   background: var(--border-color);
   animation: skeleton-pulse 1.5s ease-in-out infinite;
   flex-shrink: 0;
-}
-
-.skeleton-folder {
-  width: 18px;
-  height: 18px;
 }
 
 .skeleton-text-group {

@@ -235,6 +235,12 @@ export default {
   noMatchingProjects: 'No matching projects',
   noProjectsYet: 'No projects yet',
   addProject: 'Add Project',
+  // Management page (v5-T8)
+  backToTerminal: 'Back to Terminal',
+  projectManagement: 'Project Management',
+  enterTerminal: 'Enter Terminal',
+  showFirst: 'Show project first',
+  loadArchived: 'Load archived sessions',
 
   // Terminal
   startNewSession: 'Start a new Claude session',

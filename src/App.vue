@@ -95,7 +95,7 @@
       @select-project="handleOpenProject"
       @add-project="handleSelectProject"
       @resume-session="handleResumeSession"
-      @open-settings="sidebarStore.openSettings()"
+      @back-to-terminal="handleBackToTerminal"
     />
   </Transition>
 </div>
@@ -287,6 +287,12 @@ async function handleResumeSession(projectPath: string, sessionId: string, sessi
 
 function handleBack() {
   currentView.value = 'projects'
+}
+
+// 管理页「返回终端」按钮：仅在有 cwd 时可点（按钮自身禁用门禁，此为切换逻辑）。
+function handleBackToTerminal() {
+  if (!appStore.cwd) return
+  currentView.value = 'terminal'
 }
 
 function handleToggleHome() {
