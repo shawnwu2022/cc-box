@@ -3,10 +3,12 @@
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fs;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fs::{self, File};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// 项目信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3160,6 +3162,101 @@ pub(crate) fn write_json_atomic(path: &Path, value: &serde_json::Value) -> Resul
     }
     fs::rename(&tmp, path).with_context(|| "Failed to rename .tmp to target")?;
     Ok(())
+}
+
+// ---------- 多实例 stale-write 修复：独立 lock 文件 + std File::lock ----------
+
+/// lock 文件路径（永久存在、永不 rename/delete 的同步对象）。
+/// 数据文件 projects.json 可随意 tmp+rename 替换；锁绑定本文件的 handle。
+pub(crate) fn lock_file_path() -> Result<PathBuf> {
+    get_gui_config_dir().map(|d| d.join("projects.json.lock"))
+}
+
+/// 便捷：返回 (数据文件路径, lock 文件路径)
+pub(crate) fn data_and_lock_paths() -> Result<(PathBuf, PathBuf)> {
+    Ok((get_projects_state_path()?, lock_file_path()?))
+}
+
+/// 锁竞争判断：fcntl EAGAIN/EACCES（Unix）或 ERROR_LOCK_VIOLATION=33（Windows）。
+pub(crate) fn is_lock_contention(e: &io::Error) -> bool {
+    match e.raw_os_error() {
+        Some(33) => true,                      // Windows ERROR_LOCK_VIOLATION
+        Some(13) => true,                      // EACCES
+        Some(11) | Some(35) => true,           // EAGAIN / EWOULDBLOCK
+        _ => e.kind() == io::ErrorKind::WouldBlock,
+    }
+}
+
+/// 有界获取锁：try_lock + 20ms 退避，达 timeout 返 Err（不无限阻塞，防挂起实例冻结所有写）。
+pub(crate) fn acquire_lock(file: &File, exclusive: bool, timeout: Duration) -> Result<()> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let r = if exclusive { file.try_lock() } else { file.try_lock_shared() };
+        match r {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                // std 的 try_lock 返回 TryLockError（WouldBlock / Error(io::Error)），
+                // 转为 io::Error 后统一喂给 is_lock_contention（WouldBlock→ErrorKind，
+                // LOCK_VIOLATION/EAGAIN/EACCES 经 Error 分支保留 raw_os_error）。
+                let io_err = io::Error::from(e);
+                if is_lock_contention(&io_err) {
+                    if Instant::now() >= deadline {
+                        bail!("projects.json lock timeout（另一实例可能无响应）");
+                    }
+                    std::thread::sleep(Duration::from_millis(20));
+                } else {
+                    return Err(io_err).context("projects.json lock 获取失败");
+                }
+            }
+        }
+    }
+}
+
+/// 确保父目录存在（lock 文件首次创建时用）。
+fn ensure_parent(p: &Path) -> Result<()> {
+    if let Some(parent) = p.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    Ok(())
+}
+
+/// 确定性 canonicalize：合并 legacy 等价键（pin/archive/displayNames 全部 normalized 存储）。
+/// 幂等。displayNames 同 canonical key 冲突 → 保留原始 key 字典序最小的值（确定性）。
+pub(crate) fn canonicalize_state(s: &mut ProjectsState) {
+    // pinned：normalize + 去重
+    let mut seen: HashSet<String> = HashSet::new();
+    s.pinned_projects = s.pinned_projects.iter()
+        .map(|p| normalize_path_str(p))
+        .filter(|p| seen.insert(p.clone()))
+        .collect();
+
+    // archivedSessions：key normalize 合并，sessionId 去重
+    // （HashMap drain 顺序非确定，先按原始 key 排序保证确定性输出，
+    //   与 displayNames「原始 key 字典序最小」原则一致）
+    let mut entries: Vec<(String, Vec<String>)> = s.archived_sessions.drain().collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut merged: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (k, v) in entries {
+        let nk = normalize_path_str(&k);
+        let arr = merged.entry(nk).or_default();
+        for id in v {
+            if !arr.contains(&id) { arr.push(id); }
+        }
+    }
+    s.archived_sessions = merged.into_iter().collect();
+
+    // displayNames：key normalize；冲突保留原始 key 字典序最小者的值
+    let mut ordered: Vec<(String, String, String)> = s.display_names.iter()
+        .map(|(k, v)| (normalize_path_str(k), v.clone(), k.clone()))
+        .collect();
+    ordered.sort_by(|a, b| a.2.cmp(&b.2));
+    let mut dn: HashMap<String, String> = HashMap::new();
+    for (nk, v, _orig) in ordered {
+        dn.entry(nk).or_insert(v);
+    }
+    s.display_names = dn;
 }
 
 // ---------- Plugin（CLI 调用）----------

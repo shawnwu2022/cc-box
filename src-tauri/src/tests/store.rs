@@ -6,7 +6,7 @@ use crate::store::{
     normalize_path_inner, parse_agents_list_output, parse_mcp_server_entry, parse_skill_description,
     parse_timestamp, resolve_marketplace_plugin_path, search_session_messages_in_dirs,
     set_agent_enabled_in, set_mcp_server_enabled_in, set_skill_enabled_in,
-    update_projects_state_at, write_json_atomic, AgentInfo, AppConfig, Project, ProjectsState,
+    canonicalize_state, update_projects_state_at, write_json_atomic, AgentInfo, AppConfig, Project, ProjectsState,
 };
 
 use std::collections::HashMap;
@@ -1556,4 +1556,56 @@ fn NormalizePath_CaseSensitive_NormalizeSlash_001() {
 fn NormalizePath_PosixRoot_Recovered_001() {
     assert_eq!(normalize_path_inner("/", true), "/");
     assert_eq!(normalize_path_inner("///", false), "/");
+}
+
+// ==================== canonicalize_state（legacy 等价键合并）====================
+
+// pinned：多等价路径（斜杠/大小写）合并为单一 canonical，去重
+#[test]
+fn Canonicalize_PinnedMergesEquivalent_001() {
+    let mut s = ProjectsState {
+        pinned_projects: vec!["E:\\Repo".into(), "e:/repo".into(), "E:/Other".into()],
+        ..Default::default()
+    };
+    canonicalize_state(&mut s);
+    assert_eq!(s.pinned_projects, vec!["e:/repo".to_string(), "e:/other".to_string()]);
+}
+
+// archivedSessions：等价 key 合并、sessionId 去重
+#[test]
+fn Canonicalize_ArchivedMergesEquivalent_001() {
+    let mut a = std::collections::HashMap::new();
+    a.insert("E:\\P".to_string(), vec!["s1".to_string(), "s2".to_string()]);
+    a.insert("e:/p".to_string(), vec!["s2".to_string(), "s3".to_string()]);
+    let mut s = ProjectsState { archived_sessions: a, ..Default::default() };
+    canonicalize_state(&mut s);
+    let merged = s.archived_sessions.get("e:/p").unwrap();
+    assert_eq!(merged, &vec!["s1".to_string(), "s2".to_string(), "s3".to_string()]);
+    assert_eq!(s.archived_sessions.len(), 1, "等价 key 应合并为 1 个");
+}
+
+// displayNames：等价 key 冲突保留原始 key 字典序最小的值（确定性）
+#[test]
+fn Canonicalize_DisplayNamesConflictDeterministic_001() {
+    let mut d = std::collections::HashMap::new();
+    d.insert("E:\\B".to_string(), "beta".to_string());   // 原始 key "E:\B"
+    d.insert("e:/b".to_string(), "alpha".to_string());   // 原始 key "e:/b"
+    let mut s = ProjectsState { display_names: d, ..Default::default() };
+    canonicalize_state(&mut s);
+    // 原始 key 字典序最小："E:\B" < "e:/b"（ASCII 'E'=69 < 'e'=101）-> 保留 "beta"
+    assert_eq!(s.display_names.get("e:/b"), Some(&"beta".to_string()));
+    assert_eq!(s.display_names.len(), 1);
+}
+
+// canonicalize 幂等：再跑一次不变
+#[test]
+fn Canonicalize_Idempotent_001() {
+    let mut s = ProjectsState {
+        pinned_projects: vec!["E:/A".into(), "e:/a".into()],
+        ..Default::default()
+    };
+    canonicalize_state(&mut s);
+    let after1 = s.pinned_projects.clone();
+    canonicalize_state(&mut s);
+    assert_eq!(s.pinned_projects, after1);
 }
