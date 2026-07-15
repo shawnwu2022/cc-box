@@ -18,3 +18,5 @@ mod env;
 mod installer;
 #[cfg(test)]
 mod platform;
+#[cfg(test)]
+mod commands;

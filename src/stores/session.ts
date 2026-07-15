@@ -13,7 +13,6 @@ import {
 } from '@/api/tauri'
 import { normalizePath, sameProjectPath } from '@/utils/path'
 import { validateDisplayName, projectBasename, matchProjectQuery } from '@/utils/displayName'
-import { createProjectsStateSync } from '@/utils/projectsStateSync'
 import type { SessionSearchResult } from '@/types'
 import type { ProjectsState } from '@/types/app'
 
@@ -729,9 +728,6 @@ export const useSessionStore = defineStore('session', () => {
 
   // ---- 项目置顶 + 会话存档（持久化到 ~/.cc-box/projects.json）----
 
-  // 多实例状态同步队列（spec §3.8）：action 无条件应用、reload 条件应用，防逆序覆盖
-  const sync = createProjectsStateSync()
-
   /** 用后端返回的 ProjectsState 覆盖本地三份（返回值是锁内写完的最新 canonical 状态）。 */
   function applyReturnedState(s: ProjectsState) {
     pinnedProjects.value = s.pinnedProjects ?? []
@@ -788,24 +784,21 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
-  /**
-   * 聚焦 reload：force 读取最新 projects.json 并经 sync 队列条件应用。
-   * emitSeq = 发起时 currentSeq()；期间若有 action 应用，本 reload 响应被丢弃（防逆序覆盖）。
-   * 静默失败（不打断聚焦，保持上次状态）。
-   */
+  /** 聚焦 reload：与 action 共用 opLock，完整串行 invoke + apply，避免响应逆序覆盖。 */
   async function reloadProjectsState(): Promise<void> {
     if (!projectsStateLoaded.value) return
-    const emitSeq = sync.currentSeq()
     try {
-      const s = await getProjectsState()
-      await sync.applyFromReload(s, applyReturnedState, emitSeq)
+      await withLock(async () => {
+        const s = await getProjectsState()
+        applyReturnedState(s)
+      })
     } catch (err) {
       console.error('[SessionStore] reloadProjectsState failed:', err)
     }
   }
 
   /**
-   * 操作锁（P1.3）：串行化 invoke + apply--ensureProjectsStateLoaded → applyFromAction（发增量 invoke）
+   * 操作锁（P1.3）：串行化完整 request + apply--ensureProjectsStateLoaded → 发增量 invoke
    * → applyReturnedState 全在锁内。增量操作在后端锁内原子读改写，本锁仅保证前端单实例串行
    * （多实例跨进程排他由后端 projects.json.lock 负责）。
    */
@@ -834,7 +827,7 @@ export const useSessionStore = defineStore('session', () => {
     return withLock(async () => {
       await ensureProjectsStateLoaded()
       const s = await pinProjectApi(path)
-      await sync.applyFromAction(s, applyReturnedState)
+      applyReturnedState(s)
     })
   }
 
@@ -843,7 +836,7 @@ export const useSessionStore = defineStore('session', () => {
     return withLock(async () => {
       await ensureProjectsStateLoaded()
       const s = await unpinProjectApi(path)
-      await sync.applyFromAction(s, applyReturnedState)
+      applyReturnedState(s)
     })
   }
 
@@ -878,7 +871,7 @@ export const useSessionStore = defineStore('session', () => {
     return withLock(async () => {
       await ensureProjectsStateLoaded()
       const s = await archiveSessionApi(projectPath, sessionId)
-      await sync.applyFromAction(s, applyReturnedState)
+      applyReturnedState(s)
     })
   }
 
@@ -887,7 +880,7 @@ export const useSessionStore = defineStore('session', () => {
     return withLock(async () => {
       await ensureProjectsStateLoaded()
       const s = await restoreSessionApi(projectPath, sessionId)
-      await sync.applyFromAction(s, applyReturnedState)
+      applyReturnedState(s)
     })
   }
 
@@ -910,7 +903,7 @@ export const useSessionStore = defineStore('session', () => {
     return withLock(async () => {
       await ensureProjectsStateLoaded()
       const s = await setDisplayNameApi(path, alias)
-      await sync.applyFromAction(s, applyReturnedState)
+      applyReturnedState(s)
     })
   }
 

@@ -6,8 +6,8 @@ use crate::store::{
     normalize_path_inner, parse_agents_list_output, parse_mcp_server_entry, parse_skill_description,
     parse_timestamp, resolve_marketplace_plugin_path, search_session_messages_in_dirs,
     set_agent_enabled_in, set_mcp_server_enabled_in, set_skill_enabled_in,
-    canonicalize_state, read_projects_state_locked,
-    with_projects_state_locked, write_json_atomic, normalize_path_str_pub, AgentInfo, AppConfig,
+    acquire_lock, canonicalize_state, read_projects_state_locked,
+    with_projects_state_locked, write_json_atomic, replace_file_atomic, normalize_path_str_pub, AgentInfo, AppConfig,
     Project, ProjectsState,
 };
 
@@ -1379,7 +1379,7 @@ fn WriteJsonAtomic_ReplacesFully_001() {
     assert!(back.get("old").is_none(), "完整替换，旧 key 不残留");
 }
 
-// 原子写：目标已存在时二次写入成功（Windows fs::rename 目标存在失败 -> remove+rename 修复）。
+// 原子写：目标已存在时二次写入成功（Windows 使用 ReplaceFileW，不制造 remove->rename 空窗）。
 // 这是 codex 致命#1 的核心场景：projects.json 首次写入后，后续 update 必须仍能覆盖。
 #[test]
 fn WriteJsonAtomic_ReplacesExisting_001() {
@@ -1388,7 +1388,7 @@ fn WriteJsonAtomic_ReplacesExisting_001() {
     // 第一次写（目标不存在）
     write_json_atomic(&path, &serde_json::json!({"displayNames": {"/p-a": "first"}})).unwrap();
     assert_eq!(std::fs::read_to_string(&path).unwrap().contains("first"), true);
-    // 第二次写（目标已存在）--Windows 上裸 fs::rename 会失败，remove+rename 修复后须成功
+    // 第二次写（目标已存在）--Windows 上裸 fs::rename 会失败，原子 replace 后须成功
     write_json_atomic(&path, &serde_json::json!({"displayNames": {"/p-a": "second"}})).unwrap();
     let back: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(back["displayNames"]["/p-a"], "second", "目标已存在时二次写入须覆盖成功");
@@ -1396,6 +1396,18 @@ fn WriteJsonAtomic_ReplacesExisting_001() {
     write_json_atomic(&path, &serde_json::json!({"displayNames": {"/p-a": "third"}})).unwrap();
     let back3: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(back3["displayNames"]["/p-a"], "third");
+}
+
+// replacement 不可用时必须保留旧目标；不能先删目标再发现 replacement 无法 rename。
+#[test]
+fn ReplaceFileAtomic_MissingReplacementPreservesTarget_001() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("projects.json");
+    let missing = dir.path().join("missing.tmp");
+    std::fs::write(&path, "old-state").unwrap();
+
+    assert!(replace_file_atomic(&missing, &path).is_err());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old-state");
 }
 
 // ==================== with_projects_state_locked 原子写（含故障注入） ====================
@@ -1620,6 +1632,25 @@ fn ReadLocked_MissingFileDefaults_001() {
     assert!(state.archived_sessions.is_empty());
 }
 
+// 共享锁读取返回前必须 canonicalize，前端不能收到 legacy 等价键或重复 pinned。
+#[test]
+fn ReadLocked_CanonicalizesLegacyKeys_001() {
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("projects.json");
+    let lock = tmp.path().join("projects.json.lock");
+    std::fs::write(
+        &data,
+        r#"{"pinnedProjects":["E:\\A","e:/a"],"displayNames":{"E:\\A":"A"}}"#,
+    )
+    .unwrap();
+
+    let state = read_projects_state_locked(&data, &lock).unwrap();
+
+    assert_eq!(state.pinned_projects, vec!["e:/a".to_string()]);
+    assert_eq!(state.display_names.get("e:/a"), Some(&"A".to_string()));
+    assert_eq!(state.display_names.len(), 1);
+}
+
 // 锁内 canonicalize：预置 legacy 等价键，with_locked 操作后返回已合并状态
 #[test]
 fn WithLocked_CanonicalizesBeforeApply_001() {
@@ -1677,18 +1708,43 @@ fn SetDisplayNameCommand_RejectsTooLong_001() {
 }
 
 // ==================== 跨进程并发（re-exec self 子任务）====================
-// std File::try_lock 是进程级锁，单进程多线程不互斥，必须真多进程验证。
+// 读改写正确性用真多进程验证，覆盖实际多实例的进程边界与文件系统行为。
 // 子任务模式：CC_BOX_CONC_TEST=<mode> + CC_BOX_CONC_DIR=<dir> -> 执行单次操作后 exit(0)。
 // 主测试：spawn 多子进程并发，等待后断言磁盘。
 
 use std::env;
-use std::process::Command;
+use std::process::{Child, Command};
+use std::time::{Duration, Instant};
 
 fn conc_dirs() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
     let tmp = tempfile::tempdir().unwrap();
     let data = tmp.path().join("projects.json");
     let lock = tmp.path().join("projects.json.lock");
     (tmp, data, lock)
+}
+
+fn wait_for_file(path: &Path, timeout: Duration) {
+    let deadline = Instant::now() + timeout;
+    while !path.exists() {
+        assert!(Instant::now() < deadline, "等待文件超时: {}", path.display());
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn wait_for_child(child: &mut Child, timeout: Duration) {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            assert!(status.success(), "子进程异常退出: {status}");
+            return;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("等待子进程超时");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 /// 子任务入口：若 CC_BOX_CONC_TEST 设置，按 mode 执行单次操作后 exit(0)；否则返回 false（主测试继续）。
@@ -1698,6 +1754,9 @@ fn run_conc_child_if_set() -> bool {
     };
     let data = std::path::Path::new(&dir).join("projects.json");
     let lock = std::path::Path::new(&dir).join("projects.json.lock");
+    if env::var_os("CC_BOX_CONC_BARRIER").is_some() {
+        wait_for_file(&std::path::Path::new(&dir).join("start"), Duration::from_secs(5));
+    }
     match mode.as_str() {
         "pin_a" => {
             with_projects_state_locked(&data, &lock, |s| {
@@ -1715,6 +1774,12 @@ fn run_conc_child_if_set() -> bool {
             let marker = std::path::Path::new(&dir).join("read_result.txt");
             std::fs::write(&marker, format!("pinned={}", s.pinned_projects.len())).unwrap();
         }
+        "hold_lock" => {
+            let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&lock).unwrap();
+            acquire_lock(&file, true, Duration::from_secs(1)).unwrap();
+            std::fs::write(std::path::Path::new(&dir).join("lock_held"), "1").unwrap();
+            wait_for_file(&std::path::Path::new(&dir).join("release_lock"), Duration::from_secs(30));
+        }
         _ => {}
     }
     std::process::exit(0);
@@ -1728,10 +1793,11 @@ fn Concurrent_TwoChildrenBothPreserved_001() {
     let dir = data.parent().unwrap();
     let exe = env::current_exe().unwrap();
     // 子进程只跑本测试单名 -> 单线程 -> 操作仅应用一次，避免默认 harness 并行跑全部 test 引入竞态
-    let mut ha = Command::new(&exe).arg("Concurrent_TwoChildrenBothPreserved_001").env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
-    let mut hb = Command::new(&exe).arg("Concurrent_TwoChildrenBothPreserved_001").env("CC_BOX_CONC_TEST", "pin_b").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
-    ha.wait().unwrap();
-    hb.wait().unwrap();
+    let mut ha = Command::new(&exe).arg("Concurrent_TwoChildrenBothPreserved_001").env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).env("CC_BOX_CONC_BARRIER", "1").spawn().unwrap();
+    let mut hb = Command::new(&exe).arg("Concurrent_TwoChildrenBothPreserved_001").env("CC_BOX_CONC_TEST", "pin_b").env("CC_BOX_CONC_DIR", dir).env("CC_BOX_CONC_BARRIER", "1").spawn().unwrap();
+    std::fs::write(dir.join("start"), "1").unwrap();
+    wait_for_child(&mut ha, Duration::from_secs(10));
+    wait_for_child(&mut hb, Duration::from_secs(10));
     let state = read_projects_state_locked(&data, &lock).unwrap();
     let mut got = state.pinned_projects.clone(); got.sort();
     assert_eq!(got, vec!["e:/a".to_string(), "e:/b".to_string()], "两子进程操作都应保留");
@@ -1745,30 +1811,67 @@ fn Concurrent_FirstWriteNoFile_001() {
     assert!(!data.exists());
     let dir = data.parent().unwrap();
     let exe = env::current_exe().unwrap();
-    let mut h = Command::new(&exe).arg("Concurrent_FirstWriteNoFile_001").env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
-    h.wait().unwrap();
+    let mut ha = Command::new(&exe).arg("Concurrent_FirstWriteNoFile_001").env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).env("CC_BOX_CONC_BARRIER", "1").spawn().unwrap();
+    let mut hb = Command::new(&exe).arg("Concurrent_FirstWriteNoFile_001").env("CC_BOX_CONC_TEST", "pin_b").env("CC_BOX_CONC_DIR", dir).env("CC_BOX_CONC_BARRIER", "1").spawn().unwrap();
+    std::fs::write(dir.join("start"), "1").unwrap();
+    wait_for_child(&mut ha, Duration::from_secs(10));
+    wait_for_child(&mut hb, Duration::from_secs(10));
     let state = read_projects_state_locked(&data, &lock).unwrap();
-    assert_eq!(state.pinned_projects, vec!["e:/a".to_string()]);
+    let mut got = state.pinned_projects;
+    got.sort();
+    assert_eq!(got, vec!["e:/a".to_string(), "e:/b".to_string()]);
 }
 
 // writer 持排他锁时 reader（共享锁）阻塞到写完，不返 default 空
 #[test]
 fn Concurrent_ReaderDuringWrite_NotEmpty_001() {
     if run_conc_child_if_set() { return; }
-    let (_tmp, data, lock) = conc_dirs();
+    let (_tmp, data, _lock) = conc_dirs();
     let dir = data.parent().unwrap();
     let exe = env::current_exe().unwrap();
     // 先写入基线 pin_a
     let mut h0 = Command::new(&exe).arg("Concurrent_ReaderDuringWrite_NotEmpty_001").env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
-    h0.wait().unwrap();
-    // 并发：再 pin_b（writer）+ read（reader）同时启动
-    let mut hb = Command::new(&exe).arg("Concurrent_ReaderDuringWrite_NotEmpty_001").env("CC_BOX_CONC_TEST", "pin_b").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    wait_for_child(&mut h0, Duration::from_secs(5));
+    // 子进程明确持排他锁，marker 出现后再启动 reader，证明共享读会等待。
+    let mut holder = Command::new(&exe).arg("Concurrent_ReaderDuringWrite_NotEmpty_001").env("CC_BOX_CONC_TEST", "hold_lock").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    wait_for_file(&dir.join("lock_held"), Duration::from_secs(5));
     let mut hr = Command::new(&exe).arg("Concurrent_ReaderDuringWrite_NotEmpty_001").env("CC_BOX_CONC_TEST", "read").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
-    hb.wait().unwrap();
-    hr.wait().unwrap();
     let marker = dir.join("read_result.txt");
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(!marker.exists(), "writer 持排他锁期间 reader 不应完成");
+    std::fs::write(dir.join("release_lock"), "1").unwrap();
+    wait_for_child(&mut holder, Duration::from_secs(5));
+    wait_for_child(&mut hr, Duration::from_secs(5));
     let content = std::fs::read_to_string(&marker).unwrap();
-    // reader 持共享锁时必在某个 writer 之后，pinned 至少含 a（不返空 default）
-    assert!(content.contains("pinned=1") || content.contains("pinned=2"),
-        "reader 不应返 default 空，实际: {}", content);
+    assert_eq!(content, "pinned=1", "reader 应在锁释放后读到完整基线状态");
+}
+
+// 持锁进程被杀后，OS 释放锁，另一实例可继续写。
+#[test]
+fn Concurrent_LockHolderExit_OtherProceeds_001() {
+    if run_conc_child_if_set() { return; }
+    let (_tmp, data, lock) = conc_dirs();
+    let dir = data.parent().unwrap();
+    let exe = env::current_exe().unwrap();
+    let mut holder = Command::new(&exe).arg("Concurrent_LockHolderExit_OtherProceeds_001").env("CC_BOX_CONC_TEST", "hold_lock").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    wait_for_file(&dir.join("lock_held"), Duration::from_secs(5));
+    holder.kill().unwrap();
+    holder.wait().unwrap();
+    let mut writer = Command::new(&exe).arg("Concurrent_LockHolderExit_OtherProceeds_001").env("CC_BOX_CONC_TEST", "pin_b").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    wait_for_child(&mut writer, Duration::from_secs(5));
+    assert_eq!(read_projects_state_locked(&data, &lock).unwrap().pinned_projects, vec!["e:/b".to_string()]);
+}
+
+// 同一进程内第二个 handle 竞争同一文件锁时也必须有界超时。
+#[test]
+fn AcquireLock_Timeout_001() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("projects.json.lock");
+    let first = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path).unwrap();
+    let second = std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
+    acquire_lock(&first, true, Duration::from_secs(1)).unwrap();
+    let started = Instant::now();
+    let err = acquire_lock(&second, true, Duration::from_millis(80)).unwrap_err();
+    assert!(started.elapsed() >= Duration::from_millis(60));
+    assert!(err.to_string().contains("lock timeout"), "实际错误: {err:#}");
 }

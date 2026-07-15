@@ -201,7 +201,7 @@ onMounted(async () => {
 
   // 窗口聚焦时拉取最新 projects.json：多实例并发写后切回本窗口可见最新状态，
   // 亦覆盖外部直接编辑 projects.json 的场景。独立监听，不塞进 useWindowAttention（解耦）。
-  // reloadProjectsState 内部经 sync 队列条件应用（防 action 逆序覆盖），静默失败不打断聚焦。
+  // reloadProjectsState 与 action 共用 opLock，串行完整 request + apply；静默失败不打断聚焦。
   const win = getCurrentWindow()
   unlistenFocusReload = await win.onFocusChanged(({ payload: focused }) => {
     if (focused) sessionStore.reloadProjectsState()

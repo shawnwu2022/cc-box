@@ -207,60 +207,78 @@ pub async fn update_app_config(updates: serde_json::Value) -> Result<(), String>
     crate::store::update_app_config(updates).map_err(|e| e.to_string())
 }
 
-/// 获取 projects 状态（共享锁读，避开 Windows remove+rename 空窗）
-#[tauri::command]
-pub async fn get_projects_state() -> Result<ProjectsState, String> {
-    let (d, l) = crate::store::data_and_lock_paths().map_err(|e| e.to_string())?;
-    crate::store::read_projects_state_locked(&d, &l).map_err(|e| e.to_string())
+/// 在 spawn_blocking 内执行 projects.json 锁操作（共享 data_and_lock_paths 路径解析），
+/// 统一 JoinError + anyhow::Error → String 转换，避免读/写路径重复 envelope。
+async fn spawn_blocking_locked<F, R>(f: F) -> Result<R, String>
+where
+    F: FnOnce(&std::path::Path, &std::path::Path) -> anyhow::Result<R> + Send + 'static,
+    R: Send + 'static,
+{
+    tokio::task::spawn_blocking(move || {
+        let (d, l) = crate::store::data_and_lock_paths()?;
+        f(&d, &l)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
 }
 
-/// 别名校验（与前端 validateDisplayName 同规则）：trim 后 ≤ 32 字符、无控制字符。
-fn validate_display_name_inner(alias: &str) -> Result<()> {
-    let trimmed = alias.trim();
-    let len = trimmed.chars().count();
+/// 获取 projects 状态（共享锁读，与写入事务互斥并返回 canonical 状态）
+#[tauri::command]
+pub async fn get_projects_state() -> Result<ProjectsState, String> {
+    spawn_blocking_locked(|d, l| crate::store::read_projects_state_locked(d, l)).await
+}
+
+/// 别名校验（与前端 validateDisplayName/input maxlength 同规则）：原始输入 ≤ 32 UTF-16 code unit、无控制字符。
+pub(crate) fn validate_display_name_inner(alias: &str) -> Result<()> {
+    let len = alias.encode_utf16().count();
     if len > 32 {
         bail!("alias too long ({} > 32)", len);
     }
-    if trimmed.chars().any(|c| c.is_control()) {
+    if alias.chars().any(|c| c.is_control()) {
         bail!("alias contains control characters");
     }
     Ok(())
 }
 
+async fn apply_projects_state_blocking<F>(apply: F) -> Result<ProjectsState, String>
+where
+    F: FnOnce(&mut ProjectsState) -> anyhow::Result<()> + Send + 'static,
+{
+    spawn_blocking_locked(move |d, l| crate::store::with_projects_state_locked(d, l, apply)).await
+}
+
 /// 置顶项目（锁内幂等：已含 normalized 等价则不重复）
 #[tauri::command]
-pub fn pin_project(path: String) -> Result<ProjectsState, String> {
-    let (d, l) = crate::store::data_and_lock_paths().map_err(|e| e.to_string())?;
-    crate::store::with_projects_state_locked(&d, &l, |s| {
+pub async fn pin_project(path: String) -> Result<ProjectsState, String> {
+    apply_projects_state_blocking(move |s| {
         let n = crate::store::normalize_path_str_pub(&path);
         if !s.pinned_projects.contains(&n) {
             s.pinned_projects.push(n);
         }
         Ok::<(), anyhow::Error>(())
     })
-    .map_err(|e| e.to_string())
+    .await
 }
 
 /// 取消置顶（锁内 normalized 过滤移除）
 #[tauri::command]
-pub fn unpin_project(path: String) -> Result<ProjectsState, String> {
-    let (d, l) = crate::store::data_and_lock_paths().map_err(|e| e.to_string())?;
-    crate::store::with_projects_state_locked(&d, &l, |s| {
+pub async fn unpin_project(path: String) -> Result<ProjectsState, String> {
+    apply_projects_state_blocking(move |s| {
         let n = crate::store::normalize_path_str_pub(&path);
         s.pinned_projects.retain(|p| *p != n);
         Ok::<(), anyhow::Error>(())
     })
-    .map_err(|e| e.to_string())
+    .await
 }
 
 /// 存档会话（锁内归并到 canonical key 数组，sessionId 去重）
 #[tauri::command]
-pub fn archive_session(
+pub async fn archive_session(
     project_path: String,
     session_id: String,
 ) -> Result<ProjectsState, String> {
-    let (d, l) = crate::store::data_and_lock_paths().map_err(|e| e.to_string())?;
-    crate::store::with_projects_state_locked(&d, &l, |s| {
+    apply_projects_state_blocking(move |s| {
         // canonicalize 已保证 key 为 normalized，直接用 normalized key
         let n = crate::store::normalize_path_str_pub(&project_path);
         let arr = s.archived_sessions.entry(n).or_default();
@@ -269,17 +287,16 @@ pub fn archive_session(
         }
         Ok::<(), anyhow::Error>(())
     })
-    .map_err(|e| e.to_string())
+    .await
 }
 
 /// 恢复会话（锁内从数组移除，空数组清理 key；未存档幂等）
 #[tauri::command]
-pub fn restore_session(
+pub async fn restore_session(
     project_path: String,
     session_id: String,
 ) -> Result<ProjectsState, String> {
-    let (d, l) = crate::store::data_and_lock_paths().map_err(|e| e.to_string())?;
-    crate::store::with_projects_state_locked(&d, &l, |s| {
+    apply_projects_state_blocking(move |s| {
         let n = crate::store::normalize_path_str_pub(&project_path);
         if let Some(arr) = s.archived_sessions.get_mut(&n) {
             arr.retain(|id| *id != session_id);
@@ -289,14 +306,13 @@ pub fn restore_session(
         }
         Ok::<(), anyhow::Error>(())
     })
-    .map_err(|e| e.to_string())
+    .await
 }
 
 /// 设别名（锁内校验 + 删 canonical 等价 key + 非空 set / 空 clear）
 #[tauri::command]
-pub fn set_display_name(path: String, alias: String) -> Result<ProjectsState, String> {
-    let (d, l) = crate::store::data_and_lock_paths().map_err(|e| e.to_string())?;
-    crate::store::with_projects_state_locked(&d, &l, |s| {
+pub async fn set_display_name(path: String, alias: String) -> Result<ProjectsState, String> {
+    apply_projects_state_blocking(move |s| {
         validate_display_name_inner(&alias)?; // 校验失败返 Err（前后端同规则）
         let n = crate::store::normalize_path_str_pub(&path);
         // canonicalize 已合并等价 key，此处 key 已是 normalized，直接覆盖/删除
@@ -308,7 +324,7 @@ pub fn set_display_name(path: String, alias: String) -> Result<ProjectsState, St
         }
         Ok::<(), anyhow::Error>(())
     })
-    .map_err(|e| e.to_string())
+    .await
 }
 
 /// 获取默认 Claude 选项

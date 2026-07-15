@@ -5,7 +5,7 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File};
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -3121,25 +3121,52 @@ pub(crate) fn set_mcp_server_enabled_in(
     Ok(())
 }
 
-/// 原子写 JSON：先写 .tmp 再 rename（pub(crate) 供测试导入）。
-///
-/// Windows 原子替换（codex 致命#1）：`std::fs::rename` 在 Windows 上目标已存在时失败
-/// （与 POSIX 原子覆盖语义不同），projects.json 首次写入后后续 update 会持续失败。
-/// 修复：Windows 上先 `remove_file(path)` 再 `rename`；POSIX 直接 `rename` 原子覆盖。
-///
-/// 权衡：Windows remove 与 rename 之间若崩溃，原文件已 remove、.tmp 残留（含新内容），
-/// 下次写入会覆盖 .tmp；此为 view-state 文件（pinned/archive/displayNames）可接受的最佳折衷，
-/// 优于裸 fs::write 截断损坏或 rename 持续失败。POSIX 无此问题（rename 原子覆盖）。
+/// 原子写 JSON：先完整写入并 flush `.tmp`，再原子替换目标（pub(crate) 供测试导入）。
+/// Windows 使用 `ReplaceFileW`，POSIX 使用覆盖语义的 `rename`；替换失败时保留原目标。
 pub(crate) fn write_json_atomic(path: &Path, value: &serde_json::Value) -> Result<()> {
     let tmp = path.with_extension("json.tmp");
     let content = serde_json::to_string_pretty(value)?;
-    fs::write(&tmp, &content).with_context(|| "Failed to write .tmp file")?;
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&tmp)
+        .with_context(|| "Failed to open .tmp file")?;
+    file.write_all(content.as_bytes())
+        .with_context(|| "Failed to write .tmp file")?;
+    file.sync_all()
+        .with_context(|| "Failed to flush .tmp file")?;
+    drop(file);
+    replace_file_atomic(&tmp, path)
+}
+
+pub(crate) fn replace_file_atomic(tmp: &Path, path: &Path) -> Result<()> {
     #[cfg(windows)]
     {
-        // Windows：目标存在时 fs::rename 失败，先 remove（目标不存在时 remove 返 Err，忽略）
-        let _ = fs::remove_file(path);
+        use std::os::windows::ffi::OsStrExt;
+        use windows::core::PCWSTR;
+        use windows::Win32::Storage::FileSystem::{
+            ReplaceFileW, REPLACEFILE_IGNORE_ACL_ERRORS, REPLACEFILE_WRITE_THROUGH,
+        };
+
+        if path.exists() {
+            let target: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+            let replacement: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
+            unsafe {
+                ReplaceFileW(
+                    PCWSTR(target.as_ptr()),
+                    PCWSTR(replacement.as_ptr()),
+                    PCWSTR::null(),
+                    REPLACEFILE_IGNORE_ACL_ERRORS | REPLACEFILE_WRITE_THROUGH,
+                    None,
+                    None,
+                )
+            }
+            .with_context(|| "Failed to atomically replace target with .tmp file")?;
+            return Ok(());
+        }
     }
-    fs::rename(&tmp, path).with_context(|| "Failed to rename .tmp to target")?;
+    fs::rename(tmp, path).with_context(|| "Failed to rename .tmp to target")?;
     Ok(())
 }
 
@@ -3156,7 +3183,7 @@ pub(crate) fn data_and_lock_paths() -> Result<(PathBuf, PathBuf)> {
     Ok((get_projects_state_path()?, lock_file_path()?))
 }
 
-/// 锁竞争判断：fcntl EAGAIN/EACCES（Unix）或 ERROR_LOCK_VIOLATION=33（Windows）。
+/// 锁竞争判断：兼容标准库 WouldBlock 及 Unix/Windows 的平台原始错误码。
 pub(crate) fn is_lock_contention(e: &io::Error) -> bool {
     match e.raw_os_error() {
         Some(33) => true,                      // Windows ERROR_LOCK_VIOLATION
@@ -3276,7 +3303,10 @@ pub(crate) fn read_projects_state_locked(data_path: &Path, lock_path: &Path) -> 
         .read(true).write(true).create(true).truncate(false)
         .open(lock_path)?;
     acquire_lock(&lock_file, /*exclusive*/ false, Duration::from_secs(5))?;
-    let state = get_projects_state_at(data_path);   // 不存在 -> default
+    let state = get_projects_state_at(data_path).map(|mut state| {
+        canonicalize_state(&mut state);
+        state
+    });   // 不存在 -> default；返回前 canonicalize legacy 等价键
     let _ = lock_file.unlock();
     state
 }

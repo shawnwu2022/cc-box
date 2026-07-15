@@ -6,6 +6,7 @@ authors = ["orczh <orczh_hj@163.com>"]
 license = "MIT"
 repository = "https://github.com/orczh-hj/cc-box"
 edition = "2021"
+rust-version = "1.89" # std File::lock_*（feature file_locks，1.89 稳定）；windows 0.61 亦要求 ≥1.89
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -47,6 +48,7 @@ tempfile = "3"
 [target.'cfg(target_os = "windows")'.dependencies]
 webview2-com = "0.38"
 windows-core = "0.61"
+windows = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
 
 [profile.release]
 strip = true

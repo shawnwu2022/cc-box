@@ -124,7 +124,7 @@ describe('session store - 全局树', () => {
         { sessionId: 'sess-keep', name: 'Keep', projectPath: '/p-a', lastActiveAt: 1000 },
         { sessionId: 'sess-archived', name: 'Archived', projectPath: '/p-a', lastActiveAt: 2000 },
       ])
-      // archive 返回值覆盖本地（新行为：始终 invoke + applyFromAction）
+      // archive 返回值覆盖本地（新行为：始终 invoke + applyReturnedState，opLock 串行）
       ;(archiveSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         pinnedProjects: [], archivedSessions: { '/p-a': ['sess-archived'] }, displayNames: {},
       })
@@ -786,6 +786,57 @@ describe('session store - 全局树', () => {
       expect(mockGet).toHaveBeenCalledTimes(1)
       expect(store.isPinned('/p-a')).toBe(true)
       expect(store.isPinned('/p-b')).toBe(true)
+    })
+
+    // action 的后端响应晚于 reload 时，reload 必须等待 action 完整应用后再读取，不能被旧 action 响应回滚。
+    it('Reload_WaitsForActionRequestAndApply_001', async () => {
+      const { getProjectsState, pinProject } = await import('@/api/tauri')
+      const mockGet = getProjectsState as ReturnType<typeof vi.fn>
+      const mockPin = pinProject as ReturnType<typeof vi.fn>
+      const store = useSessionStore()
+      await store.loadProjectsState()
+      mockGet.mockClear()
+      mockPin.mockClear()
+
+      let resolvePin!: (value: { pinnedProjects: string[]; archivedSessions: Record<string, string[]>; displayNames: Record<string, string> }) => void
+      mockPin.mockReturnValueOnce(new Promise(resolve => { resolvePin = resolve }))
+      mockGet.mockResolvedValueOnce({
+        pinnedProjects: ['/p-a', '/p-external'], archivedSessions: {}, displayNames: {},
+      })
+
+      const action = store.pinProject('/p-a')
+      await vi.waitFor(() => expect(mockPin).toHaveBeenCalledTimes(1))
+      const reload = store.reloadProjectsState()
+      resolvePin({ pinnedProjects: ['/p-a'], archivedSessions: {}, displayNames: {} })
+      await Promise.all([action, reload])
+
+      expect(store.isPinned('/p-a')).toBe(true)
+      expect(store.isPinned('/p-external')).toBe(true)
+    })
+
+    // 两次 reload 必须串行完整请求；旧读取先应用后，较新的读取仍应应用，不能仅因本地 seq 变化被丢弃。
+    it('Reload_OverlappingRequestsApplyNewestRead_001', async () => {
+      const { getProjectsState } = await import('@/api/tauri')
+      const mockGet = getProjectsState as ReturnType<typeof vi.fn>
+      const store = useSessionStore()
+      await store.loadProjectsState()
+      mockGet.mockClear()
+
+      let resolveOld!: (value: { pinnedProjects: string[]; archivedSessions: Record<string, string[]>; displayNames: Record<string, string> }) => void
+      let resolveNew!: (value: { pinnedProjects: string[]; archivedSessions: Record<string, string[]>; displayNames: Record<string, string> }) => void
+      mockGet
+        .mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve }))
+        .mockReturnValueOnce(new Promise(resolve => { resolveNew = resolve }))
+
+      const first = store.reloadProjectsState()
+      const second = store.reloadProjectsState()
+      resolveOld({ pinnedProjects: ['/old'], archivedSessions: {}, displayNames: {} })
+      await vi.waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2))
+      resolveNew({ pinnedProjects: ['/new'], archivedSessions: {}, displayNames: {} })
+      await Promise.all([first, second])
+
+      expect(store.isPinned('/new')).toBe(true)
+      expect(store.isPinned('/old')).toBe(false)
     })
   })
 
