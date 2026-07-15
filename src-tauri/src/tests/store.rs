@@ -1713,3 +1713,99 @@ fn SetDisplayNameCommand_RejectsTooLong_001() {
     let state = read_projects_state_locked(&data, &lock).unwrap();
     assert!(state.display_names.is_empty(), "校验失败不应写入");
 }
+
+// ==================== 跨进程并发（re-exec self 子任务）====================
+// std File::try_lock 是进程级锁，单进程多线程不互斥，必须真多进程验证。
+// 子任务模式：CC_BOX_CONC_TEST=<mode> + CC_BOX_CONC_DIR=<dir> -> 执行单次操作后 exit(0)。
+// 主测试：spawn 多子进程并发，等待后断言磁盘。
+
+use std::env;
+use std::process::Command;
+
+fn conc_dirs() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("projects.json");
+    let lock = tmp.path().join("projects.json.lock");
+    (tmp, data, lock)
+}
+
+/// 子任务入口：若 CC_BOX_CONC_TEST 设置，按 mode 执行单次操作后 exit(0)；否则返回 false（主测试继续）。
+fn run_conc_child_if_set() -> bool {
+    let (Ok(mode), Ok(dir)) = (env::var("CC_BOX_CONC_TEST"), env::var("CC_BOX_CONC_DIR")) else {
+        return false;
+    };
+    let data = std::path::Path::new(&dir).join("projects.json");
+    let lock = std::path::Path::new(&dir).join("projects.json.lock");
+    match mode.as_str() {
+        "pin_a" => {
+            with_projects_state_locked(&data, &lock, |s| {
+                s.pinned_projects.push("e:/a".into()); Ok::<(), anyhow::Error>(())
+            }).unwrap();
+        }
+        "pin_b" => {
+            with_projects_state_locked(&data, &lock, |s| {
+                s.pinned_projects.push("e:/b".into()); Ok::<(), anyhow::Error>(())
+            }).unwrap();
+        }
+        "read" => {
+            // 持共享锁读，结果写入 marker 文件供主测试校验「未返空」
+            let s = read_projects_state_locked(&data, &lock).unwrap();
+            let marker = std::path::Path::new(&dir).join("read_result.txt");
+            std::fs::write(&marker, format!("pinned={}", s.pinned_projects.len())).unwrap();
+        }
+        _ => {}
+    }
+    std::process::exit(0);
+}
+
+// 两子进程并发 pin 不同项目 -> 磁盘含两者（无 stale-write 丢失）
+#[test]
+fn Concurrent_TwoChildrenBothPreserved_001() {
+    if run_conc_child_if_set() { return; }
+    let (_tmp, data, lock) = conc_dirs();
+    let dir = data.parent().unwrap();
+    let exe = env::current_exe().unwrap();
+    let mut ha = Command::new(&exe).env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    let mut hb = Command::new(&exe).env("CC_BOX_CONC_TEST", "pin_b").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    ha.wait().unwrap();
+    hb.wait().unwrap();
+    let state = read_projects_state_locked(&data, &lock).unwrap();
+    let mut got = state.pinned_projects.clone(); got.sort();
+    assert_eq!(got, vec!["e:/a".to_string(), "e:/b".to_string()], "两子进程操作都应保留");
+}
+
+// 首次（无数据文件）并发写不失败、不解析空文件
+#[test]
+fn Concurrent_FirstWriteNoFile_001() {
+    if run_conc_child_if_set() { return; }
+    let (_tmp, data, lock) = conc_dirs();
+    assert!(!data.exists());
+    let dir = data.parent().unwrap();
+    let exe = env::current_exe().unwrap();
+    let mut h = Command::new(&exe).env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    h.wait().unwrap();
+    let state = read_projects_state_locked(&data, &lock).unwrap();
+    assert_eq!(state.pinned_projects, vec!["e:/a".to_string()]);
+}
+
+// writer 持排他锁时 reader（共享锁）阻塞到写完，不返 default 空
+#[test]
+fn Concurrent_ReaderDuringWrite_NotEmpty_001() {
+    if run_conc_child_if_set() { return; }
+    let (_tmp, data, lock) = conc_dirs();
+    let dir = data.parent().unwrap();
+    let exe = env::current_exe().unwrap();
+    // 先写入基线 pin_a
+    let mut h0 = Command::new(&exe).env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    h0.wait().unwrap();
+    // 并发：再 pin_b（writer）+ read（reader）同时启动
+    let mut hb = Command::new(&exe).env("CC_BOX_CONC_TEST", "pin_b").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    let mut hr = Command::new(&exe).env("CC_BOX_CONC_TEST", "read").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    hb.wait().unwrap();
+    hr.wait().unwrap();
+    let marker = dir.join("read_result.txt");
+    let content = std::fs::read_to_string(&marker).unwrap();
+    // reader 持共享锁时必在某个 writer 之后，pinned 至少含 a（不返空 default）
+    assert!(content.contains("pinned=1") || content.contains("pinned=2"),
+        "reader 不应返 default 空，实际: {}", content);
+}
