@@ -5,11 +5,17 @@ import {
   getSessions,
   ptyKill,
   searchSessionMessages,
-  updateProjectsState,
+  pinProject as pinProjectApi,
+  unpinProject as unpinProjectApi,
+  archiveSession as archiveSessionApi,
+  restoreSession as restoreSessionApi,
+  setDisplayName as setDisplayNameApi,
 } from '@/api/tauri'
 import { normalizePath, sameProjectPath } from '@/utils/path'
 import { validateDisplayName, projectBasename, matchProjectQuery } from '@/utils/displayName'
+import { createProjectsStateSync } from '@/utils/projectsStateSync'
 import type { SessionSearchResult } from '@/types'
+import type { ProjectsState } from '@/types/app'
 
 // ==================== Tab-Centric 数据模型 ====================
 
@@ -723,6 +729,20 @@ export const useSessionStore = defineStore('session', () => {
 
   // ---- 项目置顶 + 会话存档（持久化到 ~/.cc-box/projects.json）----
 
+  // 多实例状态同步队列（spec §3.8）：action 无条件应用、reload 条件应用，防逆序覆盖
+  const sync = createProjectsStateSync()
+
+  /** 用后端返回的 ProjectsState 覆盖本地三份（返回值是锁内写完的最新 canonical 状态）。 */
+  function applyReturnedState(s: ProjectsState) {
+    pinnedProjects.value = s.pinnedProjects ?? []
+    archivedSessions.clear()
+    for (const [k, v] of Object.entries(s.archivedSessions ?? {})) archivedSessions.set(k, v)
+    displayNames.clear()
+    for (const [k, v] of Object.entries(s.displayNames ?? {})) {
+      if (typeof v === 'string') displayNames.set(k, v)
+    }
+  }
+
   /**
    * 启动加载：读取 pinnedProjects + archivedSessions（参考 loadAppConfig 范式）。
    * v3-1 后端 merge 为顶层替换，故写入时须发送完整 map。
@@ -738,41 +758,13 @@ export const useSessionStore = defineStore('session', () => {
       try {
         projectsStateError.value = false
         const state = await getProjectsState()
-        // pinned：规范化 key 去重 + 值规范化路径（v6 codex batch2 #11：跨斜杠/大小写等价条目归一）
-        const seenPin = new Set<string>()
-        const dedupPinned: string[] = []
-        for (const p of (state.pinnedProjects ?? [])) {
-          const n = normalizePath(p)
-          if (!seenPin.has(n)) { seenPin.add(n); dedupPinned.push(n) }
-        }
-        pinnedProjects.value = dedupPinned
-        // archivedSessions：按规范化路径合并（多 key 归一，sessionId 去重），canonical key
-        archivedSessions.clear()
-        const mergedArchived = new Map<string, string[]>()
-        for (const [k, v] of Object.entries(state.archivedSessions ?? {})) {
-          const n = normalizePath(k)
-          const existing = mergedArchived.get(n) ?? []
-          for (const sid of v) {
-            if (!existing.includes(sid)) existing.push(sid)
-          }
-          mergedArchived.set(n, existing)
-        }
-        for (const [n, arr] of mergedArchived) archivedSessions.set(n, arr)
-        // displayNames：清空旧 Map 再填，key 规范化（跨斜杠/大小写等价合并，后者覆盖），跳过非 string 值
-        displayNames.clear()
-        const rawNames = state.displayNames ?? {}
-        for (const [k, v] of Object.entries(rawNames)) {
-          if (typeof v === 'string') displayNames.set(normalizePath(k), v)
-        }
+        applyReturnedState(state)          // 后端 read_projects_state_locked 已 canonical
         projectsStateLoaded.value = true
       } catch (err) {
         console.error('[SessionStore] loadProjectsState failed:', err)
         projectsStateLoaded.value = false
         projectsStateError.value = true
-        // 重置 loadPromise：下次 ensureProjectsStateLoaded 可重新触发加载（P2 重试）。
         loadPromise = null
-        // rethrow（v5 P1：不吞；ensureProjectsStateLoaded await 的调用方据此抛错，
-        // App.vue 启动门禁感知失败 -- 后续 T7 在 App.vue 包 catch 处理）。
         throw err
       }
     })()
@@ -797,6 +789,22 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   /**
+   * 聚焦 reload：force 读取最新 projects.json 并经 sync 队列条件应用。
+   * emitSeq = 发起时 currentSeq()；期间若有 action 应用，本 reload 响应被丢弃（防逆序覆盖）。
+   * 静默失败（不打断聚焦，保持上次状态）。
+   */
+  async function reloadProjectsState(): Promise<void> {
+    if (!projectsStateLoaded.value) return
+    const emitSeq = sync.currentSeq()
+    try {
+      const s = await getProjectsState()
+      await sync.applyFromReload(s, applyReturnedState, emitSeq)
+    } catch (err) {
+      console.error('[SessionStore] reloadProjectsState failed:', err)
+    }
+  }
+
+  /**
    * 操作锁（P1.3）：串行化 pin/unpin/archive/restore，避免并发各自基于旧内存算 next、
    * 后 persist 覆盖前导致磁盘丢一项。ensureLoaded -> 算 next -> persist -> 改本地 全在锁内。
    */
@@ -814,85 +822,27 @@ export const useSessionStore = defineStore('session', () => {
     })()
   }
 
-  /**
-   * 发送完整 pinnedProjects + archivedSessions + displayNames（顶层替换语义，v3-1 merge 非深合并）。
-   * 可传入待持久化的新状态；缺省时读当前本地状态（兼容）。
-   * P1.3：调用方应传入新状态，persist 成功后再改本地，失败时不改本地（回滚）。
-   */
-  async function persistProjectsState(next?: {
-    pinnedProjects?: string[]
-    archivedSessions?: Map<string, string[]>
-    displayNames?: Map<string, string>
-  }) {
-    // 统一序列化 canonical key（v6 codex batch2 #11）：pinned 规范化值去重，archived key 规范化
-    const pinnedRaw = next?.pinnedProjects ?? [...pinnedProjects.value]
-    const seenPin = new Set<string>()
-    const pinned: string[] = []
-    for (const p of pinnedRaw) {
-      const n = normalizePath(p)
-      if (!seenPin.has(n)) { seenPin.add(n); pinned.push(n) }
-    }
-    const archived = next?.archivedSessions ?? archivedSessions
-    const archivedObj: Record<string, string[]> = {}
-    for (const [k, v] of archived.entries()) {
-      archivedObj[normalizePath(k)] = v
-    }
-    const names = next?.displayNames ?? displayNames
-    const namesObj: Record<string, string> = {}
-    for (const [k, v] of names.entries()) {
-      namesObj[k] = v
-    }
-    await updateProjectsState({
-      pinnedProjects: pinned,
-      archivedSessions: archivedObj,
-      displayNames: namesObj,
-    })
-  }
-
   /** 该项目是否已置顶（normalized 比较，兼容 Windows 路径大小写/斜杠差异） */
   function isPinned(path: string): boolean {
     const n = normalizePath(path)
     return pinnedProjects.value.some(p => normalizePath(p) === n)
   }
 
-  /**
-   * 置顶项目（已存在则幂等返回，不发持久化）。
-   * P1.2：开头 ensureProjectsStateLoaded 门禁（加载完才算 next，加载失败抛错不操作）。
-   * P1.3：整个 withLock 串行化（ensureLoaded -> 算 next -> persist -> 改本地 全在锁内）。
-   * P1.3：先 persist 新全量，成功后才改本地；失败抛错，本地不变。
-   */
+  /** 置顶项目（始终发后端；后端锁内据最新磁盘幂等。前端不做本地短路——本地不能证明磁盘状态）。 */
   async function pinProject(path: string) {
     return withLock(async () => {
       await ensureProjectsStateLoaded()
-      if (isPinned(path)) return
-      const next = [...pinnedProjects.value, path]
-      try {
-        await persistProjectsState({ pinnedProjects: next })
-        pinnedProjects.value = next
-      } catch (err) {
-        console.error('[SessionStore] pinProject persist failed:', err)
-        throw err
-      }
+      const s = await pinProjectApi(path)
+      await sync.applyFromAction(s, applyReturnedState)
     })
   }
 
-  /**
-   * 取消置顶（normalized 比较；未置顶则幂等返回）。
-   * P1.2/P1.3：同 pinProject（ensureLoaded 门禁 + withLock 串行化 + persist-first 回滚）。
-   */
+  /** 取消置顶（始终发后端，后端锁内 normalized 移除）。 */
   async function unpinProject(path: string) {
     return withLock(async () => {
       await ensureProjectsStateLoaded()
-      const n = normalizePath(path)
-      const next = pinnedProjects.value.filter(p => normalizePath(p) !== n)
-      if (next.length === pinnedProjects.value.length) return
-      try {
-        await persistProjectsState({ pinnedProjects: next })
-        pinnedProjects.value = next
-      } catch (err) {
-        console.error('[SessionStore] unpinProject persist failed:', err)
-        throw err
-      }
+      const s = await unpinProjectApi(path)
+      await sync.applyFromAction(s, applyReturnedState)
     })
   }
 
@@ -922,61 +872,21 @@ export const useSessionStore = defineStore('session', () => {
     })
   }
 
-  /**
-   * 存档会话（从历史列表隐藏；已存档则幂等返回）。
-   * P1.2/P1.3：ensureLoaded 门禁 + withLock 串行化 + persist-first 回滚。
-   */
+  /** 存档会话（始终发后端，后端锁内 sessionId 去重归并）。 */
   async function archiveSession(projectPath: string, sessionId: string) {
     return withLock(async () => {
       await ensureProjectsStateLoaded()
-      const n = normalizePath(projectPath)
-      // 复用已有键（normalized 匹配）避免重复条目
-      let key: string | null = null
-      for (const k of archivedSessions.keys()) {
-        if (normalizePath(k) === n) { key = k; break }
-      }
-      const useKey = key ?? projectPath
-      const arr = archivedSessions.get(useKey) ?? []
-      if (arr.includes(sessionId)) return
-      const nextArr = [...arr, sessionId]
-      const nextArchived = new Map(archivedSessions.entries())
-      nextArchived.set(useKey, nextArr)
-      try {
-        await persistProjectsState({ archivedSessions: nextArchived })
-        archivedSessions.set(useKey, nextArr)
-      } catch (err) {
-        console.error('[SessionStore] archiveSession persist failed:', err)
-        throw err
-      }
+      const s = await archiveSessionApi(projectPath, sessionId)
+      await sync.applyFromAction(s, applyReturnedState)
     })
   }
 
-  /**
-   * 恢复存档会话（重新出现在历史列表；未存档则幂等返回；空数组自动清理键）。
-   * P1.2/P1.3：ensureLoaded 门禁 + withLock 串行化 + persist-first 回滚。
-   */
+  /** 恢复会话（始终发后端，后端锁内移除 + 空数组清理 key）。 */
   async function restoreSession(projectPath: string, sessionId: string) {
     return withLock(async () => {
       await ensureProjectsStateLoaded()
-      const n = normalizePath(projectPath)
-      let key: string | null = null
-      for (const [k, val] of archivedSessions.entries()) {
-        if (normalizePath(k) === n && val.includes(sessionId)) { key = k; break }
-      }
-      if (key === null) return  // 未存档，幂等返回
-      const oldArr = archivedSessions.get(key)!
-      const nextArr = oldArr.filter(id => id !== sessionId)
-      const nextArchived = new Map(archivedSessions.entries())
-      if (nextArr.length === 0) nextArchived.delete(key)
-      else nextArchived.set(key, nextArr)
-      try {
-        await persistProjectsState({ archivedSessions: nextArchived })
-        if (nextArr.length === 0) archivedSessions.delete(key)
-        else archivedSessions.set(key, nextArr)
-      } catch (err) {
-        console.error('[SessionStore] restoreSession persist failed:', err)
-        throw err
-      }
+      const s = await restoreSessionApi(projectPath, sessionId)
+      await sync.applyFromAction(s, applyReturnedState)
     })
   }
 
@@ -990,34 +900,16 @@ export const useSessionStore = defineStore('session', () => {
     return alias ? alias : projectBasename(projectPath)
   }
 
-  /**
-   * 设置项目别名（复用 withLock，与 pin/archive 共享 opLock，串行化防并发丢更新）：
-   * - ensureProjectsStateLoaded 门禁（加载完才算 next）
-   * - validateDisplayName 校验（tooLong/控制字符 抛错，不 persist）
-   * - trim 后空 = 清除别名（恢复 basename）；非空 = set
-   * - 规范化身份：set 前删等价旧 key（避免 Map 累积 E:\Repo / e:/repo 双份）
-   * - persist-first：先持久化完整三份成功，再改本地；失败抛错，本地不变（回滚）
-   */
+  /** 设别名（前端 validateDisplayName 前置快速反馈 + 后端锁内校验兜底；空=清除）。 */
   async function setDisplayName(path: string, alias: string): Promise<void> {
+    const v = validateDisplayName(alias)
+    if (!v.ok) {
+      throw new Error(v.error === 'tooLong' ? 'alias too long' : 'alias invalid characters')
+    }
     return withLock(async () => {
       await ensureProjectsStateLoaded()
-      const v = validateDisplayName(alias)
-      if (!v.ok) {
-        throw new Error(v.error === 'tooLong' ? 'alias too long' : 'alias invalid characters')
-      }
-      const n = normalizePath(path)
-      const trimmed = alias.trim()
-      // 算 next：克隆当前 Map，删规范化等价旧 key，非空则 set
-      const next = new Map<string, string>()
-      for (const [k, val] of displayNames.entries()) {
-        if (normalizePath(k) !== n) next.set(k, val) // 删等价旧 key
-      }
-      if (trimmed) next.set(n, trimmed) // 空=清除（已删不 set）
-      // persist-first 发完整三份
-      await persistProjectsState({ displayNames: next })
-      // 成功才改本地
-      displayNames.clear()
-      for (const [k, val] of next) displayNames.set(k, val)
+      const s = await setDisplayNameApi(path, alias)
+      await sync.applyFromAction(s, applyReturnedState)
     })
   }
 
@@ -1090,6 +982,7 @@ export const useSessionStore = defineStore('session', () => {
 
     // 项目置顶 + 会话存档
     loadProjectsState,
+    reloadProjectsState,
     projectsStateLoaded,
     projectsStateError,
     ensureProjectsStateLoaded,

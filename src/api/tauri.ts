@@ -174,12 +174,31 @@ export const getAppConfig = (): Promise<AppConfig> =>
 export const updateAppConfig = (updates: Record<string, unknown>): Promise<void> =>
   invoke<void>('update_app_config', { updates });
 
-// 项目置顶 + 会话存档状态（~/.cc-box/projects.json，顶层替换语义，须发完整 map）
+// 项目置顶 + 会话存档 + 别名状态（~/.cc-box/projects.json）——增量操作 command（返回最新 ProjectsState）
+// session.ts import 时 alias 为 xxxApi 避免与 store action 同名。
 export const getProjectsState = (): Promise<ProjectsState> =>
   invoke<ProjectsState>('get_projects_state');
 
+// 保留至 T9：sessionTree.test.ts 直接 import 此符号做 mock 引用，删除会导致 vue-tsc 编译错误。
+// 后端 update_projects_state command 已在 T5 退役、前端唯一调用方 persistProjectsState 已在 T8 退役，
+// 当前为死代码（无运行时调用方），T9 迁移完测试后删除。
 export const updateProjectsState = (updates: Record<string, unknown>): Promise<void> =>
   invoke<void>('update_projects_state', { updates });
+
+export const pinProject = (path: string): Promise<ProjectsState> =>
+  invoke<ProjectsState>('pin_project', { path });
+
+export const unpinProject = (path: string): Promise<ProjectsState> =>
+  invoke<ProjectsState>('unpin_project', { path });
+
+export const archiveSession = (projectPath: string, sessionId: string): Promise<ProjectsState> =>
+  invoke<ProjectsState>('archive_session', { projectPath, sessionId });
+
+export const restoreSession = (projectPath: string, sessionId: string): Promise<ProjectsState> =>
+  invoke<ProjectsState>('restore_session', { projectPath, sessionId });
+
+export const setDisplayName = (path: string, alias: string): Promise<ProjectsState> =>
+  invoke<ProjectsState>('set_display_name', { path, alias });
 
 export const getDefaultClaudeOptions = (): Promise<DefaultClaudeOptions> =>
   invoke<DefaultClaudeOptions>('get_default_claude_options');
