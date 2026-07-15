@@ -25,14 +25,23 @@ describe('session store 路径身份（平台感知）', () => {
       ctrl: 'Ctrl', alt: 'Alt', cmd: 'Ctrl', getClaudePlatformKey: () => 'win32-x64',
     }))
     vi.doMock('@/api/tauri', () => ({
-      getProjectsState: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {} }),
-      updateProjectsState: vi.fn().mockResolvedValue(undefined),
+      getProjectsState: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      pinProject: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      unpinProject: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      archiveSession: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      restoreSession: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      setDisplayName: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
       getSessions: vi.fn().mockResolvedValue([]),
       ptyKill: vi.fn().mockResolvedValue(true),
       getSessionCount: vi.fn().mockResolvedValue(0),
       searchSessionMessages: vi.fn().mockResolvedValue([]),
     }))
     const { useSessionStore } = await import('@/stores/session')
+    const { setDisplayName } = await import('@/api/tauri')
+    // 后端 canonical 返单一规范化 key（Windows：lower + 斜杠规范）
+    ;(setDisplayName as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      pinnedProjects: [], archivedSessions: {}, displayNames: { 'e:/repo': '新' },
+    })
     const store = useSessionStore()
     store.displayNames.set('e:/repo', '旧')
     await store.setDisplayName('E:\\Repo', '新')
@@ -49,14 +58,26 @@ describe('session store 路径身份（平台感知）', () => {
       ctrl: 'Ctrl', alt: 'Alt', cmd: 'Ctrl', getClaudePlatformKey: () => 'linux-x64',
     }))
     vi.doMock('@/api/tauri', () => ({
-      getProjectsState: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {} }),
-      updateProjectsState: vi.fn().mockResolvedValue(undefined),
+      getProjectsState: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      pinProject: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      unpinProject: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      archiveSession: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      restoreSession: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      setDisplayName: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
       getSessions: vi.fn().mockResolvedValue([]),
       ptyKill: vi.fn().mockResolvedValue(true),
       getSessionCount: vi.fn().mockResolvedValue(0),
       searchSessionMessages: vi.fn().mockResolvedValue([]),
     }))
     const { useSessionStore } = await import('@/stores/session')
+    const { setDisplayName } = await import('@/api/tauri')
+    // Linux 不 lower -> 两次 set 后端各自保留，返回值含累积结果（applyReturnedState 顶层替换）
+    ;(setDisplayName as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      pinnedProjects: [], archivedSessions: {}, displayNames: { '/work/Foo': 'A' },
+    })
+    ;(setDisplayName as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      pinnedProjects: [], archivedSessions: {}, displayNames: { '/work/Foo': 'A', '/work/foo': 'B' },
+    })
     const store = useSessionStore()
     await store.setDisplayName('/work/Foo', 'A')
     await store.setDisplayName('/work/foo', 'B')
@@ -78,7 +99,11 @@ describe('session store 路径身份（平台感知）', () => {
         pinnedProjects: [], archivedSessions: {},
         displayNames: { '/work/Foo': 'A', '/work/foo': 'B' },
       }),
-      updateProjectsState: vi.fn().mockResolvedValue(undefined),
+      pinProject: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      unpinProject: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      archiveSession: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      restoreSession: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+      setDisplayName: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
       getSessions: vi.fn().mockResolvedValue([]),
       ptyKill: vi.fn().mockResolvedValue(true),
       getSessionCount: vi.fn().mockResolvedValue(0),

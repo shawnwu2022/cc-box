@@ -179,12 +179,6 @@ export const updateAppConfig = (updates: Record<string, unknown>): Promise<void>
 export const getProjectsState = (): Promise<ProjectsState> =>
   invoke<ProjectsState>('get_projects_state');
 
-// 保留至 T9：sessionTree.test.ts 直接 import 此符号做 mock 引用，删除会导致 vue-tsc 编译错误。
-// 后端 update_projects_state command 已在 T5 退役、前端唯一调用方 persistProjectsState 已在 T8 退役，
-// 当前为死代码（无运行时调用方），T9 迁移完测试后删除。
-export const updateProjectsState = (updates: Record<string, unknown>): Promise<void> =>
-  invoke<void>('update_projects_state', { updates });
-
 export const pinProject = (path: string): Promise<ProjectsState> =>
   invoke<ProjectsState>('pin_project', { path });
 

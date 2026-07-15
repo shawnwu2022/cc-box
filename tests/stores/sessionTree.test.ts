@@ -16,8 +16,14 @@ vi.mock('@/api/tauri', () => ({
   getSessionCount: vi.fn().mockResolvedValue(0),
   getSessions: vi.fn().mockResolvedValue([]),
   searchSessionMessages: vi.fn().mockResolvedValue([]),
-  getProjectsState: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {} }),
-  updateProjectsState: vi.fn().mockResolvedValue(undefined),
+  // T6+8：5 个增量 command 各返最新 ProjectsState；getProjectsState 启动加载。
+  // 默认返空状态，各测试用 mockResolvedValueOnce 覆盖为操作后状态（始终 invoke + 返回值覆盖本地）。
+  getProjectsState: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+  pinProject: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+  unpinProject: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+  archiveSession: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+  restoreSession: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
+  setDisplayName: vi.fn().mockResolvedValue({ pinnedProjects: [], archivedSessions: {}, displayNames: {} }),
 }))
 
 // 平台确定性（codex 重要#3）：强制 Windows，使大小写不敏感测试在任意宿主全绿
@@ -113,11 +119,15 @@ describe('session store - 全局树', () => {
 
     // 存档会话从历史列表过滤掉（v3 §5.1）
     it('HistoryFor_FilterArchived_001', async () => {
-      const { getSessions } = await import('@/api/tauri')
+      const { getSessions, archiveSession } = await import('@/api/tauri')
       ;(getSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
         { sessionId: 'sess-keep', name: 'Keep', projectPath: '/p-a', lastActiveAt: 1000 },
         { sessionId: 'sess-archived', name: 'Archived', projectPath: '/p-a', lastActiveAt: 2000 },
       ])
+      // archive 返回值覆盖本地（新行为：始终 invoke + applyFromAction）
+      ;(archiveSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: { '/p-a': ['sess-archived'] }, displayNames: {},
+      })
       const store = useSessionStore()
       await store.loadHistorySessions('/p-a')
       await store.archiveSession('/p-a', 'sess-archived')
@@ -180,6 +190,10 @@ describe('session store - 全局树', () => {
 
     // isPinned 由 buildProjectGroups 用 store.isPinned 填充（UI 置顶标记用；排序读 pinnedProjects）
     it('Group_IsPinnedPopulated_001', async () => {
+      const { pinProject } = await import('@/api/tauri')
+      ;(pinProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: ['/p-a'], archivedSessions: {}, displayNames: {},
+      })
       const store = useSessionStore()
       await store.pinProject('/p-a')
       const groups = store.buildProjectGroups(
@@ -375,112 +389,143 @@ describe('session store - 全局树', () => {
 
   // ==================== pin / archive（持久化） ====================
   describe('pin / archive（持久化）', () => {
-    // pin 项目后 isPinned 返回 true，并调用 updateProjectsState 发完整 pinnedProjects
+    // pin 项目：始终 invoke pinProject，返回值覆盖本地（不再发完整快照、不本地短路）
     it('Pin_MarkPinned_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockClear()
+      const { pinProject } = await import('@/api/tauri')
+      const mockPin = pinProject as ReturnType<typeof vi.fn>
+      mockPin.mockResolvedValueOnce({ pinnedProjects: ['/p-a'], archivedSessions: {}, displayNames: {} })
       const store = useSessionStore()
       await store.pinProject('/p-a')
-      expect(store.isPinned('/p-a')).toBe(true)
-      expect(mockUpdate).toHaveBeenCalledTimes(1)
-      const arg = mockUpdate.mock.calls[0][0] as { pinnedProjects: string[] }
-      expect(arg.pinnedProjects).toContain('/p-a')
+      expect(mockPin).toHaveBeenCalledWith('/p-a')      // 始终发（无本地短路）
+      expect(store.isPinned('/p-a')).toBe(true)         // 返回值覆盖本地
     })
 
-    // 重复 pin 同一项目幂等（不再调用 updateProjectsState）
+    // 重复 pin 同一项目仍 invoke（幂等由后端判定，前端不短路）
     it('Pin_Idempotent_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockClear()
+      const { pinProject } = await import('@/api/tauri')
+      const mockPin = pinProject as ReturnType<typeof vi.fn>
+      mockPin.mockClear()
       const store = useSessionStore()
       await store.pinProject('/p-a')
-      mockUpdate.mockClear()
       await store.pinProject('/p-a')
-      expect(mockUpdate).not.toHaveBeenCalled()
+      expect(mockPin).toHaveBeenCalledTimes(2)           // 始终发，不本地短路
     })
 
-    // unpin 移除置顶（normalized 比较）
+    // unpin 移除置顶：始终 invoke，返回值覆盖本地
     it('Unpin_Removes_001', async () => {
+      const { pinProject, unpinProject } = await import('@/api/tauri')
+      ;(pinProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: ['/p-a'], archivedSessions: {}, displayNames: {},
+      })
       const store = useSessionStore()
       await store.pinProject('/p-a')
       expect(store.isPinned('/p-a')).toBe(true)
-      await store.unpinProject('/p-a')
+      await store.unpinProject('/p-a')                    // 默认 mock 返空 pinned
+      expect(unpinProject as ReturnType<typeof vi.fn>).toHaveBeenCalledWith('/p-a')
       expect(store.isPinned('/p-a')).toBe(false)
     })
 
-    // unpin 不存在的项目幂等（不调用 updateProjectsState）
+    // unpin 不存在的项目仍 invoke（幂等由后端判定，前端不短路）
     it('Unpin_Idempotent_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockClear()
+      const { unpinProject } = await import('@/api/tauri')
+      const mockUnpin = unpinProject as ReturnType<typeof vi.fn>
+      mockUnpin.mockClear()
       const store = useSessionStore()
       await store.unpinProject('/not-pinned')
-      expect(mockUpdate).not.toHaveBeenCalled()
+      expect(mockUnpin).toHaveBeenCalledWith('/not-pinned')   // 始终发
+      expect(mockUnpin).toHaveBeenCalledTimes(1)
     })
 
-    // isPinned 使用 normalized 比较（Windows 路径大小写/斜杠不敏感）
+    // isPinned 使用 normalized 比较（后端 canonical 返回 + 前端 normalize 查询）
     it('Pinned_Normalized_001', async () => {
+      const { pinProject } = await import('@/api/tauri')
+      ;(pinProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: ['c:/users/proj'], archivedSessions: {}, displayNames: {},
+      })
       const store = useSessionStore()
       await store.pinProject('C:\\Users\\proj')
       expect(store.isPinned('c:/users/proj')).toBe(true)
     })
 
-    // archive 会话后 getArchivedSessions 包含该 sessionId
+    // archive 会话：始终 invoke，返回值覆盖本地
     it('Archive_Adds_001', async () => {
+      const { archiveSession } = await import('@/api/tauri')
+      ;(archiveSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: { '/p-a': ['sess-1'] }, displayNames: {},
+      })
       const store = useSessionStore()
       await store.archiveSession('/p-a', 'sess-1')
+      expect(archiveSession as ReturnType<typeof vi.fn>).toHaveBeenCalledWith('/p-a', 'sess-1')
       expect(store.getArchivedSessions('/p-a')).toContain('sess-1')
     })
 
-    // archive 同一会话幂等（不重复调用 updateProjectsState）
+    // archive 同一会话仍 invoke（幂等由后端判定，前端不短路）
     it('Archive_Idempotent_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      const { archiveSession } = await import('@/api/tauri')
+      const mockArchive = archiveSession as ReturnType<typeof vi.fn>
+      mockArchive.mockClear()
       const store = useSessionStore()
       await store.archiveSession('/p-a', 'sess-1')
-      mockUpdate.mockClear()
       await store.archiveSession('/p-a', 'sess-1')
-      expect(mockUpdate).not.toHaveBeenCalled()
+      expect(mockArchive).toHaveBeenCalledTimes(2)
     })
 
-    // restore 移除存档
+    // restore 移除存档：始终 invoke，返回值覆盖本地
     it('Restore_Removes_001', async () => {
+      const { archiveSession, restoreSession } = await import('@/api/tauri')
+      ;(archiveSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: { '/p-a': ['sess-1'] }, displayNames: {},
+      })
+      ;(restoreSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: {}, displayNames: {},
+      })
       const store = useSessionStore()
       await store.archiveSession('/p-a', 'sess-1')
       await store.restoreSession('/p-a', 'sess-1')
+      expect(restoreSession as ReturnType<typeof vi.fn>).toHaveBeenCalledWith('/p-a', 'sess-1')
       expect(store.getArchivedSessions('/p-a')).not.toContain('sess-1')
     })
 
-    // restore 未存档会话幂等
+    // restore 未存档会话仍 invoke（幂等由后端判定，前端不短路）
     it('Restore_Idempotent_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockClear()
+      const { restoreSession } = await import('@/api/tauri')
+      const mockRestore = restoreSession as ReturnType<typeof vi.fn>
+      mockRestore.mockClear()
       const store = useSessionStore()
       await store.restoreSession('/p-a', 'not-archived')
-      expect(mockUpdate).not.toHaveBeenCalled()
+      expect(mockRestore).toHaveBeenCalledWith('/p-a', 'not-archived')
+      expect(mockRestore).toHaveBeenCalledTimes(1)
     })
 
-    // archive 发送完整 archivedSessions map（顶层替换语义：多个项目并存）
+    // archive 多项目：后端串行归并，每次返回值覆盖本地 -> 多项目并存（顶层替换由后端 merge 完成）
     it('Archive_SendsFullMap_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockClear()
+      const { archiveSession } = await import('@/api/tauri')
+      const mockArchive = archiveSession as ReturnType<typeof vi.fn>
+      mockArchive.mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: { '/p-a': ['sess-a1'] }, displayNames: {},
+      })
+      mockArchive.mockResolvedValueOnce({
+        pinnedProjects: [],
+        archivedSessions: { '/p-a': ['sess-a1'], '/p-b': ['sess-b1'] },
+        displayNames: {},
+      })
       const store = useSessionStore()
       await store.archiveSession('/p-a', 'sess-a1')
       await store.archiveSession('/p-b', 'sess-b1')
-      // 最后一次写入应包含两个项目的存档（v3-1 顶层替换，须发完整）
-      const lastCall = mockUpdate.mock.calls[mockUpdate.mock.calls.length - 1][0] as {
-        archivedSessions: Record<string, string[]>
-      }
-      expect(Object.keys(lastCall.archivedSessions).sort()).toEqual(['/p-a', '/p-b'])
-      expect(lastCall.archivedSessions['/p-a']).toContain('sess-a1')
-      expect(lastCall.archivedSessions['/p-b']).toContain('sess-b1')
+      // 后端 merge 后最后一次返回值含两个项目（顶层替换语义由后端锁内完成）
+      expect(store.getArchivedSessions('/p-a')).toContain('sess-a1')
+      expect(store.getArchivedSessions('/p-b')).toContain('sess-b1')
     })
 
-    // restore 最后一个会话后空数组自动清理 key
+    // restore 最后一个会话后空 map -> 本地同步清空
     it('Restore_EmptyKeyCleaned_001', async () => {
+      const { archiveSession, restoreSession } = await import('@/api/tauri')
+      ;(archiveSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: { '/p-a': ['sess-1'] }, displayNames: {},
+      })
+      ;(restoreSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: {}, displayNames: {},
+      })
       const store = useSessionStore()
       await store.archiveSession('/p-a', 'sess-1')
       await store.restoreSession('/p-a', 'sess-1')
@@ -502,16 +547,28 @@ describe('session store - 全局树', () => {
 
     // archived lookup 使用 normalized 比较（跨重启路径漂移容忍）
     it('Archive_NormalizedLookup_001', async () => {
+      const { archiveSession } = await import('@/api/tauri')
+      ;(archiveSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: { 'c:/users/proj': ['sess-1'] }, displayNames: {},
+      })
       const store = useSessionStore()
       await store.archiveSession('C:\\Users\\proj', 'sess-1')
       expect(store.getArchivedSessions('c:/users/proj')).toContain('sess-1')
     })
 
-    // archive 复用已有键（normalized 匹配），避免重复条目
+    // archive 复用已有键（normalized 匹配）：后端归一归并，返回值含合并结果
     it('Archive_ReuseKey_001', async () => {
+      const { archiveSession } = await import('@/api/tauri')
+      const mockArchive = archiveSession as ReturnType<typeof vi.fn>
+      mockArchive.mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: { '/p-a': ['sess-1'] }, displayNames: {},
+      })
+      mockArchive.mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: { '/p-a': ['sess-1', 'sess-2'] }, displayNames: {},
+      })
       const store = useSessionStore()
       await store.archiveSession('/p-a', 'sess-1')
-      // 用不同大小写再 archive 同项目另一会话，应进同一键
+      // 用不同大小写再 archive 同项目另一会话，后端 normalized 归并进同一键
       await store.archiveSession('/P-A', 'sess-2')
       const archived = store.getArchivedSessions('/p-a')
       expect(archived).toContain('sess-1')
@@ -523,10 +580,13 @@ describe('session store - 全局树', () => {
   describe('getArchivedSessionInfos', () => {
     // historyCacheMap 命中：返回会话名与 lastActiveAt（区分存档会话）
     it('ArchivedInfos_HitReturnsName_001', async () => {
-      const { getSessions } = await import('@/api/tauri')
+      const { getSessions, archiveSession } = await import('@/api/tauri')
       ;(getSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
         { sessionId: 'sess-named', name: '修复登录bug', projectPath: '/p-a', lastActiveAt: 5000 },
       ])
+      ;(archiveSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: { '/p-a': ['sess-named'] }, displayNames: {},
+      })
       const store = useSessionStore()
       await store.loadHistorySessions('/p-a')
       await store.archiveSession('/p-a', 'sess-named')
@@ -539,6 +599,10 @@ describe('session store - 全局树', () => {
 
     // historyCacheMap 未加载：name 回退 ID 截断（前 8 位）、lastActiveAt 回退 0
     it('ArchivedInfos_MissFallbackId_001', async () => {
+      const { archiveSession } = await import('@/api/tauri')
+      ;(archiveSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: { '/p-a': ['abcdef1234567890'] }, displayNames: {},
+      })
       const store = useSessionStore()
       // 未 loadHistorySessions -> historyCacheMap 无该项目
       await store.archiveSession('/p-a', 'abcdef1234567890')
@@ -550,46 +614,48 @@ describe('session store - 全局树', () => {
     })
   })
 
-  // ==================== 持久化失败回滚（P1.3：先 persist 新状态再改本地，失败不改本地 + 抛错） ====================
+  // ==================== command 失败回滚（P1.3：始终 invoke 后端；reject 时本地未 apply） ====================
   describe('persist 失败回滚', () => {
-    // pin 持久化失败时本地 pinnedProjects 不变且抛错
+    // pin command reject -> 抛错 + 本地未 apply（返回值未到达）
     it('Pin_PersistFail_NoLocalChange_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockRejectedValueOnce(new Error('disk full'))
+      const { pinProject } = await import('@/api/tauri')
+      ;(pinProject as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('disk full'))
       const store = useSessionStore()
       await expect(store.pinProject('/p-a')).rejects.toThrow('disk full')
       expect(store.isPinned('/p-a')).toBe(false)
     })
 
-    // unpin 持久化失败时本地仍保持置顶
+    // unpin command reject -> 抛错 + 本地保持置顶（前一次 pin 返回值已 apply，unpin 返回值未到达）
     it('Unpin_PersistFail_KeepPinned_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      const { pinProject, unpinProject } = await import('@/api/tauri')
+      ;(pinProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: ['/p-a'], archivedSessions: {}, displayNames: {},
+      })
+      ;(unpinProject as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('io error'))
       const store = useSessionStore()
-      await store.pinProject('/p-a')  // 先成功置顶
-      mockUpdate.mockRejectedValueOnce(new Error('io error'))
+      await store.pinProject('/p-a')  // 先成功置顶（返回值已 apply）
       await expect(store.unpinProject('/p-a')).rejects.toThrow('io error')
       expect(store.isPinned('/p-a')).toBe(true)
     })
 
-    // archive 持久化失败时本地存档不变且抛错
+    // archive command reject -> 抛错 + 本地存档不变（未 apply）
     it('Archive_PersistFail_NoLocalChange_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockRejectedValueOnce(new Error('io error'))
+      const { archiveSession } = await import('@/api/tauri')
+      ;(archiveSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('io error'))
       const store = useSessionStore()
       await expect(store.archiveSession('/p-a', 'sess-1')).rejects.toThrow('io error')
       expect(store.getArchivedSessions('/p-a')).toEqual([])
     })
 
-    // restore 持久化失败时本地仍保持存档
+    // restore command reject -> 抛错 + 本地仍保持存档（前一次 archive 已 apply）
     it('Restore_PersistFail_KeepArchived_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
+      const { archiveSession, restoreSession } = await import('@/api/tauri')
+      ;(archiveSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: { '/p-a': ['sess-1'] }, displayNames: {},
+      })
+      ;(restoreSession as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('io error'))
       const store = useSessionStore()
       await store.archiveSession('/p-a', 'sess-1')  // 先成功存档
-      mockUpdate.mockRejectedValueOnce(new Error('io error'))
       await expect(store.restoreSession('/p-a', 'sess-1')).rejects.toThrow('io error')
       expect(store.getArchivedSessions('/p-a')).toContain('sess-1')
     })
@@ -599,11 +665,15 @@ describe('session store - 全局树', () => {
   describe('启动加载门禁 + 并发操作锁', () => {
     // 加载未完成时并发 pin：门禁使其等待加载完成，不得用空内存覆写磁盘已有置顶
     it('Pin_WaitsForLoad_NoOverwrite_001', async () => {
-      const { getProjectsState } = await import('@/api/tauri')
+      const { getProjectsState, pinProject } = await import('@/api/tauri')
       const mockGet = getProjectsState as ReturnType<typeof vi.fn>
       // 模拟加载延迟：getProjectsState 不立即返回，磁盘已有置顶 '/p-pre'
       let resolveGet!: (v: { pinnedProjects: string[]; archivedSessions: Record<string, string[]> }) => void
       mockGet.mockReturnValueOnce(new Promise(r => { resolveGet = r }))
+      // pin command 返回磁盘 '/p-pre' + 新 '/p-a'（后端锁内 merge）
+      ;(pinProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: ['/p-pre', '/p-a'], archivedSessions: {}, displayNames: {},
+      })
       const store = useSessionStore()
       // 启动 fire-and-forget 加载（未完成）
       store.loadProjectsState()
@@ -615,24 +685,24 @@ describe('session store - 全局树', () => {
       // 完成加载：磁盘 '/p-pre' 读入本地
       resolveGet({ pinnedProjects: ['/p-pre'], archivedSessions: {} })
       await pinP
-      // pin 在加载完成后执行：保留 '/p-pre' 并追加 '/p-a'（未用空内存覆写）
+      // pin 在加载完成后执行：返回值含 '/p-pre' + '/p-a'（未用空内存覆写磁盘旧置顶）
       expect(store.isPinned('/p-pre')).toBe(true)
       expect(store.isPinned('/p-a')).toBe(true)
       expect(store.projectsStateLoaded).toBe(true)
     })
 
-    // 加载失败后 pin 抛错不操作不持久化（门禁阻断，本地保持空）
+    // 加载失败后 pin 抛错不操作不发 command（门禁阻断，本地保持空）
     it('Pin_LoadFail_BlocksOp_001', async () => {
-      const { getProjectsState, updateProjectsState } = await import('@/api/tauri')
+      const { getProjectsState, pinProject } = await import('@/api/tauri')
       ;(getProjectsState as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('read fail'))
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockClear()
+      const mockPin = pinProject as ReturnType<typeof vi.fn>
+      mockPin.mockClear()
       const store = useSessionStore()
-      // 加载失败：ensureProjectsStateLoaded 抛错，pin 不操作不持久化
+      // 加载失败：ensureProjectsStateLoaded 抛错，pin command 未发
       await expect(store.pinProject('/p-a')).rejects.toThrow()
       expect(store.isPinned('/p-a')).toBe(false)
       expect(store.projectsStateLoaded).toBe(false)
-      expect(mockUpdate).not.toHaveBeenCalled()
+      expect(mockPin).not.toHaveBeenCalled()
     })
 
     // P2：加载失败后 loadPromise 重置为 null，第二次 ensureProjectsStateLoaded 触发重试（第二次成功）
@@ -659,33 +729,36 @@ describe('session store - 全局树', () => {
       expect(store.getArchivedSessions('/p-retry')).toContain('sess-arch')
     })
 
-    // 并发 pin + archive（pin 先入锁）：操作锁串行化，磁盘最终同时含两者（不丢更新）
+    // 并发 pin + archive（pin 先入锁）：操作锁串行化，返回值覆盖本地 -> 同时含两者
     it('Concurrent_PinArchive_NoLostUpdate_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockClear()
+      const { pinProject, archiveSession } = await import('@/api/tauri')
+      ;(pinProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: ['/p-a'], archivedSessions: {}, displayNames: {},
+      })
+      // archive 后发：后端锁内看到 pin 结果，返回值含 pinned + archived
+      ;(archiveSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: ['/p-a'], archivedSessions: { '/p-a': ['sess-1'] }, displayNames: {},
+      })
       const store = useSessionStore()
       await Promise.all([
         store.pinProject('/p-a'),
         store.archiveSession('/p-a', 'sess-1'),
       ])
-      // 本地最终同时含置顶与存档
+      // 本地最终同时含置顶与存档（最后一次 apply = archive 返回值，不丢任一项）
       expect(store.isPinned('/p-a')).toBe(true)
       expect(store.getArchivedSessions('/p-a')).toContain('sess-1')
-      // 最后一次 persist 须含两项（顶层替换语义下后操作基于前操作结果，不丢任一项）
-      const lastCall = mockUpdate.mock.calls[mockUpdate.mock.calls.length - 1][0] as {
-        pinnedProjects: string[]
-        archivedSessions: Record<string, string[]>
-      }
-      expect(lastCall.pinnedProjects).toContain('/p-a')
-      expect(lastCall.archivedSessions['/p-a']).toContain('sess-1')
     })
 
     // 并发 archive + pin（archive 先入锁）：反向顺序同样不丢更新
     it('Concurrent_ArchivePin_NoLostUpdate_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockClear()
+      const { archiveSession, pinProject } = await import('@/api/tauri')
+      ;(archiveSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: { '/p-a': ['sess-1'] }, displayNames: {},
+      })
+      // pin 后发：后端锁内看到 archive 结果，返回值含 archived + pinned
+      ;(pinProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: ['/p-a'], archivedSessions: { '/p-a': ['sess-1'] }, displayNames: {},
+      })
       const store = useSessionStore()
       await Promise.all([
         store.archiveSession('/p-a', 'sess-1'),
@@ -693,19 +766,17 @@ describe('session store - 全局树', () => {
       ])
       expect(store.isPinned('/p-a')).toBe(true)
       expect(store.getArchivedSessions('/p-a')).toContain('sess-1')
-      const lastCall = mockUpdate.mock.calls[mockUpdate.mock.calls.length - 1][0] as {
-        pinnedProjects: string[]
-        archivedSessions: Record<string, string[]>
-      }
-      expect(lastCall.pinnedProjects).toContain('/p-a')
-      expect(lastCall.archivedSessions['/p-a']).toContain('sess-1')
     })
 
     // ensureProjectsStateLoaded 复用同一 loadPromise：并发 pin 不重复发 getProjectsState
     it('EnsureLoaded_ReusesLoadPromise_001', async () => {
-      const { getProjectsState } = await import('@/api/tauri')
+      const { getProjectsState, pinProject } = await import('@/api/tauri')
       const mockGet = getProjectsState as ReturnType<typeof vi.fn>
       mockGet.mockClear()
+      const mockPin = pinProject as ReturnType<typeof vi.fn>
+      // 两次 pin 串行：第一次返 ['/p-a']，第二次返 ['/p-a','/p-b']（后端锁内累加）
+      mockPin.mockResolvedValueOnce({ pinnedProjects: ['/p-a'], archivedSessions: {}, displayNames: {} })
+      mockPin.mockResolvedValueOnce({ pinnedProjects: ['/p-a', '/p-b'], archivedSessions: {}, displayNames: {} })
       const store = useSessionStore()
       await Promise.all([
         store.pinProject('/p-a'),
@@ -743,27 +814,29 @@ describe('session store - 全局树', () => {
       expect(c.value).toBe('p-reactive')  // 删别名 -> 回退 basename
     })
 
-    // setDisplayName：成功持久化并写入本地 Map（含规范化 key）+ 发完整三份
+    // setDisplayName：始终 invoke setDisplayName，返回值覆盖本地（displayNames map）
     it('SetDisplayName_PersistAndLocal_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockClear()
+      const { setDisplayName } = await import('@/api/tauri')
+      const mock = setDisplayName as ReturnType<typeof vi.fn>
+      mock.mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: {}, displayNames: { '/p-a': '主项目' },
+      })
       const store = useSessionStore()
       await store.setDisplayName('/p-a', '主项目')
+      expect(mock).toHaveBeenCalledWith('/p-a', '主项目')
       expect(store.getDisplayName('/p-a')).toBe('主项目')
-      expect(mockUpdate).toHaveBeenCalledTimes(1)
-      const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
-      expect(payload.pinnedProjects).toEqual([])
-      expect(payload.archivedSessions).toEqual({})
-      expect(payload.displayNames).toEqual({ '/p-a': '主项目' })
     })
 
     // 并发 rename + pin 不丢：setDisplayName 与 pinProject 共享 withLock，串行化
-    // 最终磁盘（updateProjectsState 最后一次调用）含 alias + pinned
+    // 后端锁内两次操作归并，最后一次返回值（pin）含 alias + pinned
     it('SetDisplayName_ConcurrentWithPin_NoLoss_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockClear()
+      const { setDisplayName, pinProject } = await import('@/api/tauri')
+      ;(setDisplayName as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: {}, displayNames: { '/p-a': '别名A' },
+      })
+      ;(pinProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: ['/p-a'], archivedSessions: {}, displayNames: { '/p-a': '别名A' },
+      })
       const store = useSessionStore()
       await Promise.all([
         store.setDisplayName('/p-a', '别名A'),
@@ -771,25 +844,23 @@ describe('session store - 全局树', () => {
       ])
       expect(store.getDisplayName('/p-a')).toBe('别名A')
       expect(store.isPinned('/p-a')).toBe(true)
-      // 串行化保证：最后一次写入时本地已含另一项 -> 不丢
-      const payloads = mockUpdate.mock.calls.map(c => c[0] as Record<string, unknown>)
-      const last = payloads[payloads.length - 1]
-      expect(last.displayNames).toEqual({ '/p-a': '别名A' })
-      expect(last.pinnedProjects).toEqual(['/p-a'])
     })
 
-    // persist-first 失败回滚：updateProjectsState reject -> 本地 displayNames 不变 + 抛错
+    // setDisplayName command reject -> 抛错 + 本地未 apply（displayNames 不变）
     it('SetDisplayName_PersistFail_Rollback_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockRejectedValueOnce(new Error('disk full'))
+      const { setDisplayName } = await import('@/api/tauri')
+      ;(setDisplayName as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('alias too long'))
       const store = useSessionStore()
-      await expect(store.setDisplayName('/p-a', '别名')).rejects.toThrow('disk full')
-      expect(store.getDisplayName('/p-a')).toBe('p-a') // 本地未改
+      await expect(store.setDisplayName('/p-a', '别名')).rejects.toThrow('alias too long')
+      expect(store.getDisplayName('/p-a')).toBe('p-a') // 本地未 apply
     })
 
-    // 空/空白清除：setDisplayName('/p-a','') -> 删 key（恢复 basename）
+    // 空/空白清除：setDisplayName('/p-a','') -> invoke，返回 displayNames 不含该 key（本地清）
     it('SetDisplayName_EmptyClears_001', async () => {
+      const { setDisplayName } = await import('@/api/tauri')
+      ;(setDisplayName as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: {}, displayNames: {},
+      })
       const store = useSessionStore()
       store.displayNames.set('/p-a', '旧别名')
       await store.setDisplayName('/p-a', '')
@@ -797,15 +868,22 @@ describe('session store - 全局树', () => {
       expect(store.getDisplayName('/p-a')).toBe('p-a')
     })
     it('SetDisplayName_WhitespaceClears_001', async () => {
+      const { setDisplayName } = await import('@/api/tauri')
+      ;(setDisplayName as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: {}, displayNames: {},
+      })
       const store = useSessionStore()
       store.displayNames.set('/p-a', '旧别名')
       await store.setDisplayName('/p-a', '   ')
       expect([...store.displayNames.keys()]).not.toContain('/p-a')
     })
 
-    // 规范化等价 key（codex #8 断言值非只数量）：set 前删等价旧 key。
-    // Windows 平台下 E:\Repo 与 e:/repo 规范化等价 -> 旧 key 删，新规范化 key 写入，值=新
+    // 规范化等价 key（codex #8 断言值非只数量）：后端 canonical 返回单一 key，本地 apply 后值=新
     it('SetDisplayName_NormalizedEqKey_001', async () => {
+      const { setDisplayName } = await import('@/api/tauri')
+      ;(setDisplayName as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        pinnedProjects: [], archivedSessions: {}, displayNames: { 'e:/repo': '新' },
+      })
       const store = useSessionStore()
       store.displayNames.set('e:/repo', '旧')
       await store.setDisplayName('E:\\Repo', '新')
@@ -815,57 +893,59 @@ describe('session store - 全局树', () => {
       expect(store.getDisplayName('e:/repo')).toBe('新')
     })
 
-    // 校验失败不 persist：超长别名抛错且不调 updateProjectsState
+    // 校验失败不 invoke：超长别名前置校验抛错且不调 setDisplayName
     it('SetDisplayName_TooLong_NoPersist_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockClear()
+      const { setDisplayName } = await import('@/api/tauri')
+      const mock = setDisplayName as ReturnType<typeof vi.fn>
+      mock.mockClear()
       const store = useSessionStore()
       await expect(store.setDisplayName('/p-a', 'a'.repeat(33))).rejects.toThrow()
-      expect(mockUpdate).not.toHaveBeenCalled()
+      expect(mock).not.toHaveBeenCalled()               // 前端 validateDisplayName 前置
     })
 
-    // 校验失败（控制字符）不 persist
+    // 校验失败（控制字符）不 invoke
     it('SetDisplayName_ControlChar_NoPersist_001', async () => {
-      const { updateProjectsState } = await import('@/api/tauri')
-      const mockUpdate = updateProjectsState as ReturnType<typeof vi.fn>
-      mockUpdate.mockClear()
+      const { setDisplayName } = await import('@/api/tauri')
+      const mock = setDisplayName as ReturnType<typeof vi.fn>
+      mock.mockClear()
       const store = useSessionStore()
       await expect(store.setDisplayName('/p-a', 'a\nb')).rejects.toThrow()
-      expect(mockUpdate).not.toHaveBeenCalled()
+      expect(mock).not.toHaveBeenCalled()               // 前端 validateDisplayName 前置
     })
 
-    // load 规范化 key：getProjectsState 返回混合斜杠/大小写 key -> 规范化入 Map
+    // load：后端 read_projects_state_locked 已 canonical，前端 applyReturnedState 原样入 Map；
+    // 查询时 getDisplayName 对 query 做 normalizePath 命中规范 key
     it('LoadProjectsState_NormalizedKeys_001', async () => {
       const { getProjectsState } = await import('@/api/tauri')
       const mockGet = getProjectsState as ReturnType<typeof vi.fn>
       mockGet.mockResolvedValueOnce({
         pinnedProjects: [],
         archivedSessions: {},
-        displayNames: { 'E:\\Repo': '别名A', '/p-b': '别名B' },
+        displayNames: { 'e:/repo': '别名A', '/p-b': '别名B' },  // 后端已 canonical
       })
       const store = useSessionStore()
       await store.loadProjectsState()
-      // Windows 规范化后查询命中（E:\Repo -> e:/repo）
+      // 查询端 normalizePath 命中（E:\REPO -> e:/repo）
       expect(store.getDisplayName('e:/repo')).toBe('别名A')
       expect(store.getDisplayName('E:\\REPO')).toBe('别名A')
       expect(store.getDisplayName('/p-b')).toBe('别名B')
     })
 
-    // load 规范化冲突（codex #8 断言后者值）：同规范化 key 多条目 -> 清空旧 Map 再填，后者覆盖
+    // load 规范化冲突由后端解决：后端 dedup 后只返单一 canonical key，前端原样 apply（不再前端去重）
     it('LoadProjectsState_DuplicateNormalizedKey_001', async () => {
       const { getProjectsState } = await import('@/api/tauri')
       const mockGet = getProjectsState as ReturnType<typeof vi.fn>
       mockGet.mockResolvedValueOnce({
         pinnedProjects: [],
         archivedSessions: {},
-        displayNames: { 'E:\\Repo': 'A', 'e:/repo': 'B' }, // 规范化等价 -> 后者 B 覆盖
+        displayNames: { 'e:/repo': 'B' },   // 后端 dedup 后单一 canonical key
       })
       const store = useSessionStore()
       await store.loadProjectsState()
       const keys = [...store.displayNames.keys()]
       expect(keys.length).toBe(1)                          // 不累积等价 key
-      expect(store.getDisplayName('e:/repo')).toBe('B')    // 断言后者值 B（非只数量）
+      expect(store.getDisplayName('e:/repo')).toBe('B')
+      expect(store.getDisplayName('E:\\REPO')).toBe('B')   // 查询端 normalize 命中
     })
 
     // load 清空旧 Map：先 set 一条本地，load 后旧本地条目被清（以磁盘为准）
@@ -1181,35 +1261,32 @@ describe('session store - codex batch2 缓存/状态一致性', () => {
     expect(store.currentHistoryProject).toBe('e:/foo')
   })
 
-  // projects.json 加载：pinned 规范化去重（等价路径归一）
+  // projects.json 加载：后端 read_projects_state_locked 已 canonical（等价路径去重），前端原样 apply
   it('LoadProjectsState_PinnedNormalizeDedupe_001', async () => {
     const { getProjectsState } = await import('@/api/tauri')
     ;(getProjectsState as ReturnType<typeof vi.fn>).mockResolvedValue({
-      pinnedProjects: ['E:\\Foo', 'e:/foo', '/p-a'],
+      pinnedProjects: ['e:/foo', '/p-a'],   // 后端 canonical 已去重等价路径
+      archivedSessions: {}, displayNames: {},
     })
     const store = useSessionStore()
     await store.loadProjectsState()
-    // E:\Foo 与 e:/foo 归一为同一条（canonical e:/foo 出现一次）
     const pinned = [...store.pinnedProjects]
     expect(pinned.filter(p => p === 'e:/foo')).toHaveLength(1)
     expect(pinned).toHaveLength(2)  // e:/foo + /p-a
   })
 
-  // projects.json 加载：archivedSessions 按规范化路径合并（多 key 归一，sessionId 合并）
+  // projects.json 加载：后端 canonical 已按规范化路径归并 sessionId 去重，前端原样 apply；查询端 normalize 命中
   it('LoadProjectsState_ArchivedMergeByNormalized_001', async () => {
     const { getProjectsState } = await import('@/api/tauri')
     ;(getProjectsState as ReturnType<typeof vi.fn>).mockResolvedValue({
       pinnedProjects: [],
-      archivedSessions: {
-        'E:\\Foo': ['s1', 's2'],
-        'e:/foo': ['s2', 's3'],   // 与 E:\Foo 归一；s2 去重
-      },
+      archivedSessions: { 'e:/foo': ['s1', 's2', 's3'] },  // 后端 canonical 已归并去重
+      displayNames: {},
     })
     const store = useSessionStore()
     await store.loadProjectsState()
-    // 两个等价 key 合并为一个 canonical key
     expect([...store.archivedSessions.keys()].filter(k => k === 'e:/foo')).toHaveLength(1)
-    const ids = store.getArchivedSessions('E:\\Foo')
+    const ids = store.getArchivedSessions('E:\\Foo')   // 查询端 normalizePath 命中 e:/foo
     expect(ids.sort()).toEqual(['s1', 's2', 's3'])
   })
 })
