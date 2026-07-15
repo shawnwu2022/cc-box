@@ -1765,8 +1765,9 @@ fn Concurrent_TwoChildrenBothPreserved_001() {
     let (_tmp, data, lock) = conc_dirs();
     let dir = data.parent().unwrap();
     let exe = env::current_exe().unwrap();
-    let mut ha = Command::new(&exe).env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
-    let mut hb = Command::new(&exe).env("CC_BOX_CONC_TEST", "pin_b").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    // 子进程只跑本测试单名 -> 单线程 -> 操作仅应用一次，避免默认 harness 并行跑全部 test 引入竞态
+    let mut ha = Command::new(&exe).arg("Concurrent_TwoChildrenBothPreserved_001").env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    let mut hb = Command::new(&exe).arg("Concurrent_TwoChildrenBothPreserved_001").env("CC_BOX_CONC_TEST", "pin_b").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
     ha.wait().unwrap();
     hb.wait().unwrap();
     let state = read_projects_state_locked(&data, &lock).unwrap();
@@ -1782,7 +1783,7 @@ fn Concurrent_FirstWriteNoFile_001() {
     assert!(!data.exists());
     let dir = data.parent().unwrap();
     let exe = env::current_exe().unwrap();
-    let mut h = Command::new(&exe).env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    let mut h = Command::new(&exe).arg("Concurrent_FirstWriteNoFile_001").env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
     h.wait().unwrap();
     let state = read_projects_state_locked(&data, &lock).unwrap();
     assert_eq!(state.pinned_projects, vec!["e:/a".to_string()]);
@@ -1796,11 +1797,11 @@ fn Concurrent_ReaderDuringWrite_NotEmpty_001() {
     let dir = data.parent().unwrap();
     let exe = env::current_exe().unwrap();
     // 先写入基线 pin_a
-    let mut h0 = Command::new(&exe).env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    let mut h0 = Command::new(&exe).arg("Concurrent_ReaderDuringWrite_NotEmpty_001").env("CC_BOX_CONC_TEST", "pin_a").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
     h0.wait().unwrap();
     // 并发：再 pin_b（writer）+ read（reader）同时启动
-    let mut hb = Command::new(&exe).env("CC_BOX_CONC_TEST", "pin_b").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
-    let mut hr = Command::new(&exe).env("CC_BOX_CONC_TEST", "read").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    let mut hb = Command::new(&exe).arg("Concurrent_ReaderDuringWrite_NotEmpty_001").env("CC_BOX_CONC_TEST", "pin_b").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
+    let mut hr = Command::new(&exe).arg("Concurrent_ReaderDuringWrite_NotEmpty_001").env("CC_BOX_CONC_TEST", "read").env("CC_BOX_CONC_DIR", dir).spawn().unwrap();
     hb.wait().unwrap();
     hr.wait().unwrap();
     let marker = dir.join("read_result.txt");
