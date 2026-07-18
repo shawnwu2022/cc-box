@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, type ComputedRef } from 'vue'
 import {
   getProjectsState,
   getSessions,
@@ -17,6 +17,32 @@ import type { SessionSearchResult } from '@/types'
 import type { ProjectsState } from '@/types/app'
 
 // ==================== Tab-Centric 数据模型 ====================
+
+// 性能 #4：浅比较 helper（模块级 export 供单元测试），仅在变化时写 reactive，
+// 避免窗口聚焦 reload 等场景无条件 clear+rebuild 触发依赖（getDisplayName/buildProjectGroups）computed 重算。
+export function stringArrEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}
+export function stringArrMapEqual(m: Map<string, string[]>, o: Record<string, string[]>): boolean {
+  const keys = Object.keys(o)
+  if (m.size !== keys.length) return false
+  for (const k of keys) {
+    const mv = m.get(k)
+    const ov = o[k]
+    if (!mv || !ov || !stringArrEqual(mv, ov)) return false
+  }
+  return true
+}
+export function stringMapEqual(m: Map<string, string>, o: Record<string, string>): boolean {
+  const keys = Object.keys(o)
+  if (m.size !== keys.length) return false
+  for (const k of keys) {
+    if (m.get(k) !== o[k]) return false
+  }
+  return true
+}
 
 /**
  * 终端 Tab — 跨越 PTY 生命周期的稳定 UI 单元
@@ -150,19 +176,34 @@ export const useSessionStore = defineStore('session', () => {
    * 替代单值 historySessions 作为全局树的数据源（对抗审查 A）。
    * v3 §5.1：在去重基础上过滤 archivedSessions.get(projectPath) 的 sessionId。
    */
+  // 性能 #3：per projectPath computed 缓存。history 依赖 historyCacheMap/claimedSessionIds/archivedSessions，
+  // 不依赖 tab.working 等 -> tab 工作状态变化不触发 history 重算，computed memo 返回同引用，
+  // 避免模板 v-for 内反复调返回新数组导致 ProjectNode/SessionItem 无谓重渲染。
+  // 项目数有限，缓存不主动清理（残留 computed 内存可忽略；项目删除后不再被调用即静止）。
+  const historyComputedCache = new Map<string, ComputedRef<HistorySession[]>>()
   function getHistoryFor(projectPath: string): HistorySession[] {
-    const cached = historyCacheMap.get(normalizePath(projectPath)) ?? []
-    const claimed = claimedSessionIds.value
-    const archived = new Set(getArchivedSessions(projectPath))
-    const seen = new Set<string>()
-    return cached
-      .filter(s => {
-        if (claimed.has(s.sessionId) || seen.has(s.sessionId)) return false
-        if (archived.has(s.sessionId)) return false
-        seen.add(s.sessionId)
-        return true
+    const n = normalizePath(projectPath)
+    let c = historyComputedCache.get(n)
+    if (!c) {
+      c = computed<HistorySession[]>(() => {
+        const cached = historyCacheMap.get(n) ?? []
+        const claimed = claimedSessionIds.value
+        // 精确追踪单 key（性能 #3：避免 getArchivedSessions 遍历整体 entries 导致跨项目过度失效）。
+        // 后端 canonical 已保证 archivedSessions 的 key 为 normalized，get(n) 等价于合并匹配键查找。
+        const archived = new Set(archivedSessions.get(n) ?? [])
+        const seen = new Set<string>()
+        return cached
+          .filter(s => {
+            if (claimed.has(s.sessionId) || seen.has(s.sessionId)) return false
+            if (archived.has(s.sessionId)) return false
+            seen.add(s.sessionId)
+            return true
+          })
+          .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
       })
-      .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
+      historyComputedCache.set(n, c)
+    }
+    return c.value
   }
 
   // ---- Tab 生命周期 ----
@@ -606,6 +647,7 @@ export const useSessionStore = defineStore('session', () => {
     }
     tabs.clear()
     historyCacheMap.clear()
+    historyComputedCache.clear()
     historyLoadState.clear()
     inflight.clear()
     queuedForce.clear()
@@ -728,14 +770,24 @@ export const useSessionStore = defineStore('session', () => {
 
   // ---- 项目置顶 + 会话存档（持久化到 ~/.cc-box/projects.json）----
 
-  /** 用后端返回的 ProjectsState 覆盖本地三份（返回值是锁内写完的最新 canonical 状态）。 */
+  /** 用后端返回的 ProjectsState 覆盖本地三份（返回值是锁内写完的最新 canonical 状态）。
+   *  性能 #4：仅在变化时写，避免无条件 clear+rebuild 触发依赖（getDisplayName/buildProjectGroups）重算。 */
   function applyReturnedState(s: ProjectsState) {
-    pinnedProjects.value = s.pinnedProjects ?? []
-    archivedSessions.clear()
-    for (const [k, v] of Object.entries(s.archivedSessions ?? {})) archivedSessions.set(k, v)
-    displayNames.clear()
-    for (const [k, v] of Object.entries(s.displayNames ?? {})) {
-      if (typeof v === 'string') displayNames.set(k, v)
+    const nextPinned = s.pinnedProjects ?? []
+    const nextArchived = s.archivedSessions ?? {}
+    const nextDisplay = s.displayNames ?? {}
+    if (!stringArrEqual(pinnedProjects.value, nextPinned)) {
+      pinnedProjects.value = nextPinned
+    }
+    if (!stringArrMapEqual(archivedSessions, nextArchived)) {
+      archivedSessions.clear()
+      for (const [k, v] of Object.entries(nextArchived)) archivedSessions.set(k, v)
+    }
+    if (!stringMapEqual(displayNames, nextDisplay)) {
+      displayNames.clear()
+      for (const [k, v] of Object.entries(nextDisplay)) {
+        if (typeof v === 'string') displayNames.set(k, v)
+      }
     }
   }
 

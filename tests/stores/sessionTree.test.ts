@@ -135,6 +135,74 @@ describe('session store - 全局树', () => {
       expect(ids).toContain('sess-keep')
       expect(ids).not.toContain('sess-archived')
     })
+
+    // 性能 #3：getHistoryFor memo（per projectPath computed）-- 依赖不变返回同引用，
+    // 避免模板 v-for 内反复调返回新数组导致 ProjectNode/SessionItem 无谓重渲染。
+    it('HistoryFor_MemoSameRef_001', async () => {
+      const { getSessions } = await import('@/api/tauri')
+      ;(getSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { sessionId: 'a-1', name: 'A1', projectPath: '/p-a', lastActiveAt: 1000 },
+      ])
+      const store = useSessionStore()
+      await store.loadHistorySessions('/p-a')
+      const h1 = store.getHistoryFor('/p-a')
+      const h2 = store.getHistoryFor('/p-a')
+      expect(h1).toBe(h2) // 同引用（memo：依赖未变）
+    })
+
+    // 性能 #3：tab.working 翻转不触发 history 重算（memo 核心：依赖不含 working）
+    it('HistoryFor_MemoIgnoresTabWorking_001', async () => {
+      const { getSessions } = await import('@/api/tauri')
+      ;(getSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { sessionId: 'a-1', name: 'A1', projectPath: '/p-a', lastActiveAt: 1000 },
+      ])
+      const store = useSessionStore()
+      await store.loadHistorySessions('/p-a')
+      store.createTab('/p-a', { sessionId: 'run-1' })
+      const h1 = store.getHistoryFor('/p-a')
+      // tab.working 翻转（hook 驱动）-- 不应触发 history 重算
+      const tab = [...store.tabs.values()].find(t => t.sessionId === 'run-1')
+      if (tab) tab.working = true
+      expect(store.getHistoryFor('/p-a')).toBe(h1) // 同引用（working 不在依赖链）
+    })
+
+    // 性能 #3：依赖真变化（historyCacheMap 重载）-> 新引用（失效正确）
+    it('HistoryFor_MemoInvalidatesOnReload_001', async () => {
+      const { getSessions } = await import('@/api/tauri')
+      ;(getSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { sessionId: 'a-1', name: 'A1', projectPath: '/p-a', lastActiveAt: 1000 },
+      ])
+      const store = useSessionStore()
+      await store.loadHistorySessions('/p-a')
+      const h1 = store.getHistoryFor('/p-a')
+      ;(getSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { sessionId: 'a-1', name: 'A1', projectPath: '/p-a', lastActiveAt: 1000 },
+        { sessionId: 'a-2', name: 'A2', projectPath: '/p-a', lastActiveAt: 2000 },
+      ])
+      await store.loadHistorySessions('/p-a', true) // force 重载 -> historyCacheMap 变 -> computed 失效
+      const h2 = store.getHistoryFor('/p-a')
+      expect(h2).not.toBe(h1) // 依赖变，新引用
+      expect(h2.map(s => s.sessionId)).toEqual(['a-2', 'a-1'])
+    })
+
+    // 性能 #3：不同 projectPath 独立缓存（引用互异，互不影响）
+    it('HistoryFor_MemoPerProjectIndependent_001', async () => {
+      const { getSessions } = await import('@/api/tauri')
+      ;(getSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { sessionId: 'a-1', name: 'A1', projectPath: '/p-a', lastActiveAt: 1000 },
+      ])
+      ;(getSessions as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { sessionId: 'b-1', name: 'B1', projectPath: '/p-b', lastActiveAt: 2000 },
+      ])
+      const store = useSessionStore()
+      await store.loadHistorySessions('/p-a')
+      await store.loadHistorySessions('/p-b')
+      const ha = store.getHistoryFor('/p-a')
+      const hb = store.getHistoryFor('/p-b')
+      expect(ha).not.toBe(hb) // 不同项目不同引用
+      expect(ha.map(s => s.sessionId)).toEqual(['a-1'])
+      expect(hb.map(s => s.sessionId)).toEqual(['b-1'])
+    })
   })
 
   // ==================== buildProjectGroups（分组 + 孤儿） ====================
