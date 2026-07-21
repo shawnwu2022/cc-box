@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.15.0] - 2026-07-21
+
+### Features
+- Integrate focus queue states directly into the session list
+- Add per-session attention indicators and project-level status summaries
+
+### Changed
+- Remove the separate focus queue panel to streamline session navigation
+
 ## [0.14.0] - 2026-07-20
 
 ### Features
