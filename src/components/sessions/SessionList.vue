@@ -10,6 +10,7 @@
       :is-stopped="item.isStopped"
       :working="item.working"
       :pending="item.pending"
+      :attention-kind="item.attentionKind"
       :last-active-at="item.lastActiveAt"
       :can-resume="item.canResume"
       :closable="closable && item.isTab"
@@ -29,6 +30,10 @@
 import { computed } from 'vue'
 import SessionItem from './SessionItem.vue'
 import type { TerminalTab, HistorySession } from '@/stores/session'
+import { useAttentionStore } from '@/stores/attention'
+import type { AttentionKind } from '@/composables/useAttentionQueue'
+
+const attentionStore = useAttentionStore()
 
 const props = defineProps<{
   tabs?: TerminalTab[]
@@ -58,6 +63,7 @@ interface ListItem {
   snippet?: string
   working?: boolean
   pending?: boolean
+  attentionKind?: AttentionKind
   showTime?: boolean
 }
 
@@ -74,6 +80,7 @@ const items = computed<ListItem[]>(() => {
     canResume: tab.status === 'stopped' ? !!tab.sessionId : undefined,
     working: tab.status === 'running' ? tab.working : undefined,
     pending: tab.status === 'running' ? tab.pending : undefined,
+    attentionKind: tab.ptyId ? attentionStore.getItem(tab.ptyId)?.kind : undefined,
     showTime: false,
   }))
 

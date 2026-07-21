@@ -38,9 +38,11 @@
             <path d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a5.927 5.927 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182c-.195.195-1.219.902-1.414.707-.195-.195.512-1.22.707-1.414l3.182-3.182-2.828-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a5.922 5.922 0 0 1 1.013.16l3.134-3.133a2.772 2.772 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146z"/>
           </svg>
         </span>
-        <!-- 状态徽标：●N 运行 / 琥珀点 pending -->
-        <span v-if="project.runningCount > 0" class="badge running">●{{ project.runningCount }}</span>
-        <span v-else-if="project.pendingCount > 0" class="badge pending" :title="t('pendingHint')">●</span>
+        <!-- 状态徽标：按最高 severity 取（!error / ?permission / ✓completed / ●running） -->
+        <span v-if="attentionSummary.error > 0" class="badge error" :title="t('attentionKind_error')">!{{ attentionSummary.error }}</span>
+        <span v-else-if="attentionSummary.permission > 0" class="badge permission" :title="t('attentionKind_permission')">?{{ attentionSummary.permission }}</span>
+        <span v-else-if="attentionSummary.completed > 0" class="badge completed" :title="t('attentionKind_completed')">✓{{ attentionSummary.completed }}</span>
+        <span v-else-if="project.runningCount > 0" class="badge running">●{{ project.runningCount }}</span>
         <span v-if="project.isOrphan" class="orphan-tag">{{ t('uncollected') }}</span>
       </div>
 
@@ -121,11 +123,14 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import SessionList from './SessionList.vue'
 import { useSessionStore } from '@/stores/session'
+import { useAttentionStore } from '@/stores/attention'
+import { summarizeAttention } from '@/utils/attentionSummary'
 import { editReducer, validateDisplayName, type EditState } from '@/utils/displayName'
 import type { ProjectGroup, HistorySession } from '@/stores/session'
 
 const { t } = useI18n()
 const sessionStore = useSessionStore()
+const attentionStore = useAttentionStore()
 const props = defineProps<{
   project: ProjectGroup
   expanded: boolean
@@ -172,6 +177,13 @@ let renameRequestId = 0
 // 该项目的已存档会话信息列表（响应式：restore 后 store 更新则自动收缩）
 // name/lastActiveAt 从 historyCacheMap 查；未加载则 name 回退 ID 截断
 const archivedList = computed(() => sessionStore.getArchivedSessionInfos(props.project.projectPath))
+
+// 项目内 attention 聚合（error/permission/completed 计数），供徽标按最高 severity 渲染
+const attentionSummary = computed(() =>
+  summarizeAttention(
+    props.project.tabs.map((t) => (t.ptyId ? attentionStore.getItem(t.ptyId)?.kind : undefined))
+  )
+)
 
 // 点击外部关闭菜单与已存档弹层：⋯ 按钮 / 菜单 / 弹层内部已 @click.stop，不会触发此处
 function closeOnOutside() {
@@ -348,7 +360,9 @@ function onSessionSwitch(id: string) {
 }
 .badge { font-size: 11px; flex-shrink: 0; }
 .badge.running { color: var(--status-success); }
-.badge.pending { color: var(--accent-gold); animation: status-pulse 2s ease-in-out infinite; }
+.badge.error { color: var(--status-error); }
+.badge.permission { color: var(--accent-gold); animation: status-pulse 2s ease-in-out infinite; }
+.badge.completed { color: var(--status-success); }
 .orphan-tag {
   font-size: 10px; color: var(--text-tertiary);
   border: 1px solid var(--border-color); border-radius: 3px; padding: 0 4px;

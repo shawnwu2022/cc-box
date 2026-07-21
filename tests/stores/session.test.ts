@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useSessionStore } from '@/stores/session'
+import { useAttentionStore } from '@/stores/attention'
 
 // crypto.randomUUID polyfill for jsdom：若环境无 webcrypto.randomUUID（旧 jsdom），
 // 用 Math.random 生成符合 UUID v4 格式的 id（测试用，非密码学安全，不依赖 node crypto 类型）
@@ -357,6 +358,41 @@ describe('session store', () => {
       const tab = store.tabs.get(tabId)!
       expect(tab.isResume).toBe(true)
       expect(tab.name).toBe('My Session')
+    })
+  })
+
+  // ==================== setActiveTab ack ====================
+  describe('setActiveTab ack', () => {
+    // setActiveTab 调 ackPty 清非 error（切到 = 已关注，completed 清除）
+    it('SetActiveTab_AckCompleted_001', () => {
+      const sessionStore = useSessionStore()
+      const attentionStore = useAttentionStore()
+      const tabId = sessionStore.createTab('/p')
+      sessionStore.setTabPty(tabId, 'pty-x')
+      attentionStore.ingestEvent({
+        ptyId: 'pty-x', sessionId: 's', eventName: 'Notification', state: 'idle', timestamp: 1,
+        detail: { type: 'notification', data: { notificationType: 'idle_prompt' } },
+      } as any)
+      expect(attentionStore.getItem('pty-x')?.kind).toBe('completed')
+
+      sessionStore.setActiveTab(tabId)
+      expect(attentionStore.getItem('pty-x')).toBeUndefined() // completed 被清
+    })
+
+    // setActiveTab 不清 error（error 粘性，需新回合/clearPty）
+    it('SetActiveTab_KeepError_001', () => {
+      const sessionStore = useSessionStore()
+      const attentionStore = useAttentionStore()
+      const tabId = sessionStore.createTab('/p')
+      sessionStore.setTabPty(tabId, 'pty-x')
+      attentionStore.ingestEvent({
+        ptyId: 'pty-x', sessionId: 's', eventName: 'StopFailure', state: 'error', timestamp: 1,
+        detail: { type: 'stopFailure', data: { error: 'x' } },
+      } as any)
+      expect(attentionStore.getItem('pty-x')?.kind).toBe('error')
+
+      sessionStore.setActiveTab(tabId)
+      expect(attentionStore.getItem('pty-x')?.kind).toBe('error') // error 保留
     })
   })
 })

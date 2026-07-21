@@ -184,16 +184,19 @@ any ──[StopFailure]──→ error
 | `running`（idle） | 墨绿 | `--status-success` | 无动画 | 空闲运行态 |
 | `stopped`（激活） | 浅灰 | `--text-tertiary` | 无 | 已停止 |
 | `stopped`（非激活） | 空心灰 | `--border-color` | 无 | 已关闭 |
+| `error`（stopFailure） | 赭红 | `--status-error` | 无 | CLI 异常停止，即使 active 也显示（粘性:看了不清，只靠新回合/clearPty 清） |
+| `permission`（等权限，非激活） | 琥珀金 | `--accent-gold` | 温和脉冲 | 等待用户授权 |
+| `completed`（idle_prompt，非激活） | 墨绿圈 | `--status-success` | 无 | 回合完成待确认，区别于 running 绿静止 |
 
 ### 首页 Recent Sessions 状态展示
 
 `ProjectSelectView.vue` 的 Recent Sessions 列表同样展示 working/pending 状态：
 
 - 从 `sessionStore.tabs` 读取运行中 session 的 `working`/`pending` 字段
-- 通过 `sessionDotClass()` 返回 `working`/`pending`/`running`
-- 样式与 SessionItem 一致（绿色脉冲、金色脉冲、绿色静止）
+- 按 `working`/`pending` 返回对应状态点样式（绿脉冲 / 金脉冲 / 绿静止）
+- 样式与 SessionItem 一致
 
-**IconBar session 角标**：仅显示当前项目内非激活 tab 的 pending 数量，通过 `sessionStore.getProjectTabs(cwd)` 过滤。
+**IconBar Sessions 角标**：跨项目全局 attention 提示 -- 有 error 亮红 / 有 permission（无 error）亮金 / completed 不亮；sessions 面板可见时隐藏（用户在看全局树徽标）。点 Sessions 打开面板靠 ProjectNode 徽标（`!N`/`?N`/`✓N`/`●N`）定位。
 
 ### 新增/修改事件的步骤
 
@@ -313,4 +316,4 @@ watch([isFocused, isTerminalVisible, activeTabId])
 | `src/composables/useWindowAttention.ts` | 窗口聚焦状态 + 取消任务栏跳动 |
 | `src/components/sessions/SessionItem.vue` | Tab 状态指示灯 UI |
 | `src/components/ProjectSelectView.vue` | 首页 Recent Sessions 状态展示 |
-| `src/components/IconBar.vue` | Session 角标（按项目过滤 pending） |
+| `src/components/IconBar.vue` | Sessions 角标（全局 attention queue:error/permission 提示） |

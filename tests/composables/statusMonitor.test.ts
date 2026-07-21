@@ -54,6 +54,12 @@ vi.mock('@tauri-apps/api/window', () => ({
   UserAttentionType: { Critical: 'Critical' },
 }))
 
+const mockAckPty = vi.fn()
+
+vi.mock('@/stores/attention', () => ({
+  useAttentionStore: () => ({ ackPty: mockAckPty }),
+}))
+
 import { useSessionStore } from '@/stores/session'
 import { useHookStore } from '@/stores/hook'
 import type { HookEventPayload, HookEventDetail } from '@/types/hook'
@@ -142,6 +148,7 @@ describe('useStatusMonitor', () => {
     capturedDispatch = null
     mountedCbs = []
     unmountedCbs = []
+    mockAckPty.mockClear()
   })
 
   // ==================== 基本状态转换 ====================
@@ -644,6 +651,48 @@ describe('useStatusMonitor', () => {
       const tab = store.getTabByPtyId('pty1')!
       expect(tab.working).toBe(false)
       expect(tab.pending).toBe(false)
+    })
+  })
+
+  // ==================== ack attention（新回合 / 正在看） ====================
+  describe('ack attention（新回合 / 正在看）', () => {
+    // userPromptSubmit（新回合）调 ackPty clearError=true（清所有含 error）
+    it('StatusMonitor_UserPromptSubmit_AckClearError_001', () => {
+      createRunningTab('pty1')
+      mountMonitor()
+      mockAckPty.mockClear()
+
+      emit(makePayload('userPromptSubmit', 'pty1'))
+
+      expect(mockAckPty).toHaveBeenCalledWith('pty1', { clearError: true })
+    })
+
+    // 回合内 activity 恢复 working 调 ackPty clearError=true
+    it('StatusMonitor_ActivityAckClearError_001', () => {
+      createRunningTab('pty1')
+      mountMonitor()
+      emit(makePayload('userPromptSubmit', 'pty1'))
+      mockAckPty.mockClear()
+
+      emit(makePayload('preToolUse', 'pty1'))
+
+      expect(mockAckPty).toHaveBeenCalledWith('pty1', { clearError: true })
+    })
+
+    // idle_prompt 正在看 -> ackPty 默认（清非 error，error 保留）
+    it('StatusMonitor_IdlePromptWatching_AckDefault_001', () => {
+      createRunningTab('pty1')
+      const { isFocused, isTerminalVisible } = mountMonitor()
+      const store = useSessionStore()
+      isFocused.value = true
+      isTerminalVisible.value = true
+      store.activeTabId = store.getTabByPtyId('pty1')!.tabId
+      mockAckPty.mockClear()
+
+      emit(makePayload('userPromptSubmit', 'pty1'))
+      emit(makeNotificationPayload('idle_prompt', 'pty1'))
+
+      expect(mockAckPty).toHaveBeenCalledWith('pty1')
     })
   })
 })

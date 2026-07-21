@@ -258,7 +258,6 @@ export default {
 
   // IconBar
   titleSessions: '会话',
-  titleAttention: '关注',
   titleSkills: 'Skills',
   titleAgents: 'Agents',
   titleMcp: 'MCP Servers',
@@ -268,8 +267,6 @@ export default {
 
   // Sessions panel
   sessions: '会话',
-  attention: '关注',
-  attentionEmpty: '暂无待关注',
   attentionKind_error: '出错',
   attentionKind_permission: '等权限',
   attentionKind_completed: '完成',

@@ -35,6 +35,11 @@ export const useAttentionStore = defineStore('attention', () => {
   // 有序焦点队列：buildAttentionQueue 去重（防御）+ 严重度排序
   const queue = computed(() => buildAttentionQueue([...items.value.values()]))
 
+  /** 单点查询：某 ptyId 当前的未确认 AttentionItem（供 SessionList/ProjectNode reactive 消费） */
+  function getItem(ptyId: string): AttentionItem | undefined {
+    return items.value.get(ptyId)
+  }
+
   let initialized = false
   let unsubscribe: (() => void) | null = null
 
@@ -57,8 +62,13 @@ export const useAttentionStore = defineStore('attention', () => {
     }
   }
 
-  /** 用户确认某会话的关注（打开会话 + 窗口聚焦时调）-- 移出队列（PTY 仍活着，不加 tombstone） */
-  function ackPty(ptyId: string) {
+  /** 用户确认某会话的关注（打开会话 + 窗口聚焦时调）。
+   *  error 粘性:默认保留 error item（CLI 异常需持续提示，看了不清），
+   *  只在 clearError:true（新回合）或 clearPty（会话结束）时清 -- codex 审查 P0 修正。 */
+  function ackPty(ptyId: string, opts?: { clearError?: boolean }) {
+    const existing = items.value.get(ptyId)
+    if (!existing) return
+    if (existing.kind === 'error' && !opts?.clearError) return
     items.value.delete(ptyId)
   }
 
@@ -83,5 +93,5 @@ export const useAttentionStore = defineStore('attention', () => {
     initialized = false
   }
 
-  return { queue, ingestEvent, ackPty, clearPty, init, dispose }
+  return { queue, getItem, ingestEvent, ackPty, clearPty, init, dispose }
 })

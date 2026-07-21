@@ -25,13 +25,6 @@
         @show-archived="$emit('showArchived', $event)"
       />
 
-      <!-- Attention 焦点队列面板 -->
-      <AttentionPanel
-        v-show="activePanel === 'attention'"
-        @close="$emit('close')"
-        @switch-session="(id) => $emit('switchSession', id)"
-      />
-
       <!-- Skills 面板 -->
       <SkillsPanel
         v-show="activePanel === 'skills'"
@@ -62,7 +55,6 @@
 <script setup lang="ts">
 import type { SidebarPanelType } from '@/stores/sidebar'
 import SessionsPanel from '../sessions/SessionsPanel.vue'
-import AttentionPanel from '../attention/AttentionPanel.vue'
 import SkillsPanel from '../skills/SkillsPanel.vue'
 import AgentsPanel from '../agents/AgentsPanel.vue'
 import McpPanel from '../mcp/McpPanel.vue'

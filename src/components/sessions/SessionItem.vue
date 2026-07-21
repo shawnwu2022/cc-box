@@ -84,6 +84,8 @@
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { computeDotClass } from '@/utils/sessionDot'
+import type { AttentionKind } from '@/composables/useAttentionQueue'
 
 const { t } = useI18n()
 
@@ -96,6 +98,7 @@ const props = defineProps<{
   canResume?: boolean
   working?: boolean
   pending?: boolean
+  attentionKind?: AttentionKind
   lastActiveAt: number
   closable?: boolean
   archivable?: boolean
@@ -103,14 +106,14 @@ const props = defineProps<{
   showTime?: boolean
 }>()
 
-const dotClass = computed(() => {
-  if (props.isStopped && !props.isActive) return 'closed'
-  if (props.isStopped) return 'stopped'
-  if (props.working) return 'working'
-  if (props.pending && !props.isActive) return 'pending'
-  if (props.isRunning) return 'running'
-  return ''
-})
+const dotClass = computed(() => computeDotClass({
+  isStopped: props.isStopped,
+  isActive: props.isActive,
+  working: props.working,
+  pending: props.pending,
+  isRunning: props.isRunning,
+  attentionKind: props.attentionKind,
+}))
 
 const emit = defineEmits<{
   switch: [id: string]
@@ -226,7 +229,7 @@ function cancelRename() {
 }
 
 /* 默认（无状态数据） */
-.status-dot:not(.working):not(.pending):not(.running):not(.stopped):not(.closed) {
+.status-dot:not(.working):not(.pending):not(.running):not(.stopped):not(.closed):not(.error):not(.permission):not(.completed) {
   background: var(--text-tertiary);
 }
 
@@ -258,6 +261,27 @@ function cancelRename() {
   width: 6px;
   height: 6px;
   border: 1.5px solid var(--border-color);
+  background: transparent;
+  animation: none;
+}
+
+/* 出错（stopFailure -- CLI 异常停止，即使 active 也显示红） */
+.status-dot.error {
+  background: var(--status-error);
+  animation: none;
+}
+
+/* 等权限（permission_prompt / worker -- 金脉冲，复用 pending 动画） */
+.status-dot.permission {
+  background: var(--accent-gold);
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+/* 完成（idle_prompt -- 绿圈，区别于 running 绿静止） */
+.status-dot.completed {
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid var(--status-success);
   background: transparent;
   animation: none;
 }

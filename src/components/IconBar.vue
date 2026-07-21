@@ -10,18 +10,7 @@
         :title="t('titleSessions')"
       >
         <img src="@/assets/icons/sessions.svg" alt="Sessions" />
-        <span v-if="showPendingBadge" class="icon-badge pending-badge"></span>
-      </button>
-
-      <!-- Attention（跨项目焦点队列） -->
-      <button
-        class="icon-btn"
-        :class="{ active: activePanel === 'attention' }"
-        @click="$emit('toggle', 'attention')"
-        :title="t('titleAttention')"
-      >
-        <img src="@/assets/icons/attention.svg" alt="Attention" />
-        <span v-if="attentionBadge" class="icon-badge attention-badge"></span>
+        <span v-if="sessionsBadge" class="icon-badge" :class="`sessions-${sessionsBadge}`"></span>
       </button>
 
       <!-- Skills -->
@@ -96,8 +85,6 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SidebarPanelType } from '@/stores/sidebar'
 import { useSidebarStore } from '@/stores/sidebar'
-import { useSessionStore } from '@/stores/session'
-import { useAppStore } from '@/stores/app'
 import { useAttentionStore } from '@/stores/attention'
 import { ctrl } from '@/utils/platform'
 
@@ -114,25 +101,16 @@ defineEmits<{
 }>()
 
 const sidebarStore = useSidebarStore()
-const sessionStore = useSessionStore()
-const appStore = useAppStore()
 const attentionStore = useAttentionStore()
 
-const showPendingBadge = computed(() => {
-  if (sidebarStore.activePanel === 'sessions' && sidebarStore.panelVisible) return false
-  const cwd = appStore.cwd
-  if (!cwd) return false
-  for (const tab of sessionStore.getProjectTabs(cwd)) {
-    if (tab.tabId === sessionStore.activeTabId) continue
-    if (tab.pending) return true
-  }
-  return false
-})
-
-// 跨项目焦点角标：有未确认关注项就亮（attention 面板可见时不亮——用户在看）
-const attentionBadge = computed(() => {
-  if (sidebarStore.activePanel === 'attention' && sidebarStore.panelVisible) return false
-  return attentionStore.queue.length > 0
+// Sessions 角标（跨项目全局 attention 提示）：有 error -> 红 / 有 permission（无 error）-> 金 / completed 不亮
+// sessions 面板可见时不亮（用户在看全局树徽标）
+const sessionsBadge = computed<'error' | 'permission' | null>(() => {
+  if (sidebarStore.activePanel === 'sessions' && sidebarStore.panelVisible) return null
+  const queue = attentionStore.queue
+  if (queue.some((i) => i.kind === 'error')) return 'error'
+  if (queue.some((i) => i.kind === 'permission')) return 'permission'
+  return null
 })
 
 function handleSettingsClick() {
@@ -238,12 +216,12 @@ function handleSettingsClick() {
   background: var(--status-error);
 }
 
-.pending-badge {
-  background: var(--accent-gold);
+.icon-badge.sessions-error {
+  background: var(--status-error);
 }
 
-.attention-badge {
-  background: var(--status-error);
+.icon-badge.sessions-permission {
+  background: var(--accent-gold);
 }
 
 @keyframes pulse {

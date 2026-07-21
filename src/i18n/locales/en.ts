@@ -258,7 +258,6 @@ export default {
 
   // IconBar
   titleSessions: 'Sessions',
-  titleAttention: 'Attention',
   titleSkills: 'Skills',
   titleAgents: 'Agents',
   titleMcp: 'MCP Servers',
@@ -268,8 +267,6 @@ export default {
 
   // Sessions panel
   sessions: 'Sessions',
-  attention: 'Attention',
-  attentionEmpty: 'Nothing needs attention',
   attentionKind_error: 'Error',
   attentionKind_permission: 'Permission',
   attentionKind_completed: 'Done',

@@ -122,4 +122,43 @@ describe('useAttentionStore', () => {
     expect(store.queue).toHaveLength(1)
     expect(store.queue[0].ptyId).toBe('p2')
   })
+
+  // getItem:存在的 item 返回
+  it('AttentionStore_GetItem_Exists_001', () => {
+    const store = useAttentionStore()
+    store.ingestEvent(idlePrompt({ ptyId: 'p1' }))
+    expect(store.getItem('p1')?.kind).toBe('completed')
+  })
+
+  // getItem:不存在返回 undefined
+  it('AttentionStore_GetItem_Missing_001', () => {
+    const store = useAttentionStore()
+    expect(store.getItem('missing')).toBeUndefined()
+  })
+
+  // ackPty 默认保留 error（看了不清，error 粘性）
+  it('AttentionStore_Ack_KeepError_ByDefault_001', () => {
+    const store = useAttentionStore()
+    store.ingestEvent(makePayload({ type: 'stopFailure', data: { error: 'x' } }, { ptyId: 'p1' }))
+    store.ackPty('p1')
+    expect(store.getItem('p1')?.kind).toBe('error')
+  })
+
+  // ackPty clearError=true 清 error（新回合）
+  it('AttentionStore_Ack_ClearError_WhenRequested_001', () => {
+    const store = useAttentionStore()
+    store.ingestEvent(makePayload({ type: 'stopFailure', data: { error: 'x' } }, { ptyId: 'p1' }))
+    store.ackPty('p1', { clearError: true })
+    expect(store.getItem('p1')).toBeUndefined()
+  })
+
+  // ackPty 默认清 permission（非 error 看了就清）
+  it('AttentionStore_Ack_ClearPermission_ByDefault_001', () => {
+    const store = useAttentionStore()
+    store.ingestEvent(
+      makePayload({ type: 'notification', data: { notificationType: 'permission_prompt' } }, { ptyId: 'p1' })
+    )
+    store.ackPty('p1')
+    expect(store.getItem('p1')).toBeUndefined()
+  })
 })

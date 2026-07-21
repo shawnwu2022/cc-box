@@ -145,6 +145,12 @@ const sessionStore = useSessionStore()
 const sidebarStore = useSidebarStore()
 const updateStore = useUpdateStore()
 const { t } = useI18n()
+
+// attention 订阅必须在 TerminalView（useStatusMonitor）mount 前完成:
+// hook dispatch 按 Set 插入顺序,attention 先订阅 → ingest 先于 statusMonitor 的"正在看"ack,
+// 否则 ack 会先空操作（item 未 ingest）再 ingest 残留,违背"看了就清"（codex 对抗审查 P0）。
+// 故在 setup（早于子 mount）初始化,而非 onMounted（晚于子 mount）。
+useAttentionStore().init()
 const { setupShortcutListeners } = useAppShortcuts()
 const currentView = ref<ViewType>('welcome')
 const terminalViewRef = ref()
@@ -389,7 +395,6 @@ function initAfterChecks() {
   applyThemeToDom(appStore.theme)
 
   useHookStore().init()
-  useAttentionStore().init()
 
   shortcutUnlisteners.push(...setupShortcutListeners())
 

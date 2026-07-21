@@ -1979,114 +1979,115 @@
 
 ---
 
-## 焦点队列（多项目状态总览）
+## 会话列表 attention 三态（多项目状态总览）
 
 > 重度多项目用户的核心痛点：同时跑多个项目时不知道哪个会话需要关注（完成/等权限/出错）。
-> 焦点队列跨项目聚合未确认关注项，按 **错误 > 等权限 > 新完成** 排序，IconBar 红点角标提醒，点击一键跳转 + 确认。
+> attention 三态直接在会话列表呈现（SessionItem 状态点三色 + ProjectNode 徽标 + IconBar Sessions 角标跨项目提示），无需切到独立面板。
 
-### Attention_QueueBasic_001 — 完成/等权限/出错入队 + 严重度排序
+### Attention_ListThreeStates_001 — 状态点三色区分
 
-**目标**：验证三类关注项正确入队，按严重度排序
+**目标**：SessionItem 状态点按 attention kind 三色区分
 
-**前置条件**：多个项目各有运行中会话
-
-**操作步骤**：
-1. 项目 A 会话完成一轮对话后收到 idle_prompt 通知 → completed 项（注：Stop 不直接生成 completed，stop hook 可能阻止停止）
-2. 项目 B 会话请求权限（permission_prompt）→ permission 项
-3. 项目 C 会话出错（StopFailure）→ error 项
-4. 点击 IconBar「关注」图标打开面板
-
-**预期结果**：
-- 面板列三项，按严重度：error(C) > permission(B) > completed(A)
-- 圆点颜色：error 红、permission 金、completed 绿
-- 每项显示会话名 + kind 标签
-
-### Attention_CrossProject_002 — 跨项目聚合（切换项目仍见全部）
-
-**目标**：焦点队列是跨项目全局，不随当前项目过滤
-
-**前置条件**：项目 A、B 各有待关注会话
+**前置条件**：多 tab 运行，终端视图可见，当前激活 tab A
 
 **操作步骤**：
-1. 当前在项目 A，打开焦点队列，确认看到 A + B
-2. 切换到项目 B
-3. 再次打开焦点队列
+1. tab B（非激活）工具权限提示（permission_prompt）→ 观察 tab B 状态点
+2. tab C（非激活）回合结束（idle_prompt）→ 观察 tab C 状态点
+3. tab D hook 失败（StopFailure）→ 观察 tab D 状态点
 
 **预期结果**：
-- 两次都显示 A + B 全部关注项（区别于 IconBar Sessions 角标只看当前项目）
+- tab B：金脉冲（permission）
+- tab C：绿圈（completed，区别于 running 绿静止）
+- tab D：红（error，即使激活也显示 -- CLI 异常非 idle）
+- 激活 tab 的 permission/completed 不显示状态点（用户在看终端）
 
-### Attention_JumpAck_003 — 点击跳转 + 确认移除
+### Attention_ProjectBadge_002 — ProjectNode 徽标最高 severity
 
-**目标**：点击关注项跳转到对应会话 + 从队列移除
+**目标**：项目内多 tab 不同 attention，徽标取最高 severity
 
-**前置条件**：焦点队列有 ≥1 项
+**前置条件**：项目 X 内 tab1 出错（error）+ tab2 完成（completed）
 
 **操作步骤**：
-1. 点击队列中某项
-2. 观察终端切换 + 该项消失
+1. 观察 project X 徽标
 
 **预期结果**：
-- 终端切到该会话 tab
-- 该项从队列移除（ack），其余保留
+- 徽标显示 `!1`（error 优先，红）
+- 仅 completed 时显示 `✓N`（绿）；仅 running 时 `●N`（绿）
 
-### Attention_IconBadge_004 — IconBar 角标（面板可见时不亮）
+### Attention_ErrorSticky_003 — error 粘性（看了不清）
 
-**目标**：IconBar 关注图标红点角标逻辑
+**目标**：error 不因"看了"清除，只靠新回合/clearPty
 
-**前置条件**：有待关注项
+**前置条件**：tab X StopFailure（error 红点）
 
 **操作步骤**：
-1. 面板关闭时确认红点亮（pulse）
-2. 打开面板 → 红点灭
-3. 关闭面板 → 红点恢复（若仍有未确认项）
+1. 切到 tab X（看）→ 红点仍在
+2. 切走 → 切回 → 红点仍在
+3. 在 tab X 发新消息（userPromptSubmit）→ 红点消失（新回合清）
+4. 或重启 tab（restartTab）→ 红点消失（clearPty）
 
 **预期结果**：
-- 面板关 + 有未确认 → 亮；面板开 → 灭；全确认 → 灭
+- 切走/切回不清 error（粘性，codex P0 修正）
+- 新回合（发消息）或重启才清
 
-### Attention_PtyExitCleanup_005 — PTY 退出/关 tab 清理（codex 场景：pending 不残留）
+### Attention_AckWatching_004 — permission/completed 看了就清
 
-**目标**：PTY 退出或关 tab 时关注项清理 + pending 不残留（codex 对抗审查发现的泄漏修复）
+**目标**：permission/completed 在用户"已关注"时清除（切到/聚焦/正在看）
+
+**前置条件**：tab B（非激活）permission 项
+
+**操作步骤**：
+1. 切到 tab B → tab B permission 状态点消失（running 绿静止）
+2. ProjectNode 徽标 / IconBar 角标同步更新
+
+**预期结果**：
+- 切到 = 已关注 = 清 permission/completed（error 例外，粘性）
+
+### Attention_CrossProjectBadge_005 — 跨项目 Sessions 角标
+
+**目标**：展开项目 A 时，项目 B 出错，Sessions 图标亮红
+
+**前置条件**：项目 A 展开（当前），项目 B 有会话
+
+**操作步骤**：
+1. 项目 B 的 tab 触发 StopFailure
+2. 观察 IconBar Sessions 图标
+3. 点 Sessions 打开面板 → 展开 project B
+
+**预期结果**：
+- Sessions 图标红角标（有 error）
+- project B 徽标 `!N`（红）
+- 展开 B → error tab 状态点红
+- 打开 Sessions 面板时角标隐藏（在看全局树）
+
+### Attention_PtyExitCleanup_006 — PTY 退出/关 tab 清理
+
+**目标**：PTY 退出或关 tab 时关注项清理 + pending 不残留
 
 **前置条件**：某会话等权限（permission 项 + tab.pending=true）
 
 **操作步骤**：
-1. 会话 X 请求权限（产生 permission 项 + tab.pending=true）
+1. 会话 X 请求权限（permission 项 + tab.pending=true）
 2. 不确认，直接关 tab（或 PTY 退出）
-3. 打开焦点队列
 
 **预期结果**：
 - 会话 X 关注项已移除（clearPty）
-- tab（若 stopped 仍存在）pending=false（不残留永久告警）
-- IconBar 红点更新
+- tab（若 stopped 仍存在）pending=false（不残留）
+- 迟到的在途 hook 事件不复活幽灵项（tombstone）
 
-### Attention_TwoWindows_006 — 两窗口隔离（codex 场景）
+### Attention_TwoWindows_007 — 两窗口隔离
 
-**目标**：两个 CC Desk 实例的焦点队列互不干扰
+**目标**：两个 CC Desk 实例的 attention 互不干扰
 
 **前置条件**：启动两个 CC Desk 实例，各自有会话
 
 **操作步骤**：
-1. 实例 A 某会话完成 → 实例 A 队列显示该 completed 项
-2. 查看实例 B 队列
+1. 实例 A 某会话完成 → 实例 A 会话列表显示 completed 状态点
+2. 查看实例 B 会话列表
 
 **预期结果**：
-- A 有该项，B 无（各实例独立聚合本进程会话，hook 端口 + tabs 进程内隔离）
+- A 有 completed 状态点，B 无（各实例独立，hook 端口 + tabs 进程内隔离）
 - 跨窗口全局汇总需共享 broker，当前版本不实现（vision 已注明延后）
-
-### Attention_PermissionThenResume_007 — 权限后继续工作（codex 场景）
-
-**目标**：权限入队后，授权继续工作时关注项正确演化
-
-**前置条件**：会话请求权限
-
-**操作步骤**：
-1. 会话 X permission_prompt → 队列出现 permission 项
-2. 终端授权该会话（继续工作）
-3. 会话继续执行工具
-
-**预期结果**：
-- permission 项仍在队列（直到面板点击确认，或会话再次 Stop/出错 upsert）
-- 无幽灵项或重复
 
 
 

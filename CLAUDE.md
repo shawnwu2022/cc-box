@@ -78,7 +78,6 @@ cc-desk/
 │   │   ├── agents/             # Agents 面板（AgentsPanel > AgentGroup > AgentItem）
 │   │   ├── mcp/                # MCP 面板（McpPanel > McpGroup > McpItem > McpSubItem）
 │   │   ├── plugins/            # Plugins 面板（PluginsPanel > PluginGroup > PluginItem）
-│   │   ├── attention/          # 焦点队列面板（AttentionPanel：跨项目未确认关注项，错误>等权限>完成）
 │   │   ├── sidebar/            # 侧边栏容器（SidebarPanel > PanelHeader）
 │   │   └── settings/           # 设置（SettingsOverlay > SettingsView + sections/）
 │   │       └── providers/      # **Provider 组件**（ProviderList > ProviderCard、EditPanel、PresetPanel、CommonConfigPanel）

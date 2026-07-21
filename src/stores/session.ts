@@ -401,7 +401,11 @@ export const useSessionStore = defineStore('session', () => {
   function setActiveTab(tabId: string | null) {
     if (tabId) {
       const tab = tabs.get(tabId)
-      if (tab) tab.pending = false
+      if (tab) {
+        tab.pending = false
+        // 切到该 tab = 已关注，清 permission/completed（error 保留 -- CLI 异常需处理）
+        if (tab.ptyId) useAttentionStore().ackPty(tab.ptyId)
+      }
     }
     activeTabId.value = tabId
   }
